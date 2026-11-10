@@ -1,3 +1,20 @@
+# Self-improvement execution boundary
+
+When this checkout has a `.lab-config.json` with role `development-lab`, it is
+the **development lab**, not the running Paseo application. If the config is
+missing, first establish the independent lab; do not assume any checkout is safe.
+Use `node scripts/isolated-lab.mjs check` before work and the wrapper's `build`,
+`desktop`, `server`, or `app` commands instead of bare root dev scripts.
+The wrapper rejects links into the live checkout, overrides inherited Paseo
+endpoints, and uses separate state and ports. Never point it at live state.
+
+Do not modify, rebuild, stop, or replace the running application, its dependency
+folders, data, or launcher as a side effect of a development task. Do not copy
+live sessions or authentication into test state. Work only in this checkout;
+report tested changes for separate deployment. Unrelated existing work in the
+original checkout must remain untouched. This is workflow isolation, not an
+OS security sandbox; arbitrary shell access is not confined by these rules.
+
 # CLAUDE.md
 
 Paseo is a mobile app for monitoring and controlling your local AI coding agents from anywhere. Your dev environment, in your pocket. Connects directly to your actual development environment — your code stays on your machine.

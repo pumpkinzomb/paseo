@@ -15258,3 +15258,37 @@ test("individual session deletion rejects malformed identifiers before touching 
   ).rejects.toThrow("UUID");
   expect(await f.storage.get(selected.id)).not.toBeNull();
 });
+
+test("self-development policy blocks protected creation and guides allowed agents", async () => {
+  const root = mkdtempSync(join(tmpdir(), "paseo-manager-policy-"));
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+  const lab = join(root, "lab");
+  const live = join(root, "live");
+  mkdirSync(lab);
+  mkdirSync(live);
+  const client = new TestAgentClient();
+  const old = process.env.PASEO_SELF_DEVELOPMENT_POLICY;
+  process.env.PASEO_SELF_DEVELOPMENT_POLICY = JSON.stringify({
+    labRoot: lab,
+    protectedRoots: [live],
+  });
+  let manager: AgentManager;
+  try {
+    manager = new AgentManager({
+      clients: { codex: client },
+      registry: new AgentStorage(join(root, "agents"), logger),
+      logger,
+    });
+  } finally {
+    if (old === undefined) delete process.env.PASEO_SELF_DEVELOPMENT_POLICY;
+    else process.env.PASEO_SELF_DEVELOPMENT_POLICY = old;
+  }
+  await expect(
+    manager.createAgent({ provider: "codex", cwd: live }, undefined, { workspaceId: undefined }),
+  ).rejects.toThrow("protected Paseo");
+  expect(client.createdConfigs).toHaveLength(0);
+  await manager.createAgent({ provider: "codex", cwd: lab }, undefined, { workspaceId: undefined });
+  expect(client.createdConfigs[0]?.daemonAppendSystemPrompt).toContain(lab);
+  expect(client.createdConfigs[0]?.daemonAppendSystemPrompt).toContain("not an OS sandbox");
+  expect(client.createdConfigs[0]?.cwd).toBe(lab);
+});

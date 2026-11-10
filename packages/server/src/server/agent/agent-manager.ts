@@ -1,3 +1,8 @@
+import {
+  readSelfDevelopmentPolicy,
+  assertSelfDevelopmentCwd,
+  selfDevelopmentPrompt,
+} from "./self-development-policy.js";
 import type { AttachedAgentTool, PluginAgentToolsRuntime } from "../plugins/agent-tools.js";
 import { ProviderOptionsValidationError } from "./provider-options.js";
 import type { AgentToolResult } from "@getpaseo/plugin/server";
@@ -887,6 +892,7 @@ export class AgentManager {
     provider: AgentProvider,
   ) => ProviderPaseoToolsPolicy | undefined;
   private appendSystemPrompt: string;
+  private readonly selfDevelopmentPolicyConfig = process.env.PASEO_SELF_DEVELOPMENT_POLICY;
   private onAgentAttention?: AgentAttentionCallback;
   private onAgentArchived?: AgentArchivedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
@@ -1576,6 +1582,10 @@ export class AgentManager {
         metadata: request.metadata ?? options.metadata,
       };
     }
+    await assertSelfDevelopmentCwd(
+      await readSelfDevelopmentPolicy(this.selfDevelopmentPolicyConfig),
+      config.cwd,
+    );
     await this.deleteAgentState(resolvedAgentId);
     const { storedConfig, launchConfig, paseoToolPolicy } = await this.prepareSessionConfig(
       config,
@@ -6283,7 +6293,7 @@ export class AgentManager {
     const paseoToolPolicy = this.paseoToolsEnabled
       ? this.resolvePaseoToolPolicy(storedConfig.provider)
       : { enabled: false };
-    const launchConfig = this.applyDaemonAppendSystemPrompt(
+    const launchConfig = await this.applyDaemonAppendSystemPrompt(
       withRuntimePaseoMcpServer({
         config: storedConfig,
         agentId,
@@ -6297,8 +6307,15 @@ export class AgentManager {
     return { storedConfig, launchConfig, paseoToolPolicy };
   }
 
-  private applyDaemonAppendSystemPrompt(config: AgentSessionConfig): AgentSessionConfig {
-    const daemonAppendSystemPrompt = this.appendSystemPrompt.trim();
+  private async applyDaemonAppendSystemPrompt(
+    config: AgentSessionConfig,
+  ): Promise<AgentSessionConfig> {
+    const daemonAppendSystemPrompt = [
+      this.appendSystemPrompt.trim(),
+      selfDevelopmentPrompt(await readSelfDevelopmentPolicy(this.selfDevelopmentPolicyConfig)),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
     const next = { ...config };
     delete next.daemonAppendSystemPrompt;
 
@@ -6418,9 +6435,9 @@ export class AgentManager {
     if (!client) {
       const configuredProviders = this.getConfiguredProviderIds();
       throw new Error(
-        `Unknown provider '${
-          options.provider
-        }'. Configured providers: ${formatProviderList(configuredProviders)}.`,
+        `Unknown provider '${options.provider}'. Configured providers: ${formatProviderList(
+          configuredProviders,
+        )}.`,
       );
     }
 

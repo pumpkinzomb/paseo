@@ -98,3 +98,7 @@ app.json
 
 # Project-local Serena configuration and memories.
 .serena/
+
+# Local isolated development state
+.lab/
+.lab-config.json
