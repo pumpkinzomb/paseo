@@ -1,3 +1,4 @@
+import { useDeleteSessionRecord } from "@/hooks/use-delete-session-record";
 import { workspaceTabSwitcherPopoverLayout } from "../workspace-tab-layout";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { Keyboard, Pressable, Text, View } from "react-native";
@@ -203,6 +204,10 @@ function MobileWorkspaceTabOption({
     }),
     [t],
   );
+  const deleteSession = useDeleteSessionRecord(
+    normalizedServerId,
+    tab.target.kind === "agent" ? tab.target.agentId : undefined,
+  );
   const menuTestIDBase = `workspace-tab-menu-${tab.tabId}`;
   const menuEntries = buildWorkspaceTabMenuEntries({
     surface: "mobile",
@@ -210,6 +215,7 @@ function MobileWorkspaceTabOption({
     index: tabIndex,
     tabCount,
     menuTestIDBase,
+    onDeleteAgent: deleteSession,
     onCopyResumeCommand,
     onCopyAgentId,
     onCopyTerminalId,

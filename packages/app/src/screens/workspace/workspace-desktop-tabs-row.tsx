@@ -1,3 +1,4 @@
+import { useDeleteSessionRecord } from "@/hooks/use-delete-session-record";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import React, {
   Fragment,
@@ -1550,6 +1551,10 @@ function ResolvedDesktopTabChip({
   showDropIndicatorAfter: boolean;
 }) {
   const { t } = useTranslation();
+  const deleteSession = useDeleteSessionRecord(
+    serverId,
+    item.tab.target.kind === "agent" ? item.tab.target.agentId : undefined,
+  );
   const presentation = item.presentation;
   const resolvedTab = useMemo(
     () =>
@@ -1562,6 +1567,7 @@ function ResolvedDesktopTabChip({
         onCopyTerminalId,
         onCopyFilePath,
         onReloadAgent,
+        onDeleteAgent: deleteSession,
         onRenameTab,
         onCloseTab,
         onCloseTabsToLeft,
@@ -1570,6 +1576,7 @@ function ResolvedDesktopTabChip({
         labels,
       }),
     [
+      deleteSession,
       index,
       item.tab,
       onCloseOtherTabs,

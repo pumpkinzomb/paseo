@@ -2,6 +2,10 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ptBR: TranslationResources = {
+  localSessions: en.localSessions,
+  sessionRecordDeletion: en.sessionRecordDeletion,
+  assistantLifecycle: en.assistantLifecycle,
+  defaultAssistant: en.defaultAssistant,
   pluginCombobox: {
     searching: "Pesquisando…",
     empty: "Nenhum resultado",
@@ -1767,7 +1771,10 @@ export const ptBR: TranslationResources = {
           connectDocs: "Docs",
           openConnectDocs: "Abrir documentação de conectividade",
           recommended: "Recomendado",
-          relay: { title: "Relay", hint: "Criptografia de ponta a ponta, escaneie um código QR" },
+          relay: {
+            title: "Relay",
+            hint: "Criptografia de ponta a ponta, escaneie um código QR",
+          },
           tailscale: { title: "Tailscale", hint: "Requer alguma configuração" },
         },
       },

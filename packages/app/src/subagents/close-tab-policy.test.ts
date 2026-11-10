@@ -8,6 +8,12 @@ describe("resolveCloseAgentTabPolicy", () => {
     });
   });
 
+  it("keeps the persistent assistant alive when its tab closes", () => {
+    expect(
+      resolveCloseAgentTabPolicy({ parentAgentId: null, labels: { "paseo.role": "assistant" } }),
+    ).toEqual({ kind: "layout-only" });
+  });
+
   it("keeps subagent tab close layout-only", () => {
     expect(resolveCloseAgentTabPolicy({ parentAgentId: "parent-agent" })).toEqual({
       kind: "layout-only",

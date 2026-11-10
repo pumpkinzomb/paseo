@@ -1,3 +1,4 @@
+import { MessageCircle } from "lucide-react-native";
 import { useShallow } from "zustand/shallow";
 import { useTranslation } from "react-i18next";
 import { i18n } from "@/i18n/i18next";
@@ -5,6 +6,10 @@ import { useProviderIcon } from "@/components/provider-icons";
 import type { PanelDescriptor } from "@/panels/panel-registry";
 import { useSessionStore, selectAgentTurnPresentation, type Agent } from "@/stores/session-store";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
+
+function isAssistantAgent(agent: Agent | null): boolean {
+  return agent?.labels?.["paseo.role"] === "assistant";
+}
 
 function formatProviderLabel(provider: Agent["provider"]): string {
   if (!provider) {
@@ -43,6 +48,7 @@ export function useAgentDescriptor(
         session?.agents?.get(target.agentId) ?? session?.agentDetails?.get(target.agentId) ?? null;
       return {
         provider: agent?.provider ?? "codex",
+        isAssistant: isAssistantAgent(agent),
         title: agent?.title ?? null,
         status: agent?.status ?? null,
         backgroundWork: agent?.backgroundWork,
@@ -54,7 +60,13 @@ export function useAgentDescriptor(
     }),
   );
   const icon = useProviderIcon(descriptorState.provider, context.serverId);
-  return buildAgentDescriptor({ ...descriptorState, icon });
+  const descriptor = buildAgentDescriptor({
+    ...descriptorState,
+    icon: descriptorState.isAssistant ? MessageCircle : icon,
+  });
+  return descriptorState.isAssistant
+    ? { ...descriptor, subtitle: i18n.t("defaultAssistant.title") }
+    : descriptor;
 }
 
 export function buildAgentDescriptor(input: {

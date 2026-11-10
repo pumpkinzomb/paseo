@@ -2,6 +2,10 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ar: TranslationResources = {
+  localSessions: en.localSessions,
+  sessionRecordDeletion: en.sessionRecordDeletion,
+  assistantLifecycle: en.assistantLifecycle,
+  defaultAssistant: en.defaultAssistant,
   pluginCombobox: {
     searching: "جارٍ البحث…",
     empty: "لا توجد نتائج",
@@ -1735,7 +1739,10 @@ export const ar: TranslationResources = {
           connectDocs: "الوثائق",
           openConnectDocs: "افتح وثائق الاتصال",
           recommended: "موصى به",
-          relay: { title: "التتابع", hint: "مشفّر من طرف إلى طرف، امسح رمز QR" },
+          relay: {
+            title: "التتابع",
+            hint: "مشفّر من طرف إلى طرف، امسح رمز QR",
+          },
           tailscale: { title: "Tailscale", hint: "يتطلب بعض الإعداد" },
         },
       },

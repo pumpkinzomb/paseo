@@ -78,6 +78,7 @@ interface BuildWorkspaceTabMenuEntriesInput {
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyFilePath: (path: string) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
+  onDeleteAgent?: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
   onCloseTabsBefore: (tabId: string) => Promise<void> | void;
@@ -95,6 +96,7 @@ interface BuildWorkspaceDesktopTabActionsInput {
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyFilePath: (path: string) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
+  onDeleteAgent?: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
@@ -313,6 +315,19 @@ export function buildWorkspaceTabMenuEntries(
       },
     });
   }
+  if (tab.target.kind === "agent" && input.onDeleteAgent) {
+    const agentId = tab.target.agentId;
+    entries.push({
+      kind: "item",
+      key: "delete-agent",
+      label: i18n.t("sessionRecordDeletion.title"),
+      destructive: true,
+      testID: `${menuTestIDBase}-delete-agent`,
+      onSelect: () => {
+        void input.onDeleteAgent?.(agentId);
+      },
+    });
+  }
   entries.push({
     kind: "item",
     key: "close",
@@ -344,6 +359,7 @@ export function buildWorkspaceDesktopTabActions(
       onCopyTerminalId: input.onCopyTerminalId,
       onCopyFilePath: input.onCopyFilePath,
       onReloadAgent: input.onReloadAgent,
+      onDeleteAgent: input.onDeleteAgent,
       onRenameTab: input.onRenameTab,
       onCloseTab: input.onCloseTab,
       onCloseTabsBefore: input.onCloseTabsToLeft,

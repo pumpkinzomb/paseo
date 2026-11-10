@@ -27,6 +27,12 @@ describe("Paseo tool display", () => {
     ["create_agent", { title: "Reviewer", initialPrompt: "Review it" }, "Create agent", "Reviewer"],
     ["create_agent", { initialPrompt: "Review it" }, "Create agent", "Review it"],
     ["get_agent_status", { agentId: "agt_1" }, "Check agent", "agt_1"],
+    [
+      "connect_provider_session",
+      { providerHandleId: "native-session" },
+      "Connect local session",
+      "native-session",
+    ],
     ["update_agent", { agentId: "agt_1", name: "Renamed" }, "Update agent", "Renamed"],
     ["create_workspace", { path: "/tmp/repo/feature-x" }, "Create workspace", "feature-x"],
     ["create_workspace", { title: "Docs", branchName: "docs" }, "Create workspace", "Docs"],
@@ -47,6 +53,9 @@ describe("Paseo tool display", () => {
 
   it("omits the summary when a call has no context", () => {
     expect(display("mcp__paseo__list_agents", {})).toEqual({ displayName: "List agents" });
+    expect(display("mcp__paseo__list_provider_sessions", {})).toEqual({
+      displayName: "List local sessions",
+    });
   });
 
   it("recognizes every Paseo namespace format", () => {

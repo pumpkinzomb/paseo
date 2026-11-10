@@ -2,6 +2,10 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const zhCN: TranslationResources = {
+  localSessions: en.localSessions,
+  sessionRecordDeletion: en.sessionRecordDeletion,
+  assistantLifecycle: en.assistantLifecycle,
+  defaultAssistant: en.defaultAssistant,
   pluginCombobox: {
     searching: "搜索中…",
     empty: "无结果",

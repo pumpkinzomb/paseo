@@ -1,4 +1,98 @@
 export const en = {
+  localSessions: {
+    title: "Local sessions",
+    description:
+      "Coding-agent sessions saved on this host, across all workspaces. General ChatGPT and Claude chats are not included.",
+    history: "Connected history",
+    connected: "Connected",
+    confirmTitle: "Connect this existing session?",
+    confirmBody:
+      "Stop this session's work in its original app or CLI before connecting. Paseo cannot reliably detect another app's control of it. This resumes the original session, not a copy. Very long histories may take time to load.",
+    confirmIdle: "It is idle; connect",
+    updateHost: "Update this host to use the independent local-session list.",
+  },
+  sessionRecordDeletion: {
+    title: "Delete session…",
+    actions: "Session actions",
+    notFound: "This session no longer exists.",
+    confirm:
+      "Permanently delete only this Paseo session record and timeline? This cannot be undone in Paseo. Provider originals, project files, attachments and other sessions are preserved. Active work must finish first.",
+    done: "Session deleted from Paseo.",
+  },
+  assistantLifecycle: {
+    completedRefreshFailed:
+      "The action completed, but refreshing the view failed. Reload the view; do not repeat the action.",
+    close: "Close view",
+    archive: "Archive conversation",
+    restore: "Restore conversation",
+    delete: "Permanently delete",
+    scope:
+      "Applies to the whole assistant conversation, including all provider segments. Closing only hides this view.",
+    busy: "Wait for active work to finish before archiving or deleting.",
+    archiveConfirm:
+      "Archive all segments of this conversation? You can restore it from session history. It will no longer reopen as the default conversation.",
+    restoreConfirm: "Restore all segments of this archived conversation?",
+    deleteConfirm:
+      "Permanently delete this conversation and all its segments from Paseo? This cannot be undone in Paseo. Original provider records, project files and attachments are preserved. Subagents are not deleted; active or unarchived child work must be handled first.",
+  },
+  defaultAssistant: {
+    pricePaid: "Paid · catalog pricing",
+    priceUnknown: "Price unknown",
+    searchModels: "Search provider or model",
+    historyTitle: "Earlier segments ({{count}})",
+    historyNotice:
+      "Earlier user and assistant messages, read-only. Tools and attachments are not displayed here. New messages, approvals and stop controls belong only to the active segment below.",
+    historySegment: "Segment {{index}} · {{provider}} · {{model}}",
+    historyLoading: "Loading earlier messages…",
+    historyOlder: "Load older messages",
+    historyUser: "You",
+    historyEmpty: "No messages in this segment.",
+    handoffOmittedYes: "yes",
+    handoffOmittedNo: "no",
+    handoffIncomplete: "The history snapshot is incomplete. Close and reopen the preview.",
+    handoffSourceNotice:
+      "This is a new session carrying only the reviewed handoff. The full history remains in the previous conversation.",
+    handoffOpenSource: "View previous conversation",
+    managerModelNotice:
+      "This selects the upper-level assistant only, not its workers. Within the same provider, the model changes in the current conversation. For another provider, review and edit a context handoff before creating a separate conversation.",
+    handoffTitle: "Review context handoff",
+    handoffNotice:
+      "Destination: {{provider}} / {{model}}. Review exactly what will be shared. Approval creates a separate conversation with the selected provider and preserves the original. No model turn runs now; the approved handoff is stored in that session and becomes reference context on your next message.",
+    handoffLoading: "Preparing a local draft from recent user and assistant messages…",
+    handoffDisconnected: "The host is disconnected.",
+    handoffSourceMissing: "The source conversation is unavailable. Close and reopen this preview.",
+    handoffTextLabel: "Context to share with the selected provider",
+    handoffReviewNotice:
+      "Review the saved handoff and recent messages again for this destination. Older sessions without a saved handoff include recent messages only. Remove private or unnecessary information. Tools, attachments and hidden reasoning are excluded. Secret detection is incomplete. If the source changes, close and reopen this preview.",
+    handoffConfirm: "Approve handoff and create conversation",
+    handoffCounts:
+      "Included: {{included}} · Omitted: {{omitted}} · Sensitive-message exclusions: {{sensitive}} · Truncated: {{truncated}}",
+    handoffWaitIdle:
+      "Wait for this conversation to finish and resolve pending approvals before changing models.",
+    managerModelTitle: "Manager model",
+    switchProvider: "Change assistant provider / model (new conversation)",
+    chooseModel: "New conversation with model",
+    providerDefault: "Provider default",
+    modelSelectionNotice:
+      "Starts a new assistant conversation. Previous conversations are preserved; their context is not transferred automatically.",
+    modelShortlistNotice:
+      "All available models are shown. OpenCode models with explicit zero pricing are excluded; missing or incomplete prices remain selectable and are marked unknown.",
+    loadingModels: "Loading provider models…",
+    noModels:
+      "No selectable models are available. Check the provider connection or refresh the catalog.",
+    modelAuthNotice:
+      "A listed model does not guarantee sign-in, subscription access or credits. No conversation turn is started until you send a message.",
+    refreshModels: "Refresh models",
+    startWithModel: "Start new conversation",
+    title: "Assistant",
+    newConversation: "New conversation",
+    connecting: "Connecting to your assistant host…",
+    opening: "Opening your latest conversation…",
+    updateHost:
+      "Update this host to a build that supports the default assistant. Your projects are still available.",
+    providers: "Agent settings",
+    projects: "Open projects",
+  },
   pluginCombobox: {
     searching: "Searching…",
     empty: "No results",
@@ -1761,7 +1855,10 @@ export const en = {
           connectDocs: "Docs",
           openConnectDocs: "Open connectivity documentation",
           recommended: "Recommended",
-          relay: { title: "Relay", hint: "End-to-end encrypted, scan a QR code" },
+          relay: {
+            title: "Relay",
+            hint: "End-to-end encrypted, scan a QR code",
+          },
           tailscale: { title: "Tailscale", hint: "Requires some setup" },
         },
       },

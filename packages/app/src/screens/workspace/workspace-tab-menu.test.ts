@@ -367,3 +367,55 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(terminalSeparator?.key).toBe("rename-separator");
   });
 });
+
+describe("session deletion menu scope", () => {
+  it.each(["desktop", "mobile"] as const)(
+    "adds a direct destructive entry to %s agent tabs only",
+    (surface) => {
+      const onDeleteAgent = vi.fn();
+      const input = {
+        surface,
+        tab: createAgentTab(),
+        index: 0,
+        tabCount: 1,
+        menuTestIDBase: "session",
+        onCopyResumeCommand: vi.fn(),
+        onCopyAgentId: vi.fn(),
+        onCopyTerminalId: vi.fn(),
+        onCopyFilePath: vi.fn(),
+        onReloadAgent: vi.fn(),
+        onRenameTab: vi.fn(),
+        onCloseTab: vi.fn(),
+        onCloseTabsBefore: vi.fn(),
+        onCloseTabsAfter: vi.fn(),
+        onCloseOtherTabs: vi.fn(),
+        onDeleteAgent,
+      };
+      const entry = buildWorkspaceTabMenuEntries(input).find(
+        (candidate) => candidate.kind === "item" && candidate.key === "delete-agent",
+      );
+      expect(entry?.kind).toBe("item");
+      if (entry?.kind === "item") {
+        expect(entry.destructive).toBe(true);
+        entry.onSelect();
+      }
+      expect(onDeleteAgent).toHaveBeenCalledExactlyOnceWith("agent-123");
+      expect(
+        buildWorkspaceTabMenuEntries({
+          ...input,
+          tab: {
+            key: "terminal",
+            tabId: "terminal",
+            kind: "terminal",
+            target: { kind: "terminal", terminalId: "terminal" },
+          },
+        }).some((candidate) => candidate.key === "delete-agent"),
+      ).toBe(false);
+      expect(
+        buildWorkspaceTabMenuEntries({ ...input, onDeleteAgent: undefined }).some(
+          (candidate) => candidate.key === "delete-agent",
+        ),
+      ).toBe(false);
+    },
+  );
+});

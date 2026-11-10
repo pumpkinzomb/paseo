@@ -1,3 +1,7 @@
+import { connectProviderSession, listImportableProviderSessions } from "../import-sessions.js";
+import type { WorkspaceProvisioningService } from "../../session/workspace-provisioning/workspace-provisioning-service.js";
+import { RecentProviderSessionDescriptorPayloadSchema } from "@getpaseo/protocol/messages";
+import { randomUUID } from "node:crypto";
 import { registerPluginTools } from "./plugin-tools.js";
 import type { FinishSubscriptions, FinishRegistration } from "../finish-subscriptions/index.js";
 import type { AgentMessageDelivery } from "../agent-messages/index.js";
@@ -119,6 +123,7 @@ import type { ProviderPaseoToolsPolicy } from "@getpaseo/protocol/provider-confi
 import { isPaseoToolEnabled } from "../paseo-tool-policy.js";
 
 export interface PaseoToolHostDependencies {
+  workspaceProvisioning?: Pick<WorkspaceProvisioningService, "runInImportWorkspace">;
   agentMessages?: () => AgentMessageDelivery;
   finishSubscriptions?: () => FinishSubscriptions;
   serverId?: string;
@@ -2146,6 +2151,85 @@ function createToolCatalog(
       };
     },
   );
+
+  registerTool(
+    "list_provider_sessions",
+    {
+      title: "List local provider sessions",
+      description:
+        "Read metadata for existing local Codex/Claude and other supported provider sessions across projects. This is not cloud ChatGPT history. No session is resumed. External activity is unknown; linkedAgentId identifies a session already connected to this Paseo host.",
+      inputSchema: {
+        providers: z.array(z.string()).optional(),
+        cwd: z.string().optional().describe("Omit to search all projects on this host."),
+        query: z.string().optional(),
+        limit: z.number().int().positive().max(200).optional().default(50),
+      },
+      outputSchema: {
+        entries: z.array(RecentProviderSessionDescriptorPayloadSchema),
+        filteredAlreadyImportedCount: z.number(),
+        providerErrors: z.array(z.object({ provider: z.string(), message: z.string() })),
+        externalActivity: z.literal("unknown"),
+      },
+    },
+    async ({ providers, cwd, query, limit }) => {
+      const listing = await listImportableProviderSessions({
+        request: {
+          type: "fetch_recent_provider_sessions_request",
+          requestId: randomUUID(),
+          providers,
+          cwd,
+          query,
+          limit,
+          includeImported: true,
+        },
+        agentManager,
+        agentStorage,
+        providerSnapshotManager,
+      });
+      return {
+        content: [],
+        structuredContent: ensureValidJson({ ...listing, externalActivity: "unknown" }),
+      };
+    },
+  );
+
+  if (options.workspaceProvisioning) {
+    const workspaceProvisioning = options.workspaceProvisioning;
+    registerTool(
+      "connect_provider_session",
+      {
+        title: "Connect an existing local session",
+        description:
+          "Connect a local provider session using its original providerHandleId and cwd from list_provider_sessions, preserving its native identity. First ask the user to stop this session in its original app/CLI and confirm it is idle; do not infer this from timestamps. This does not send a prompt or change parentage. Existing Paseo connections are reused. Afterwards use the returned agentId with get_agent_status/send_agent_prompt to delegate authorized work; never control the same native session concurrently from two apps.",
+        inputSchema: {
+          providerId: z.string().min(1),
+          providerHandleId: z.string().min(1),
+          cwd: z.string().min(1),
+          externalSessionIdleConfirmed: z
+            .literal(true)
+            .describe(
+              "True only after the user explicitly confirmed that this native session is stopped in its original app or CLI.",
+            ),
+        },
+        outputSchema: {
+          agentId: z.string(),
+          workspaceId: z.string().nullable(),
+          reused: z.boolean(),
+        },
+      },
+      async ({ providerId, providerHandleId, cwd, externalSessionIdleConfirmed }) => {
+        const result = await connectProviderSession({
+          request: { provider: providerId, providerHandleId, cwd, requestId: randomUUID() },
+          externalSessionIdleConfirmed,
+          workspaceProvisioning,
+          agentManager,
+          agentStorage,
+          logger: childLogger,
+        });
+        return { content: [], structuredContent: ensureValidJson(result) };
+      },
+    );
+  }
 
   registerTool(
     "list_agents",

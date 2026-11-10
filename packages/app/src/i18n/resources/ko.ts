@@ -2,6 +2,97 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
+  localSessions: {
+    title: "로컬 세션",
+    description:
+      "워크스페이스와 관계없이 이 호스트에 저장된 코딩 에이전트 세션입니다. ChatGPT·Claude 일반 채팅은 포함되지 않아요.",
+    history: "연결된 기록",
+    connected: "연결됨",
+    confirmTitle: "기존 세션을 연결할까요?",
+    confirmBody:
+      "원래 앱이나 CLI에서 이 세션의 작업을 멈춘 뒤 연결해 주세요. 다른 앱의 제어 여부는 확실하게 감지할 수 없어요. 복사본이 아니라 원본 세션을 이어갑니다. 기록이 아주 길면 불러오는 데 시간이 걸릴 수 있어요.",
+    confirmIdle: "실행 중이 아니에요 · 연결",
+    updateHost: "독립 로컬 세션 목록을 사용하려면 호스트를 업데이트해 주세요.",
+  },
+  sessionRecordDeletion: {
+    title: "세션 삭제…",
+    actions: "세션 관리",
+    notFound: "이 세션은 더 이상 존재하지 않습니다.",
+    confirm:
+      "이 Paseo 세션 기록과 타임라인만 영구 삭제할까요? Paseo에서는 되돌릴 수 없습니다. 공급자 원본·프로젝트·첨부 파일과 다른 세션은 보존합니다. 진행 중인 작업은 먼저 완료해야 합니다.",
+    done: "Paseo 세션을 삭제했습니다.",
+  },
+  assistantLifecycle: {
+    completedRefreshFailed:
+      "작업은 완료됐지만 화면 갱신에 실패했습니다. 같은 작업을 다시 실행하지 말고 화면을 새로고침하세요.",
+    close: "화면 닫기",
+    archive: "대화 보관",
+    restore: "대화 복원",
+    delete: "영구 삭제",
+    scope: "모든 공급자 구간을 포함한 상위 대화 전체에 적용됩니다. 닫기는 화면만 닫습니다.",
+    busy: "실행 중인 작업이 끝난 뒤 보관하거나 삭제하세요.",
+    archiveConfirm:
+      "이 대화의 모든 구간을 보관할까요? 세션 기록에서 복원할 수 있으며 기본 대화로 자동 재진입하지 않습니다.",
+    restoreConfirm: "보관된 이 대화의 모든 구간을 복원할까요?",
+    deleteConfirm:
+      "Paseo에서 이 대화와 모든 구간을 영구 삭제할까요? Paseo에서는 되돌릴 수 없습니다. 원본 공급자 기록·프로젝트·첨부 파일은 보존합니다. 하위 에이전트는 삭제하지 않으며 실행 중이거나 보관되지 않은 하위 작업을 먼저 정리해야 합니다.",
+  },
+  defaultAssistant: {
+    pricePaid: "유료 · 카탈로그 기준",
+    priceUnknown: "요금 미확인",
+    searchModels: "공급자 또는 모델 검색",
+    historyTitle: "이전 대화 구간 {{count}}개",
+    historyNotice:
+      "이전 사용자·에이전트 메시지를 읽기 전용으로 보여줍니다. 도구·첨부는 이 목록에 표시하지 않습니다. 새 메시지·승인·중지는 아래 현재 구간에만 적용됩니다.",
+    historySegment: "구간 {{index}} · {{provider}} · {{model}}",
+    historyLoading: "이전 메시지를 불러오고 있어요…",
+    historyOlder: "더 이전 메시지 보기",
+    historyUser: "나",
+    historyEmpty: "이 구간에 메시지가 없습니다.",
+    handoffOmittedYes: "있음",
+    handoffOmittedNo: "없음",
+    handoffIncomplete: "대화 기록을 완전하게 읽지 못했습니다. 닫고 미리보기를 다시 열어주세요.",
+    handoffSourceNotice:
+      "검토한 인계문만 이어받은 새 세션입니다. 전체 기록은 이전 대화에 남아 있어요.",
+    handoffOpenSource: "이전 대화 보기",
+    managerModelNotice:
+      "하위 작업자가 아닌 상위 에이전트에만 적용됩니다. 같은 공급자의 모델은 현재 대화에서 바로 변경합니다. 다른 공급자는 전달할 맥락을 검토·편집한 뒤 별도 대화를 만듭니다.",
+    handoffTitle: "전달할 맥락 검토",
+    handoffNotice:
+      "전달 대상: {{provider}} / {{model}}. 공유될 내용을 직접 확인하세요. 승인하면 원본을 보존하고 새 공급자의 대화를 만듭니다. 지금 모델을 실행하지 않으며, 승인한 인계문은 새 세션에 보관되어 다음 메시지부터 참고 문맥으로 사용됩니다.",
+    handoffLoading: "최근 사용자·에이전트 메시지로 로컬 초안을 준비하고 있어요…",
+    handoffDisconnected: "호스트 연결이 끊겼습니다.",
+    handoffSourceMissing: "원본 대화를 확인할 수 없습니다. 닫고 미리보기를 다시 열어주세요.",
+    handoffTextLabel: "선택한 공급자에게 전달할 맥락",
+    handoffReviewNotice:
+      "저장된 인계문과 최근 메시지를 이번 전달 대상에 맞게 다시 검토해주세요. 저장된 인계문이 없는 과거 세션은 최근 메시지만 포함됩니다. 개인정보나 불필요한 내용을 직접 지워주세요. 도구·첨부·숨겨진 추론은 제외하며 비밀정보 자동 감지는 완전하지 않습니다. 원본이 변경되면 닫고 다시 열어주세요.",
+    handoffConfirm: "내용을 승인하고 새 대화 만들기",
+    handoffCounts:
+      "포함 {{included}}건 · 제외 {{omitted}}건 · 민감정보 의심 제외 {{sensitive}}건 · 기록 일부 생략: {{truncated}}",
+    handoffWaitIdle: "현재 작업이 끝나고 대기 중인 승인이 해결된 뒤 모델을 변경해주세요.",
+    managerModelTitle: "상위 에이전트 모델",
+    switchProvider: "기본 에이전트 공급자·모델 변경 (새 대화)",
+    chooseModel: "모델을 골라 새 대화",
+    providerDefault: "제공자 기본값",
+    modelSelectionNotice:
+      "선택한 모델로 새 관리자 대화를 시작해요. 기존 대화는 보존되며, 대화 맥락이 자동 전달되지는 않아요.",
+    modelShortlistNotice:
+      "사용 가능한 모델을 모두 표시합니다. OpenCode는 요금이 명시적으로 0인 모델만 제외하며, 요금이 없거나 불완전한 모델은 미확인 표시로 선택할 수 있습니다.",
+    loadingModels: "제공자 모델을 불러오는 중…",
+    noModels: "선택할 수 있는 모델이 없어요. 제공자 연결을 확인하거나 목록을 새로고침해 주세요.",
+    modelAuthNotice:
+      "목록 표시는 로그인·구독 권한·잔액을 보장하지 않아요. 메시지를 보내기 전에는 모델 대화를 실행하지 않아요.",
+    refreshModels: "목록 새로고침",
+    startWithModel: "새 대화 시작",
+    title: "기본 에이전트",
+    newConversation: "새 대화",
+    connecting: "에이전트 호스트에 연결하는 중…",
+    opening: "마지막 대화를 이어 여는 중…",
+    updateHost:
+      "이 호스트를 기본 에이전트를 지원하는 개발본으로 업데이트해 주세요. 기존 프로젝트는 계속 열 수 있어요.",
+    providers: "에이전트 설정",
+    projects: "프로젝트 열기",
+  },
   pluginCombobox: {
     searching: "검색 중…",
     empty: "결과 없음",
@@ -1146,7 +1237,10 @@ export const ko: TranslationResources = {
     creating: "만드는 중…",
     name: "레이블 이름",
     updateHostUse: "레이블을 사용하려면 호스트를 업데이트하세요.",
-    errors: { update: "레이블을 업데이트할 수 없습니다", load: "레이블을 불러올 수 없습니다" },
+    errors: {
+      update: "레이블을 업데이트할 수 없습니다",
+      load: "레이블을 불러올 수 없습니다",
+    },
     colors: {
       violet: "보라",
       sky: "하늘",
@@ -1746,7 +1840,10 @@ export const ko: TranslationResources = {
           connectDocs: "문서",
           openConnectDocs: "연결 문서 열기",
           recommended: "권장",
-          relay: { title: "릴레이", hint: "엔드투엔드 암호화, QR 코드를 스캔하세요" },
+          relay: {
+            title: "릴레이",
+            hint: "엔드투엔드 암호화, QR 코드를 스캔하세요",
+          },
           tailscale: { title: "Tailscale", hint: "약간의 설정이 필요합니다" },
         },
       },

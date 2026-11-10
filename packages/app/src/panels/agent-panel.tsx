@@ -1,3 +1,10 @@
+import { AssistantPaneLifecycle } from "@/default-assistant/lifecycle-controls";
+import { AssistantConversationHistory } from "@/default-assistant/conversation-history";
+import {
+  AssistantConversationProvider,
+  useAssistantConversation,
+  useViewedAssistantSegment,
+} from "@/default-assistant/conversation";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -60,7 +67,7 @@ import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { reconcileMissingAgentStateWithPresentAgent } from "@/panels/agent-panel-load-state";
 import { TimelineSyncStatus } from "@/timeline/sync-status";
-import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
+import { PaneProvider, usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import { useAgentFactsLine } from "@/panels/agent-facts-line";
 import { PaneSubtitle } from "@/panels/pane-subtitle";
 import { definePanel } from "@/panels/panel-registry";
@@ -342,23 +349,63 @@ function resolveConversationAgentId(target: ConversationTarget): string | undefi
  * first prompt creates the agent and the tab retargets. The agent gates are idle for a draft.
  */
 export function AgentConversationPanel() {
-  const { serverId, workspaceId, target, openFileInWorkspace } = usePaneContext();
+  const pane = usePaneContext();
+  const { serverId, workspaceId, target, openFileInWorkspace } = pane;
   const { isInteractive } = usePaneFocus();
   invariant(
     target.kind === "agent" || target.kind === "draft",
     "AgentConversationPanel requires an agent or draft target",
   );
-
+  const logical = useAssistantConversation(
+    serverId,
+    target.kind === "agent" ? target.agentId : undefined,
+  );
+  const conversation = logical.data ?? null;
+  useViewedAssistantSegment(serverId, pane.tabId, conversation?.activeAgentId);
+  const resolvedTarget = useMemo(
+    () =>
+      target.kind === "agent" && conversation
+        ? { ...target, agentId: conversation.activeAgentId }
+        : target,
+    [conversation, target],
+  );
+  const effectiveWorkspaceId = conversation?.activeWorkspaceId ?? workspaceId;
+  const resolvedPane = useMemo(
+    () => ({
+      ...pane,
+      target: resolvedTarget,
+      workspaceId: effectiveWorkspaceId,
+    }),
+    [effectiveWorkspaceId, pane, resolvedTarget],
+  );
+  const { refetch } = logical;
+  const retry = useCallback(() => {
+    void refetch();
+  }, [refetch]);
+  if (logical.enabled && logical.error)
+    return <AgentLoadErrorView message={String(logical.error)} onRetry={retry} />;
+  if (logical.enabled && logical.isLoading)
+    return (
+      <View style={styles.container}>
+        <ThemedLoadingSpinner size="large" uniProps={foregroundMutedColorMapping} />
+      </View>
+    );
+  if (logical.required && !logical.data)
+    return <AgentLoadErrorView message="Assistant conversation is unavailable" onRetry={retry} />;
   return (
-    <RetainedChatContent>
-      <AgentPanelContent
-        serverId={serverId}
-        workspaceId={workspaceId}
-        target={target}
-        isPaneFocused={isInteractive}
-        onOpenWorkspaceFile={openFileInWorkspace}
-      />
-    </RetainedChatContent>
+    <AssistantConversationProvider value={conversation}>
+      <PaneProvider value={resolvedPane}>
+        <RetainedChatContent>
+          <AgentPanelContent
+            serverId={serverId}
+            workspaceId={effectiveWorkspaceId}
+            target={resolvedTarget}
+            isPaneFocused={isInteractive}
+            onOpenWorkspaceFile={openFileInWorkspace}
+          />
+        </RetainedChatContent>
+      </PaneProvider>
+    </AssistantConversationProvider>
   );
 }
 
@@ -540,7 +587,9 @@ function AgentPanelBody({
   const agentState = useSessionStore(
     useShallow((state) => selectChatAgentState(state, serverId, agentId)),
   );
-  const [lookupState, setLookupState] = useState<AgentLookupState>({ tag: "idle" });
+  const [lookupState, setLookupState] = useState<AgentLookupState>({
+    tag: "idle",
+  });
   const lookupAttemptTokenRef = useRef(0);
   const retryAgentLookup = useCallback(() => setLookupState({ tag: "idle" }), []);
 
@@ -744,7 +793,11 @@ function ChatAgentContent({
     sync: viewedTimelineSync,
   });
   const hasActiveCreateHandoff = useCreateFlowStore((state) =>
-    findActiveCreateHandoff({ pendingByDraftId: state.pendingByDraftId, serverId, agentId }),
+    findActiveCreateHandoff({
+      pendingByDraftId: state.pendingByDraftId,
+      serverId,
+      agentId,
+    }),
   );
   const hasSession = useSessionStore((state) => Boolean(state.sessions[serverId]));
   const [missingAgentState, setMissingAgentState] = useState<AgentScreenMissingState>({
@@ -1194,6 +1247,8 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       style={animatedStaticStyles.content}
       onStartShouldSetResponderCapture={handleAttentionInteraction}
     >
+      <AssistantPaneLifecycle serverId={serverId} />
+      <AssistantConversationHistory serverId={serverId} />
       {showsComposer ? null : <SheetAgentFacts serverId={serverId} agentId={agentId} />}
       <RenderProfile id={`AgentStreamSection:${agentId}`}>
         <AgentStreamSection
@@ -1415,7 +1470,12 @@ const AgentStreamSection = memo(function AgentStreamSection({
     useShallow((state) =>
       agentId
         ? selectAgentTimelineTurnPresentation(state.sessions[serverId], agentId)
-        : { isActive: false, isCancelling: false, startedAt: null, turnId: null },
+        : {
+            isActive: false,
+            isCancelling: false,
+            startedAt: null,
+            turnId: null,
+          },
     ),
   );
   const streamItems = streamItemsRaw ?? EMPTY_STREAM_ITEMS;
@@ -1508,7 +1568,10 @@ function DraftComposerSection({
   const handleCreated = useCallback(
     (agentSnapshot: Parameters<typeof normalizeAgentSnapshot>[0]) => {
       const normalized = normalizeAgentSnapshot(agentSnapshot, serverId);
-      const agent = applyLegacyDaemonWorkspaceOwnership({ serverId, agent: normalized });
+      const agent = applyLegacyDaemonWorkspaceOwnership({
+        serverId,
+        agent: normalized,
+      });
       getHostRuntimeStore().acceptAgentSnapshot(serverId, agent);
       retargetCurrentTab({ kind: "agent", agentId: agentSnapshot.id });
     },
@@ -1614,7 +1677,9 @@ function ActiveAgentComposer({
   const isCompactFormFactor = useIsCompactFormFactor();
   const { onLayout: onInputAreaLayout, isBelow: isCompactComposerLayout } = useContainerWidthBelow(
     COMPACT_CONTENT_WIDTH,
-    { initialIsBelow: isCompactFormFactor },
+    {
+      initialIsBelow: isCompactFormFactor,
+    },
   );
   const paneContext = usePaneContext();
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
@@ -1639,7 +1704,10 @@ function ActiveAgentComposer({
       }
       openWorkspaceChanges({
         isCompact: isCompactFormFactor,
-        workspaceKey: buildWorkspaceTabPersistenceKey({ serverId, workspaceId }),
+        workspaceKey: buildWorkspaceTabPersistenceKey({
+          serverId,
+          workspaceId,
+        }),
         preferences: openInSidePane,
       });
     },
@@ -1653,7 +1721,10 @@ function ActiveAgentComposer({
         throw new Error("Agent not found");
       }
 
-      const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+      const workspaceKey = buildWorkspaceTabPersistenceKey({
+        serverId,
+        workspaceId,
+      });
       if (workspaceKey) {
         unpinWorkspaceAgent(workspaceKey, agentId);
         hideWorkspaceAgent(workspaceKey, agentId);

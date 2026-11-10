@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  AssistantModelMenu,
+  useAssistantModelSwitch,
+} from "@/default-assistant/composer-model-switch";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -27,6 +31,13 @@ const foregroundMutedMapping = (theme: Theme) => ({
 });
 
 function noop() {}
+
+function withAssistantActionHeight(
+  height: number | undefined,
+  enabled: boolean,
+): number | undefined {
+  return enabled ? 480 : height;
+}
 
 interface CombinedModelSelectorProps {
   providers: ProviderSelectorProvider[];
@@ -94,6 +105,7 @@ export function CombinedModelSelector({
   toolbar,
 }: CombinedModelSelectorProps) {
   const { t } = useTranslation();
+  const assistantModelSwitch = useAssistantModelSwitch();
   const isCompact = useIsCompactFormFactor();
   const modelBrowserScrolling = resolveModelBrowserScrolling({ isNative, isCompact });
   const anchorRef = useRef<View>(null);
@@ -108,6 +120,11 @@ export function CombinedModelSelector({
     serverId,
   });
   const { prepareToOpen, reset } = browser;
+  const menuHeader = useMemo(
+    () =>
+      assistantModelSwitch ? { title: t("defaultAssistant.managerModelTitle") } : browser.header,
+    [assistantModelSwitch, t, browser.header],
+  );
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -122,6 +139,8 @@ export function CombinedModelSelector({
     },
     [onClose, onOpen, prepareToOpen, reset],
   );
+
+  const closeForAssistantSwitch = useCallback(() => handleOpenChange(false), [handleOpenChange]);
 
   const handleSelect = useCallback(
     (provider: string, modelId: string) => {
@@ -282,16 +301,36 @@ export function CombinedModelSelector({
         desktopPlacement={desktopPlacement}
         desktopMinWidth={desktopMinWidth}
         desktopLockWidth
-        desktopFixedHeight={browser.desktopFixedHeight}
+        desktopFixedHeight={withAssistantActionHeight(
+          browser.desktopFixedHeight,
+          Boolean(assistantModelSwitch),
+        )}
         desktopChildrenScrollEnabled={false}
-        header={browser.header}
+        header={menuHeader}
         mobileChildrenScrollEnabled={!browser.isProviderView || !isNative}
         mobileChildrenContentContainerStyle={styles.mobileBrowserContent}
       >
-        {selectorBody}
+        <AssistantMenuOrFallback
+          enabled={Boolean(assistantModelSwitch)}
+          onClose={closeForAssistantSwitch}
+        >
+          {selectorBody}
+        </AssistantMenuOrFallback>
       </Combobox>
     </>
   );
+}
+
+function AssistantMenuOrFallback({
+  enabled,
+  onClose,
+  children,
+}: {
+  enabled: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return enabled ? <AssistantModelMenu onClose={onClose} /> : children;
 }
 
 const styles = StyleSheet.create((theme) => ({

@@ -1,3 +1,7 @@
+import {
+  AssistantModelMenu,
+  useAssistantModelSwitch,
+} from "@/default-assistant/composer-model-switch";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -157,6 +161,11 @@ export function CompactModelSheet({
   children,
 }: CompactModelSheetProps) {
   const { t } = useTranslation();
+  const assistantModelSwitch = useAssistantModelSwitch();
+  const managerHeader = useMemo(
+    () => (assistantModelSwitch ? { title: t("defaultAssistant.managerModelTitle") } : undefined),
+    [assistantModelSwitch, t],
+  );
   const usesBottomSheet = useIsCompactFormFactor();
   const modelBrowserScrolling = resolveModelBrowserScrolling({
     isNative,
@@ -328,7 +337,7 @@ export function CompactModelSheet({
       />
 
       <AdaptiveModalSheet
-        header={rootHeader}
+        header={managerHeader ?? rootHeader}
         visible={isOpen}
         onClose={close}
         snapPoints={SNAP_POINTS}
@@ -337,27 +346,31 @@ export function CompactModelSheet({
         contextBridge={contextBridge}
         testID="agent-controls-model-sheet"
       >
-        <View
-          style={[
-            styles.modelViewport,
-            usesBottomSheet ? styles.flexibleModelViewport : styles.fixedModelViewport,
-          ]}
-          testID="agent-controls-model-viewport"
-        >
-          <ModelBrowser
-            state={rootBrowser}
-            onSelect={usesBottomSheet ? handleSearchSelect : handleDesktopSelect}
-            onApplyProfile={handleApplyProfile}
-            onEditProfiles={onEditProfiles ? handleEditProfiles : undefined}
-            onCreateProfile={profileActions.create}
-            onEditProfile={profileActions.edit}
-            onRetryProvider={onRetryProvider}
-            isRetryingProvider={isRetryingProvider}
-            scrolling={modelBrowserScrolling}
-            searchAllOnFocus={usesBottomSheet}
-            rootBrowseContent={usesBottomSheet ? mobileRootContent : undefined}
-          />
-        </View>
+        {assistantModelSwitch ? (
+          <AssistantModelMenu onClose={close} />
+        ) : (
+          <View
+            style={[
+              styles.modelViewport,
+              usesBottomSheet ? styles.flexibleModelViewport : styles.fixedModelViewport,
+            ]}
+            testID="agent-controls-model-viewport"
+          >
+            <ModelBrowser
+              state={rootBrowser}
+              onSelect={usesBottomSheet ? handleSearchSelect : handleDesktopSelect}
+              onApplyProfile={handleApplyProfile}
+              onEditProfiles={onEditProfiles ? handleEditProfiles : undefined}
+              onCreateProfile={profileActions.create}
+              onEditProfile={profileActions.edit}
+              onRetryProvider={onRetryProvider}
+              isRetryingProvider={isRetryingProvider}
+              scrolling={modelBrowserScrolling}
+              searchAllOnFocus={usesBottomSheet}
+              rootBrowseContent={usesBottomSheet ? mobileRootContent : undefined}
+            />
+          </View>
+        )}
         {!usesBottomSheet ? (
           <>
             <View style={styles.modelViewportDivider} />

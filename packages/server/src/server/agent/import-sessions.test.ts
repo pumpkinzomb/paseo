@@ -18,6 +18,7 @@ import {
   type ImportSessionAgentManager,
   ImportSessionsRequestError,
   importProviderSession,
+  connectProviderSession,
   listImportableProviderSessions,
   normalizeImportAgentRequest,
 } from "./import-sessions.js";
@@ -910,4 +911,81 @@ test("importProviderSession requires cwd from the selected provider row", async 
   await expect(harness.import({ providerHandleId: "thread-imported" })).rejects.toThrow(
     "Import requires cwd from the selected provider session",
   );
+});
+
+test("includeImported keeps local history entries with their existing Paseo identity", async () => {
+  const managed = makeManagedAgent({
+    id: "linked-agent",
+    cwd: "/tmp/project",
+    sessionId: "native-session",
+    nativeHandle: "native-handle",
+  });
+  const result = await listImportableProviderSessions({
+    request: makeRequest({ includeImported: true, limit: 20 }),
+    agentManager: {
+      listAgents: () => [managed],
+      listImportableSessions: async () =>
+        makeImportableSessionsResult([
+          makeImportableSession({
+            sessionId: "native-session",
+            nativeHandle: "native-handle",
+            lastActivityAt: "2026-11-10T10:00:00.000Z",
+          }),
+          makeImportableSession({ sessionId: "other", lastActivityAt: "2026-11-10T09:00:00.000Z" }),
+        ]),
+    },
+    agentStorage: { listAll: async () => [] },
+    providerSnapshotManager: { getProviderLabel: () => "Codex" },
+  });
+  expect(
+    result.entries.map(({ providerHandleId, linkedAgentId, linkedAgentStatus }) => ({
+      providerHandleId,
+      linkedAgentId,
+      linkedAgentStatus,
+    })),
+  ).toEqual([
+    {
+      providerHandleId: "native-handle",
+      linkedAgentId: "linked-agent",
+      linkedAgentStatus: "closed",
+    },
+    { providerHandleId: "other", linkedAgentId: undefined, linkedAgentStatus: undefined },
+  ]);
+});
+
+test("provider connections require idle confirmation and reuse the existing native identity", async () => {
+  const harness = await ProviderImportHarness.create();
+  await harness.seed(
+    makeStoredProviderSession({
+      id: harness.snapshot.id,
+      cwd: harness.snapshot.cwd,
+      sessionId: "thread-imported",
+      archivedAt: null,
+      workspaceId: "original-workspace",
+    }),
+  );
+  const input = {
+    request: {
+      provider: "codex",
+      providerHandleId: "thread-imported",
+      cwd: harness.snapshot.cwd,
+      requestId: "connect",
+    },
+    workspaceProvisioning: createImportWorkspace("unused"),
+    agentManager: harness.manager,
+    agentStorage: harness.storage,
+    logger: createTestLogger(),
+  };
+  await expect(
+    connectProviderSession({ ...input, externalSessionIdleConfirmed: false }),
+  ).rejects.toThrow("Confirm with the user");
+  const results = await Promise.all(
+    [1, 2].map(() => connectProviderSession({ ...input, externalSessionIdleConfirmed: true })),
+  );
+  expect(results).toEqual([
+    { agentId: harness.snapshot.id, workspaceId: "original-workspace", reused: true },
+    { agentId: harness.snapshot.id, workspaceId: "original-workspace", reused: true },
+  ]);
+  expect(harness.freshImports).toEqual([]);
+  expect(harness.resumeAttempts).toBe(0);
 });

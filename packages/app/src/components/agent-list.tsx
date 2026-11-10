@@ -1,3 +1,6 @@
+import { useDeleteSessionRecord } from "@/hooks/use-delete-session-record";
+import { Button } from "@/components/ui/button";
+import { AssistantLifecycleControls } from "@/default-assistant/lifecycle-controls";
 import { Modal } from "@/components/ui/modal";
 import {
   View,
@@ -6,6 +9,7 @@ import {
   RefreshControl,
   FlatList,
   type ListRenderItem,
+  type GestureResponderEvent,
   type PressableStateCallbackType,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -131,7 +135,9 @@ function SessionRowBadges({
       ) : null}
       {pendingPermissionCount > 0 ? (
         <SessionBadge
-          label={t("agentList.badges.pending", { count: pendingPermissionCount })}
+          label={t("agentList.badges.pending", {
+            count: pendingPermissionCount,
+          })}
           tone="warning"
         />
       ) : null}
@@ -213,6 +219,13 @@ function SessionRow({
 
   const handlePress = useCallback(() => onPress(agent), [onPress, agent]);
   const handleLongPress = useCallback(() => onLongPress(agent), [onLongPress, agent]);
+  const handleActionsPress = useCallback(
+    (event: GestureResponderEvent) => {
+      event.stopPropagation();
+      handleLongPress();
+    },
+    [handleLongPress],
+  );
 
   const archivedIcon = useMemo(
     () => <Archive size={theme.fontSize.sm} color={theme.colors.foregroundMuted} />,
@@ -321,6 +334,15 @@ function SessionRow({
           <AgentActivityTime date={agent.lastActivityAt} isMobile={false} />
         </View>
       ) : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t("sessionRecordDeletion.actions")}
+        testID={`agent-row-actions-${agent.id}`}
+        onPress={handleActionsPress}
+        style={styles.actionsButton}
+      >
+        <Text>⋯</Text>
+      </Pressable>
       <SessionRowTrailingAttention
         isMobile={isMobile}
         showAttentionIndicator={showAttentionIndicator}
@@ -328,6 +350,25 @@ function SessionRow({
       />
     </Pressable>
   );
+}
+
+function SessionRecordDeleteButton({
+  agent,
+  onDeleted,
+}: {
+  agent: AggregatedAgent;
+  onDeleted: () => void;
+}) {
+  const { t } = useTranslation();
+  const remove = useDeleteSessionRecord(agent.serverId, agent.id, onDeleted);
+  const onPress = useCallback(() => {
+    void remove?.();
+  }, [remove]);
+  return remove ? (
+    <Button variant="ghost" onPress={onPress} testID="session-record-delete">
+      {t("sessionRecordDeletion.title")}
+    </Button>
+  ) : null;
 }
 
 function AgentActivityTime({ date, isMobile }: { date: Date; isMobile: boolean }) {
@@ -384,23 +425,9 @@ export function AgentList({
     [isActionSheetVisible, onAgentSelect],
   );
 
-  const handleAgentLongPress = useCallback(
-    (agent: AggregatedAgent) => {
-      const isRunning = agent.status === "running";
-      if (isRunning) {
-        setActionAgent(agent);
-        return;
-      }
-
-      const client = useSessionStore.getState().sessions[agent.serverId]?.client ?? null;
-      if (!client) {
-        setActionAgent(agent);
-        return;
-      }
-      void archiveAgent({ serverId: agent.serverId, agentId: agent.id }).catch(() => {});
-    },
-    [archiveAgent],
-  );
+  const handleAgentLongPress = useCallback((agent: AggregatedAgent) => {
+    setActionAgent(agent);
+  }, []);
 
   const handleCloseActionSheet = useCallback(() => {
     setActionAgent(null);
@@ -411,7 +438,10 @@ export function AgentList({
       return;
     }
     // Timeout errors are swallowed — the daemon will still process the archive
-    void archiveAgent({ serverId: actionAgent.serverId, agentId: actionAgent.id }).catch(() => {});
+    void archiveAgent({
+      serverId: actionAgent.serverId,
+      agentId: actionAgent.id,
+    }).catch(() => {});
     setActionAgent(null);
   }, [actionAgent, actionClient, archiveAgent]);
 
@@ -432,7 +462,11 @@ export function AgentList({
       }
       result.push({ type: "header", key: `header:${section}`, section });
       for (const agent of data) {
-        result.push({ type: "agent", key: `${agent.serverId}:${agent.id}`, agent });
+        result.push({
+          type: "agent",
+          key: `${agent.serverId}:${agent.id}`,
+          agent,
+        });
       }
     }
     return result;
@@ -525,27 +559,44 @@ export function AgentList({
           <View style={sheetContainerStyle}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>
-              {isActionDaemonUnavailable
+              {isActionDaemonUnavailable && actionAgent?.labels?.["paseo.role"] !== "assistant"
                 ? t("agentList.archiveSheet.hostOffline")
-                : t("agentList.archiveSheet.runningAgent")}
+                : actionAgent?.title}
             </Text>
-            <View style={styles.sheetButtonRow}>
-              <Pressable
-                style={[styles.sheetButton, styles.sheetCancelButton]}
-                onPress={handleCloseActionSheet}
-                testID="agent-action-cancel"
-              >
-                <Text style={styles.sheetCancelText}>{t("common.actions.cancel")}</Text>
-              </Pressable>
-              <Pressable
-                disabled={isActionDaemonUnavailable}
-                style={[styles.sheetButton, styles.sheetArchiveButton]}
-                onPress={handleArchiveAgent}
-                testID="agent-action-archive"
-              >
-                <Text style={sheetArchiveTextStyle}>{t("agentList.archiveSheet.archive")}</Text>
-              </Pressable>
-            </View>
+            {actionAgent?.labels?.["paseo.role"] === "assistant" ? (
+              <AssistantLifecycleControls
+                serverId={actionAgent.serverId}
+                agentId={actionAgent.id}
+                archived={Boolean(actionAgent.archivedAt)}
+                status={actionAgent.status}
+                onClose={handleCloseActionSheet}
+                onDone={handleCloseActionSheet}
+              />
+            ) : (
+              <View style={styles.sheetButtonRow}>
+                {actionAgent ? (
+                  <SessionRecordDeleteButton
+                    agent={actionAgent}
+                    onDeleted={handleCloseActionSheet}
+                  />
+                ) : null}
+                <Pressable
+                  style={[styles.sheetButton, styles.sheetCancelButton]}
+                  onPress={handleCloseActionSheet}
+                  testID="agent-action-cancel"
+                >
+                  <Text style={styles.sheetCancelText}>{t("common.actions.cancel")}</Text>
+                </Pressable>
+                <Pressable
+                  disabled={isActionDaemonUnavailable}
+                  style={[styles.sheetButton, styles.sheetArchiveButton]}
+                  onPress={handleArchiveAgent}
+                  testID="agent-action-archive"
+                >
+                  <Text style={sheetArchiveTextStyle}>{t("agentList.archiveSheet.archive")}</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -554,6 +605,7 @@ export function AgentList({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  actionsButton: { padding: 8 },
   list: {
     flex: 1,
     minHeight: 0,

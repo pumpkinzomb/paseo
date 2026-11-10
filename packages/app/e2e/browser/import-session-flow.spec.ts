@@ -124,6 +124,37 @@ test.afterAll(async () => {
   await rm(claudeConfigDirectory, { recursive: true, force: true });
 });
 
+test("local sessions browse across workspaces and cancel without resuming the original", async ({
+  page,
+}) => {
+  const before = (await client.fetchWorkspaces()).entries.map((workspace) => workspace.id).sort();
+  await page.goto("/local-sessions");
+  await expect(page.getByTestId("local-session-list")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("sidebar-local-sessions")).toBeVisible();
+  const row = page.getByTestId(`import-session-session-claude-${scenario.importSessionId}`);
+  await expect(row).toBeVisible();
+  await expect(
+    page.getByText(
+      "Coding-agent sessions saved on this host, across all workspaces. General ChatGPT and Claude chats are not included.",
+    ),
+  ).toBeVisible();
+  const dialogPromise = page.waitForEvent("dialog");
+  const click = row.click();
+  const dialog = await dialogPromise;
+  expect(dialog.message()).toContain("Stop this session's work in its original app or CLI");
+  await dialog.dismiss();
+  await click;
+  await expect(page).toHaveURL(/\/local-sessions$/);
+  await expect(row).toBeVisible();
+  expect((await client.fetchWorkspaces()).entries.map((workspace) => workspace.id).sort()).toEqual(
+    before,
+  );
+  await page.getByRole("button", { name: "Connected history", exact: true }).click();
+  await expect(page).toHaveURL(/\/sessions$/);
+  await page.getByTestId("sidebar-local-sessions").click();
+  await expect(row).toBeVisible();
+});
+
 test("an open Import Session row keeps its age current", async ({ page }) => {
   await page.clock.install({ time: scenario.importSessionTimestamp + 60_000 });
   const flow = new ImportSessionFlow(page);

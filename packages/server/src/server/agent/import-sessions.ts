@@ -130,7 +130,8 @@ export async function listImportableProviderSessions(
   );
   const importedHandles = importedSessions.handles;
   const query = normalizeImportSessionQuery(request.query);
-  const listingLimit = query ? IMPORT_SESSION_SEARCH_SCAN_LIMIT : limit + importedSessions.count;
+  const unfilteredLimit = request.includeImported ? limit : limit + importedSessions.count;
+  const listingLimit = query ? IMPORT_SESSION_SEARCH_SCAN_LIMIT : unfilteredLimit;
 
   const listing = await agentManager.listImportableSessions({
     limit: listingLimit,
@@ -156,7 +157,7 @@ export async function listImportableProviderSessions(
       importedHandles.has(toProviderSessionHandleKey(session.provider, session.providerHandleId))
     ) {
       filteredAlreadyImportedCount += 1;
-      continue;
+      if (!request.includeImported) continue;
     }
     candidates.push(session);
   }
@@ -164,11 +165,16 @@ export async function listImportableProviderSessions(
   const entries = candidates
     .sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime())
     .slice(0, limit)
-    .map((descriptor) =>
-      toRecentProviderSessionDescriptorPayload(descriptor, {
+    .map((descriptor) => {
+      const payload = toRecentProviderSessionDescriptorPayload(descriptor, {
         providerLabel: providerSnapshotManager.getProviderLabel(descriptor.provider),
-      }),
-    );
+      });
+      if (!request.includeImported) return payload;
+      const linked = importedSessions.links.get(
+        toProviderSessionHandleKey(descriptor.provider, descriptor.providerHandleId),
+      );
+      return Object.assign(payload, linked);
+    });
 
   return {
     entries,
@@ -190,13 +196,53 @@ export async function importProviderSession(
     throw new Error("Import requires cwd from the selected provider session");
   }
   const key = await resolveProviderSessionImportMutationKey(input);
-  return serializeProviderSessionImport(input.agentManager, key, async () => {
-    const placement = await input.workspaceProvisioning.runInImportWorkspace(
-      { cwd, requestedWorkspaceId: input.request.workspaceId },
-      (workspace) => importProviderSessionNow(input, cwd, workspace.workspaceId),
+  return serializeProviderSessionImport(input.agentManager, key, () =>
+    importProviderSessionInWorkspace(input, cwd),
+  );
+}
+
+export async function connectProviderSession(
+  input: ImportProviderSessionInput & { externalSessionIdleConfirmed: boolean },
+): Promise<{ agentId: string; workspaceId: string | null; reused: boolean }> {
+  if (!input.externalSessionIdleConfirmed) {
+    throw new Error(
+      "Confirm with the user that this session is stopped in its original app or CLI before connecting it. External activity cannot be verified.",
     );
-    return { ...placement.value, createdWorkspace: placement.createdWorkspace };
+  }
+  const cwd = input.request.cwd;
+  if (!cwd) throw new Error("Use the original cwd returned by list_provider_sessions.");
+  const key = await resolveProviderSessionImportMutationKey(input);
+  return serializeProviderSessionImport(input.agentManager, key, async () => {
+    const records = await input.agentStorage.listByProviderSession(
+      input.request.provider,
+      input.request.providerHandleId,
+    );
+    const existing = records.find((record) => !record.archivedAt);
+    if (existing) {
+      if (!createRealpathAwarePathMatcher(cwd)(existing.cwd))
+        throw new Error("Provider session cwd does not match its existing connection.");
+      return { agentId: existing.id, workspaceId: existing.workspaceId ?? null, reused: true };
+    }
+    const archived = records.find((record) => record.archivedAt);
+    const request = archived ? { ...input.request, labels: archived.labels } : input.request;
+    const imported = await importProviderSessionInWorkspace({ ...input, request }, cwd);
+    return {
+      agentId: imported.snapshot.id,
+      workspaceId: imported.snapshot.workspaceId ?? null,
+      reused: false,
+    };
   });
+}
+
+async function importProviderSessionInWorkspace(
+  input: ImportProviderSessionInput,
+  cwd: string,
+): Promise<ImportProviderSessionResult> {
+  const placement = await input.workspaceProvisioning.runInImportWorkspace(
+    { cwd, requestedWorkspaceId: input.request.workspaceId },
+    (workspace) => importProviderSessionNow(input, cwd, workspace.workspaceId),
+  );
+  return { ...placement.value, createdWorkspace: placement.createdWorkspace };
 }
 
 async function importProviderSessionNow(
@@ -344,8 +390,13 @@ async function collectImportedProviderSessions(
   agentManager: Pick<AgentManager, "listAgents">,
   agentStorage: Pick<AgentStorage, "listAll">,
   providerFilter: Set<string> | undefined,
-): Promise<{ handles: Set<string>; count: number }> {
+): Promise<{
+  handles: Set<string>;
+  count: number;
+  links: Map<string, { linkedAgentId: string; linkedAgentStatus: string }>;
+}> {
   const handles = new Set<string>();
+  const links = new Map<string, { linkedAgentId: string; linkedAgentStatus: string }>();
   const sessions = new Set<string>();
   // Explicit provider-history import deduplicates against archived as well as active sessions.
   const records = await agentStorage.listAll();
@@ -354,27 +405,34 @@ async function collectImportedProviderSessions(
   const collect = (
     provider: AgentProvider | StoredAgentRecord["provider"] | string,
     persistence: AgentPersistenceHandle | null | undefined,
+    linkedAgentId: string,
+    linkedAgentStatus: string,
   ) => {
     if (!persistence || (providerFilter && !providerFilter.has(provider))) return;
     sessions.add(toProviderSessionHandleKey(provider, persistence.sessionId));
-    collectProviderSessionHandleKeys(handles, provider, persistence);
+    const keys = new Set<string>();
+    collectProviderSessionHandleKeys(keys, provider, persistence);
+    for (const key of keys) {
+      handles.add(key);
+      if (!links.has(key)) links.set(key, { linkedAgentId, linkedAgentStatus });
+    }
   };
 
   for (const agent of agentManager.listAgents()) {
     if (storedRecordsById.get(agent.id)?.archivedAt) {
       continue;
     }
-    collect(agent.provider, agent.persistence);
+    collect(agent.provider, agent.persistence, agent.id, agent.lifecycle);
   }
 
   for (const record of records) {
     if (record.archivedAt) {
       continue;
     }
-    collect(record.provider, record.persistence);
+    collect(record.provider, record.persistence, record.id, record.lastStatus);
   }
 
-  return { handles, count: sessions.size };
+  return { handles, count: sessions.size, links };
 }
 
 function toProviderSessionHandleKey(provider: string, providerHandleId: string): string {

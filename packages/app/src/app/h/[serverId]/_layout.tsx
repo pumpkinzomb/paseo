@@ -41,6 +41,7 @@ function KnownHostRoute() {
       screenOwnedAppearance={SCREEN_OWNED_APPEARANCE}
     >
       <Stack.Screen name="index" />
+      <Stack.Screen name="assistant" />
       <Stack.Screen name="workspace/[workspaceId]/index" />
       <Stack.Screen name="agent/[agentId]" options={AGENT_SCREEN_OPTIONS} />
       <Stack.Screen name="sessions" />

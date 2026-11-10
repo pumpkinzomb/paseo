@@ -24,7 +24,13 @@ const SERIALIZABLE_CONFIG_SCHEMA = z
     toolPolicy: z
       .object({
         preapproved: z.array(
-          z.object({ kind: z.literal("mcp"), server: z.string(), tool: z.string() }).strict(),
+          z
+            .object({
+              kind: z.literal("mcp"),
+              server: z.string(),
+              tool: z.string(),
+            })
+            .strict(),
         ),
       })
       .strict()
@@ -350,7 +356,7 @@ export class AgentStorage {
     this.deleting.add(agentId);
   }
 
-  async remove(agentId: string): Promise<void> {
+  async remove(agentId: string, options?: { strict?: boolean }): Promise<void> {
     await this.load();
     this.beginDelete(agentId);
     await (this.pendingWrites.get(agentId) ?? Promise.resolve());
@@ -361,6 +367,7 @@ export class AgentStorage {
           await fs.unlink(filePath);
         } catch (error) {
           const code = (error as NodeJS.ErrnoException).code;
+          if (code !== "ENOENT" && options?.strict) throw error;
           if (code && code !== "ENOENT") {
             this.logger.warn(
               { err: error, agentId, filePath },

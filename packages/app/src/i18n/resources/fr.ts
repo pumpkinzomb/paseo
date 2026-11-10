@@ -2,6 +2,10 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const fr: TranslationResources = {
+  localSessions: en.localSessions,
+  sessionRecordDeletion: en.sessionRecordDeletion,
+  assistantLifecycle: en.assistantLifecycle,
+  defaultAssistant: en.defaultAssistant,
   pluginCombobox: {
     searching: "Recherche…",
     empty: "Aucun résultat",
@@ -1781,8 +1785,14 @@ export const fr: TranslationResources = {
           connectDocs: "Docs",
           openConnectDocs: "Ouvrir la documentation sur la connectivité",
           recommended: "Recommandé",
-          relay: { title: "Relais", hint: "Chiffré de bout en bout, scannez un QR code" },
-          tailscale: { title: "Tailscale", hint: "Demande un peu de configuration" },
+          relay: {
+            title: "Relais",
+            hint: "Chiffré de bout en bout, scannez un QR code",
+          },
+          tailscale: {
+            title: "Tailscale",
+            hint: "Demande un peu de configuration",
+          },
         },
       },
     },

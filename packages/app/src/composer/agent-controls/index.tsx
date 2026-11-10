@@ -1,3 +1,4 @@
+import { AssistantComposerModelSwitch } from "@/default-assistant/composer-model-switch";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { router } from "expo-router";
@@ -1249,35 +1250,37 @@ export const AgentControls = memo(function AgentControls({
   }
 
   return (
-    <ComposerModelProvider value={composer}>
-      {commandCenterRegistration}
-      {profileEditor.element}
-      <ControlledAgentControls
-        provider={agent.provider}
-        modelSelectorProviders={agentModelSelectorProviders}
-        modelOptions={modelOptions}
-        selectedModelId={modelSelection.activeModelId ?? undefined}
-        onSelectModel={handleSelectModel}
-        agentProfiles={agentProfiles}
-        onApplyAgentProfile={agentProfiles?.applyProfile}
-        onEditAgentProfiles={handleEditAgentProfiles}
-        onCreateAgentProfile={profileActions.create}
-        onEditAgentProfile={profileActions.edit}
-        thinkingOptions={thinkingOptions.length > 0 ? thinkingOptions : undefined}
-        selectedThinkingOptionId={modelSelection.selectedThinkingId ?? undefined}
-        onSelectThinkingOption={handleSelectThinkingOption}
-        optionControls={agentOptionControls}
-        isModelLoading={snapshotIsLoading || selectedProviderIsLoading}
-        onModelSelectorOpen={handleModelSelectorOpen}
-        onRetryModelProvider={handleRetryModelProvider}
-        isRetryingModelProvider={snapshotIsRefreshing}
-        onDropdownClose={onDropdownClose}
-        disabled={!client}
-        modeControl={modeControl}
-        modelSelectorServerId={serverId}
-        isCompactLayout={isCompactLayout}
-      />
-    </ComposerModelProvider>
+    <AssistantComposerModelSwitch serverId={serverId} agentId={agentId}>
+      <ComposerModelProvider value={composer}>
+        {commandCenterRegistration}
+        {profileEditor.element}
+        <ControlledAgentControls
+          provider={agent.provider}
+          modelSelectorProviders={agentModelSelectorProviders}
+          modelOptions={modelOptions}
+          selectedModelId={modelSelection.activeModelId ?? undefined}
+          onSelectModel={handleSelectModel}
+          agentProfiles={agentProfiles}
+          onApplyAgentProfile={agentProfiles?.applyProfile}
+          onEditAgentProfiles={handleEditAgentProfiles}
+          onCreateAgentProfile={profileActions.create}
+          onEditAgentProfile={profileActions.edit}
+          thinkingOptions={thinkingOptions.length > 0 ? thinkingOptions : undefined}
+          selectedThinkingOptionId={modelSelection.selectedThinkingId ?? undefined}
+          onSelectThinkingOption={handleSelectThinkingOption}
+          optionControls={agentOptionControls}
+          isModelLoading={snapshotIsLoading || selectedProviderIsLoading}
+          onModelSelectorOpen={handleModelSelectorOpen}
+          onRetryModelProvider={handleRetryModelProvider}
+          isRetryingModelProvider={snapshotIsRefreshing}
+          onDropdownClose={onDropdownClose}
+          disabled={!client}
+          modeControl={modeControl}
+          modelSelectorServerId={serverId}
+          isCompactLayout={isCompactLayout}
+        />
+      </ComposerModelProvider>
+    </AssistantComposerModelSwitch>
   );
 });
 

@@ -197,7 +197,8 @@ async function prepareTestDaemonConfig(
     staticDir,
     mcpDebug: options.mcpDebug ?? false,
     isDev: options.isDev,
-    agentClients: options.agentClients ?? createTestAgentClients(),
+    // Overrides must not remove fake defaults: missing providers fall back to real CLIs.
+    agentClients: { ...createTestAgentClients(), ...options.agentClients },
     providerOverrides: options.providerOverrides,
     agentStoragePath: path.join(paseoHome, "agents"),
     relayEnabled: options.relayEnabled ?? false,

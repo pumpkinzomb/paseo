@@ -4,7 +4,7 @@ import {
   formatAgentMessage,
   formatSystemNotificationPrompt,
 } from "./agent-messages/index.js";
-import { expect, test, vi, onTestFinished } from "vitest";
+import { describe, expect, test, vi, onTestFinished } from "vitest";
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -473,7 +473,11 @@ class TestAgentSession implements AgentSession {
     // Use setTimeout so events arrive after the caller sets up the foreground waiter
     setTimeout(() => {
       this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
-      this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+      this.pushEvent({
+        type: "turn_completed",
+        provider: this.provider,
+        turnId,
+      });
       this.runtimeModel = "gpt-5.2-codex";
     }, 0);
     return { turnId };
@@ -588,7 +592,15 @@ class SteeringTestSession extends TestAgentSession {
   override async startTurn(prompt: AgentPromptInput): Promise<{ turnId: string }> {
     this.startPrompts.push(prompt);
     const turnId = `active-turn-${++this.startCount}`;
-    setTimeout(() => this.pushEvent({ type: "turn_started", provider: this.provider, turnId }), 0);
+    setTimeout(
+      () =>
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        }),
+      0,
+    );
     return { turnId };
   }
 
@@ -631,7 +643,15 @@ class UnsupportedSteeringSession extends TestAgentSession {
 
   override async startTurn(): Promise<{ turnId: string }> {
     const turnId = `unsupported-turn-${++this.startCount}`;
-    setTimeout(() => this.pushEvent({ type: "turn_started", provider: this.provider, turnId }), 0);
+    setTimeout(
+      () =>
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        }),
+      0,
+    );
     return { turnId };
   }
 
@@ -679,7 +699,10 @@ test("stops an OpenCode execution already active when its conversation is reopen
   const harness = new V2Harness();
   harness.info.location.directory = workdir;
   harness.startExecution();
-  const client = new OpenCodeV2AgentClient({ logger, runtime: harness.runtime });
+  const client = new OpenCodeV2AgentClient({
+    logger,
+    runtime: harness.runtime,
+  });
   const manager = new AgentManager({ clients: { opencode: client }, logger });
   const agent = await manager.resumeAgentFromPersistence({
     provider: "opencode",
@@ -688,7 +711,9 @@ test("stops an OpenCode execution already active when its conversation is reopen
     metadata: { cwd: workdir },
   });
   try {
-    expect(await manager.cancelAgentRun(agent.id)).toEqual({ status: "settled" });
+    expect(await manager.cancelAgentRun(agent.id)).toEqual({
+      status: "settled",
+    });
     expect(harness.active).toBe(false);
     for await (const _event of manager.streamAgent(agent.id, "continue after restart")) {
       // Drain the next turn through the same interface used by callers.
@@ -733,8 +758,15 @@ test("a completed OpenCode model switch does not depend on another session read"
     return harness.info;
   };
   const storage = new AgentStorage(join(workdir, "agents"), logger);
-  const client = new OpenCodeV2AgentClient({ logger, runtime: harness.runtime });
-  const manager = new AgentManager({ clients: { opencode: client }, registry: storage, logger });
+  const client = new OpenCodeV2AgentClient({
+    logger,
+    runtime: harness.runtime,
+  });
+  const manager = new AgentManager({
+    clients: { opencode: client },
+    registry: storage,
+    logger,
+  });
   const agent = await manager.resumeAgentFromPersistence({
     provider: "opencode",
     sessionId: "session",
@@ -779,14 +811,21 @@ test("uses an injected timeline store without making it a production requirement
       workspaceId: undefined,
     });
     agentId = agent.id;
-    await manager.appendTimelineItem(agent.id, { type: "assistant_message", text: "stored" });
+    await manager.appendTimelineItem(agent.id, {
+      type: "assistant_message",
+      text: "stored",
+    });
     await manager.flush();
 
     expect(store.writes.flat()).toContainEqual(
-      expect.objectContaining({ item: { type: "assistant_message", text: "stored" } }),
+      expect.objectContaining({
+        item: { type: "assistant_message", text: "stored" },
+      }),
     );
     await expect(manager.getTimelineRows(agent.id)).resolves.toContainEqual(
-      expect.objectContaining({ item: { type: "assistant_message", text: "stored" } }),
+      expect.objectContaining({
+        item: { type: "assistant_message", text: "stored" },
+      }),
     );
   } finally {
     if (agentId) await manager.closeAgent(agentId).catch(() => undefined);
@@ -820,7 +859,10 @@ test("refreshing an agent replaces the injected timeline store instead of append
       _handle: AgentPersistenceHandle,
       config?: Partial<AgentSessionConfig>,
     ): Promise<AgentSession> {
-      return new HistorySession({ provider: "codex", cwd: config?.cwd ?? workdir });
+      return new HistorySession({
+        provider: "codex",
+        cwd: config?.cwd ?? workdir,
+      });
     }
   }
   const manager = new AgentManager({
@@ -837,7 +879,9 @@ test("refreshing an agent replaces the injected timeline store instead of append
 
     // What session.handleRefreshAgentRequest does for a loaded agent, twice over.
     for (let refresh = 0; refresh < 2; refresh += 1) {
-      await manager.reloadAgentSession(agent.id, undefined, { rehydrateFromDisk: true });
+      await manager.reloadAgentSession(agent.id, undefined, {
+        rehydrateFromDisk: true,
+      });
       await manager.hydrateTimelineFromProvider(agent.id, { broadcast: true });
       await manager.flush();
     }
@@ -883,7 +927,10 @@ test("a failed history replay leaves the committed timeline intact", async () =>
       _handle: AgentPersistenceHandle,
       config?: Partial<AgentSessionConfig>,
     ): Promise<AgentSession> {
-      return new FlakyHistorySession({ provider: "codex", cwd: config?.cwd ?? workdir });
+      return new FlakyHistorySession({
+        provider: "codex",
+        cwd: config?.cwd ?? workdir,
+      });
     }
   }
   const manager = new AgentManager({
@@ -897,13 +944,17 @@ test("a failed history replay leaves the committed timeline intact", async () =>
       workspaceId: undefined,
     });
     agentId = agent.id;
-    await manager.reloadAgentSession(agent.id, undefined, { rehydrateFromDisk: true });
+    await manager.reloadAgentSession(agent.id, undefined, {
+      rehydrateFromDisk: true,
+    });
     await manager.hydrateTimelineFromProvider(agent.id, { broadcast: true });
     await manager.flush();
     const committed = await manager.getTimelineRows(agent.id);
 
     failReplay = true;
-    await manager.reloadAgentSession(agent.id, undefined, { rehydrateFromDisk: true });
+    await manager.reloadAgentSession(agent.id, undefined, {
+      rehydrateFromDisk: true,
+    });
     await expect(
       manager.hydrateTimelineFromProvider(agent.id, { broadcast: true }),
     ).rejects.toThrow("history stream closed");
@@ -946,7 +997,10 @@ test("retries provider history hydration after a stream failure", async () => {
           _handle: AgentPersistenceHandle,
           config?: Partial<AgentSessionConfig>,
         ): Promise<AgentSession> {
-          return new RetryingHistorySession({ provider: "codex", cwd: config?.cwd ?? workdir });
+          return new RetryingHistorySession({
+            provider: "codex",
+            cwd: config?.cwd ?? workdir,
+          });
         }
       })(),
     },
@@ -977,7 +1031,10 @@ test("retries provider history hydration after a stream failure", async () => {
 });
 
 test("notification batches share the run they start or join", async () => {
-  const session = new SteeringTestSession({ provider: "codex", cwd: process.cwd() });
+  const session = new SteeringTestSession({
+    provider: "codex",
+    cwd: process.cwd(),
+  });
   const workdir = mkdtempSync(join(tmpdir(), "agent-notification-turns-"));
   const manager = new AgentManager({
     clients: {
@@ -997,26 +1054,42 @@ test("notification batches share the run they start or join", async () => {
       .map((id) =>
         formatAgentMessage({
           id: `${prefix}-${id}`,
-          source: { kind: "agent-notification", agentId: "worker", event: "finished" },
+          source: {
+            kind: "agent-notification",
+            agentId: "worker",
+            event: "finished",
+          },
           text: "Worker finished",
         }),
       )
       .join("\n\n");
   const consume = async (prompt: string, clientMessageId: string) => {
-    for await (const _event of manager.streamAgent(agent.id, prompt, { clientMessageId })) {
+    for await (const _event of manager.streamAgent(agent.id, prompt, {
+      clientMessageId,
+    })) {
     }
   };
   try {
     const first = consume("human", "human");
     await manager.waitForAgentRunStart(agent.id);
     await expect(
-      manager.steerAgentRun(agent.id, batch("joined"), { clientMessageId: "joined-one" }),
+      manager.steerAgentRun(agent.id, batch("joined"), {
+        clientMessageId: "joined-one",
+      }),
     ).resolves.toEqual({ status: "accepted" });
-    session.pushEvent({ type: "turn_completed", provider: "codex", turnId: "active-turn-1" });
+    session.pushEvent({
+      type: "turn_completed",
+      provider: "codex",
+      turnId: "active-turn-1",
+    });
     await first;
     const second = consume(batch("idle"), "idle-one");
     await manager.waitForAgentRunStart(agent.id);
-    session.pushEvent({ type: "turn_completed", provider: "codex", turnId: "active-turn-2" });
+    session.pushEvent({
+      type: "turn_completed",
+      provider: "codex",
+      turnId: "active-turn-2",
+    });
     await second;
     expect(
       manager.fetchTimeline(agent.id, { limit: 0 }).rows.map((row) => ({
@@ -1037,14 +1110,20 @@ test("notification batches share the run they start or join", async () => {
 });
 
 test("unavailable steer interrupts once and starts one replacement turn", async () => {
-  const session = new SteeringTestSession({ provider: "codex", cwd: process.cwd() });
+  const session = new SteeringTestSession({
+    provider: "codex",
+    cwd: process.cwd(),
+  });
   session.steerResult = "unavailable";
   const { manager, agentId, workdir } = await startAndSteerThroughManager(session);
   try {
     expect(session.interruptCount).toBe(1);
     expect(session.startCount).toBe(2);
     expect(manager.getTimeline(agentId)).toContainEqual(
-      expect.objectContaining({ type: "user_message", clientMessageId: "replacement-client" }),
+      expect.objectContaining({
+        type: "user_message",
+        clientMessageId: "replacement-client",
+      }),
     );
   } finally {
     await manager.closeAgent(agentId);
@@ -1192,7 +1271,10 @@ test("orders an accepted steer before output emitted while acknowledgement is pe
       return { status: "accepted" };
     }
   }
-  const session = new HeldAcceptedSteerSession({ provider: "codex", cwd: process.cwd() });
+  const session = new HeldAcceptedSteerSession({
+    provider: "codex",
+    cwd: process.cwd(),
+  });
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-steer-order-"));
   const manager = new AgentManager({
     clients: {
@@ -1233,7 +1315,10 @@ test("orders an accepted steer before output emitted while acknowledgement is pe
       turnId: "active-turn-1",
     });
     expect(manager.getTimeline(agent.id)).not.toContainEqual(
-      expect.objectContaining({ type: "assistant_message", text: "terminal output" }),
+      expect.objectContaining({
+        type: "assistant_message",
+        text: "terminal output",
+      }),
     );
 
     release.resolve();
@@ -1246,7 +1331,10 @@ test("orders an accepted steer before output emitted while acknowledgement is pe
       );
     });
     expect(rows).toMatchObject([
-      { item: { type: "user_message", text: "hello" }, turnId: "active-turn-1" },
+      {
+        item: { type: "user_message", text: "hello" },
+        turnId: "active-turn-1",
+      },
       {
         item: { type: "assistant_message", text: "terminal output" },
         turnId: "active-turn-1",
@@ -1260,7 +1348,10 @@ test("orders an accepted steer before output emitted while acknowledgement is pe
 });
 
 test("orders buffered pre-steer output before an immediately accepted steer", async () => {
-  const session = new SteeringTestSession({ provider: "codex", cwd: process.cwd() });
+  const session = new SteeringTestSession({
+    provider: "codex",
+    cwd: process.cwd(),
+  });
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-steer-buffer-order-"));
   const manager = new AgentManager({
     clients: {
@@ -1293,7 +1384,9 @@ test("orders buffered pre-steer output before an immediately accepted steer", as
       item: { type: "assistant_message", text: "pre-steer output" },
     });
     await expect(
-      manager.steerAgentRun(agent.id, "hello", { clientMessageId: "hello-client" }),
+      manager.steerAgentRun(agent.id, "hello", {
+        clientMessageId: "hello-client",
+      }),
     ).resolves.toEqual({ status: "accepted" });
 
     const rows = manager.fetchTimeline(agent.id, { limit: 0 }).rows.filter((row) => {
@@ -1307,7 +1400,10 @@ test("orders buffered pre-steer output before an immediately accepted steer", as
         item: { type: "assistant_message", text: "pre-steer output" },
         turnId: "active-turn-1",
       },
-      { item: { type: "user_message", text: "hello" }, turnId: "active-turn-1" },
+      {
+        item: { type: "user_message", text: "hello" },
+        turnId: "active-turn-1",
+      },
     ]);
   } finally {
     if (agentId) await manager.closeAgent(agentId).catch(() => undefined);
@@ -1332,14 +1428,20 @@ test("a steer the provider names without echoing it can be rewound to", async ()
       if (options.expectedTurnId !== `active-turn-${this.startCount}`) {
         return { status: "unavailable" };
       }
-      return { status: "accepted", providerMessageId: `provider-${options.clientMessageId}` };
+      return {
+        status: "accepted",
+        providerMessageId: `provider-${options.clientMessageId}`,
+      };
     }
 
     override async revertFiles({ messageId }: { messageId: string }): Promise<void> {
       this.rewindMessageIds.push(messageId);
     }
   }
-  const session = new SilentSteeringSession({ provider: "codex", cwd: process.cwd() });
+  const session = new SilentSteeringSession({
+    provider: "codex",
+    cwd: process.cwd(),
+  });
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-steer-rewind-"));
   const manager = new AgentManager({
     clients: {
@@ -1365,7 +1467,9 @@ test("a steer the provider names without echoing it can be rewound to", async ()
     await manager.waitForAgentRunStart(agent.id);
 
     await expect(
-      manager.steerAgentRun(agent.id, "steered", { clientMessageId: "steer-client" }),
+      manager.steerAgentRun(agent.id, "steered", {
+        clientMessageId: "steer-client",
+      }),
     ).resolves.toMatchObject({ status: "accepted" });
     const row = manager
       .fetchTimeline(agent.id, { limit: 0 })
@@ -1397,7 +1501,10 @@ test("orders a concurrent replacement after a pending accepted steer", async () 
       return { status: "accepted" };
     }
   }
-  const session = new HeldAcceptedSteerSession({ provider: "codex", cwd: process.cwd() });
+  const session = new HeldAcceptedSteerSession({
+    provider: "codex",
+    cwd: process.cwd(),
+  });
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-steer-replace-order-"));
   const manager = new AgentManager({
     clients: {
@@ -1462,7 +1569,10 @@ test("orders a concurrent replacement after a pending accepted steer", async () 
 test("does not replace a newer foreground turn after unavailable steer fallback is admitted", async () => {
   const entered = deferred<void>();
   const release = deferred<void>();
-  const session = new SteeringTestSession({ provider: "codex", cwd: process.cwd() });
+  const session = new SteeringTestSession({
+    provider: "codex",
+    cwd: process.cwd(),
+  });
   session.steerResult = "unavailable";
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-stale-steer-"));
   const client = new (class extends TestAgentClient {
@@ -1500,7 +1610,11 @@ test("does not replace a newer foreground turn after unavailable steer fallback 
       "Active turn changed before steering could be delivered",
     );
     await entered.promise;
-    session.pushEvent({ type: "turn_completed", provider: "codex", turnId: "active-turn-1" });
+    session.pushEvent({
+      type: "turn_completed",
+      provider: "codex",
+      turnId: "active-turn-1",
+    });
     await consumeA;
     const b = manager.streamAgent(agent.id, "B");
     consumeB = (async () => {
@@ -1530,7 +1644,10 @@ test("does not replace a newer foreground turn after unavailable steer fallback 
 });
 
 test("steers a tracked autonomous turn without creating a replacement run", async () => {
-  const session = new SteeringTestSession({ provider: "claude", cwd: process.cwd() });
+  const session = new SteeringTestSession({
+    provider: "claude",
+    cwd: process.cwd(),
+  });
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-autonomous-steer-"));
   const client = new (class extends TestAgentClient {
     override async createSession() {
@@ -1545,7 +1662,11 @@ test("steers a tracked autonomous turn without creating a replacement run", asyn
       workspaceId: undefined,
     });
     agentId = agent.id;
-    session.pushEvent({ type: "turn_started", provider: "claude", turnId: "active-turn-0" });
+    session.pushEvent({
+      type: "turn_started",
+      provider: "claude",
+      turnId: "active-turn-0",
+    });
     await vi.waitFor(() => expect(manager.getAgent(agent.id)?.activeTurnId).toBe("active-turn-0"));
 
     const result = await startAgentRun(manager, agent.id, "autonomous follow-up", logger, {
@@ -1572,7 +1693,10 @@ test("steers a tracked autonomous turn without creating a replacement run", asyn
 });
 
 test("isolated rewind falls back from steering to the normal replacement path", async () => {
-  const session = new SteeringTestSession({ provider: "claude", cwd: process.cwd() });
+  const session = new SteeringTestSession({
+    provider: "claude",
+    cwd: process.cwd(),
+  });
   session.steerResult = "unavailable";
   const { manager, agentId, workdir } = await startAndSteerThroughManager(session);
   try {
@@ -1585,7 +1709,10 @@ test("isolated rewind falls back from steering to the normal replacement path", 
     expect(session.interruptCount).toBe(2);
     expect(session.startPrompts).toContain("/rewind submitted-message-id");
     expect(manager.getTimeline(agentId)).toContainEqual(
-      expect.objectContaining({ type: "user_message", clientMessageId: "rewind-client" }),
+      expect.objectContaining({
+        type: "user_message",
+        clientMessageId: "rewind-client",
+      }),
     );
   } finally {
     await manager.closeAgent(agentId);
@@ -1594,13 +1721,19 @@ test("isolated rewind falls back from steering to the normal replacement path", 
 });
 
 test("missing steer operation interrupts once and starts one replacement turn", async () => {
-  const session = new UnsupportedSteeringSession({ provider: "codex", cwd: process.cwd() });
+  const session = new UnsupportedSteeringSession({
+    provider: "codex",
+    cwd: process.cwd(),
+  });
   const { manager, agentId, workdir } = await startAndSteerThroughManager(session);
   try {
     expect(session.interruptCount).toBe(1);
     expect(session.startCount).toBe(2);
     expect(manager.getTimeline(agentId)).toContainEqual(
-      expect.objectContaining({ type: "user_message", clientMessageId: "replacement-client" }),
+      expect.objectContaining({
+        type: "user_message",
+        clientMessageId: "replacement-client",
+      }),
     );
   } finally {
     await manager.closeAgent(agentId);
@@ -1609,7 +1742,10 @@ test("missing steer operation interrupts once and starts one replacement turn", 
 });
 
 test("ambiguous steer failure leaves the active turn untouched", async () => {
-  const session = new SteeringTestSession({ provider: "codex", cwd: process.cwd() });
+  const session = new SteeringTestSession({
+    provider: "codex",
+    cwd: process.cwd(),
+  });
   session.steerResult = new Error("connection lost after delivery");
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-steer-ambiguous-"));
   const client = new (class extends TestAgentClient {
@@ -1676,8 +1812,14 @@ test("steering records concurrent early echoes as canonical submitted prompts", 
     const rows = manager.getTimeline(agent.id).filter((item) => item.type === "user_message");
     expect(rows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ messageId: "client-one", clientMessageId: "client-one" }),
-        expect.objectContaining({ messageId: "client-two", clientMessageId: "client-two" }),
+        expect.objectContaining({
+          messageId: "client-one",
+          clientMessageId: "client-one",
+        }),
+        expect.objectContaining({
+          messageId: "client-two",
+          clientMessageId: "client-two",
+        }),
       ]),
     );
     expect(rows.filter((item) => item.clientMessageId === "client-one")).toHaveLength(1);
@@ -1725,7 +1867,11 @@ class ControlledInterruptSession extends TestAgentSession {
 
   override async startTurn(): Promise<{ turnId: string }> {
     setTimeout(() => {
-      this.pushEvent({ type: "turn_started", provider: this.provider, turnId: this.turnId });
+      this.pushEvent({
+        type: "turn_started",
+        provider: this.provider,
+        turnId: this.turnId,
+      });
     }, 0);
     return { turnId: this.turnId };
   }
@@ -1871,7 +2017,11 @@ class StreamingAssistantSession implements AgentSession {
         turnId,
         item: { type: "assistant_message", text: "reply" },
       });
-      this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+      this.pushEvent({
+        type: "turn_completed",
+        provider: this.provider,
+        turnId,
+      });
     }, 0);
     return { turnId };
   }
@@ -1964,11 +2114,24 @@ function fakeCodexEmitting(args: FakeCodexEmitterArgs): AgentClient {
     override async startTurn(): Promise<{ turnId: string }> {
       const turnId = "turn-fake-codex";
       setTimeout(() => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
         for (const item of turnItems) {
-          this.pushEvent({ type: "timeline", provider: this.provider, item, turnId });
+          this.pushEvent({
+            type: "timeline",
+            provider: this.provider,
+            item,
+            turnId,
+          });
         }
-        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_completed",
+          provider: this.provider,
+          turnId,
+        });
       }, 0);
       return { turnId };
     }
@@ -2019,7 +2182,10 @@ test("does not register a session that finishes starting after shutdown begins",
   client.finishCreating();
 
   await expect(creation).rejects.toThrow("Agent manager is shutting down");
-  expect({ agents: manager.listAgents(), sessionClosed: client.createdSessionClosed }).toEqual({
+  expect({
+    agents: manager.listAgents(),
+    sessionClosed: client.createdSessionClosed,
+  }).toEqual({
     agents: [],
     sessionClosed: true,
   });
@@ -2095,7 +2261,10 @@ test("does not persist an initializing session after shutdown closes it", async 
     await expect(creation).rejects.toBeInstanceOf(AgentManagerShuttingDownError);
     await closing;
     await storage.flush();
-    expect({ agents: manager.listAgents(), record: await storage.get(agentId) }).toMatchObject({
+    expect({
+      agents: manager.listAgents(),
+      record: await storage.get(agentId),
+    }).toMatchObject({
       agents: [],
       record: { lastStatus: "closed" },
     });
@@ -2474,7 +2643,10 @@ test("listDraftControls uses client feature listing without a model", async () =
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-draft-features-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
-  const draftControl = createControl({ key: "auto_accept", label: "Auto Accept" });
+  const draftControl = createControl({
+    key: "auto_accept",
+    label: "Auto Accept",
+  });
   class DraftFeatureClient extends TestAgentClient {
     fetchCatalogCalls = 0;
     createSessionCalls = 0;
@@ -2498,7 +2670,10 @@ test("listDraftControls uses client feature listing without a model", async () =
 
     async listControls(config: AgentSessionConfig): Promise<AgentDraftControls> {
       this.featureConfigs.push(config);
-      return { controls: [draftControl], options: config.providerOptions ?? {} };
+      return {
+        controls: [draftControl],
+        options: config.providerOptions ?? {},
+      };
     }
   }
   const client = new DraftFeatureClient();
@@ -2516,7 +2691,10 @@ test("listDraftControls uses client feature listing without a model", async () =
       cwd: workdir,
       providerOptions: { auto_accept: true },
     }),
-  ).resolves.toEqual({ controls: [draftControl], options: { auto_accept: true } });
+  ).resolves.toEqual({
+    controls: [draftControl],
+    options: { auto_accept: true },
+  });
 
   expect(client.fetchCatalogCalls).toBe(0);
   expect(client.createSessionCalls).toBe(0);
@@ -2564,7 +2742,10 @@ test("listDraftControls uses explicit model config without default model fetchin
 
     async listControls(config: AgentSessionConfig): Promise<AgentDraftControls> {
       this.featureConfigs.push(config);
-      return { controls: [draftControl], options: config.providerOptions ?? {} };
+      return {
+        controls: [draftControl],
+        options: config.providerOptions ?? {},
+      };
     }
   }
   const client = new DraftFeatureClient();
@@ -2619,7 +2800,11 @@ test("listDraftControls reports the Fast selection a fresh Cursor draft opens wi
     logger,
     command: [process.execPath, fakeAgentPath, JSON.stringify(scenario)],
   });
-  const manager = new AgentManager({ clients: { acp: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { acp: client },
+    registry: storage,
+    logger,
+  });
   const controls = [
     expect.objectContaining({ type: "toggle", key: "auto_accept" }),
     expect.objectContaining({
@@ -2802,7 +2987,14 @@ test("setAgentMode persists the selected mode across session reload", async () =
 
     async fetchCatalog() {
       return {
-        models: [{ provider: "codex", id: "gpt-5.4", label: "GPT-5.4", isDefault: true }],
+        models: [
+          {
+            provider: "codex",
+            id: "gpt-5.4",
+            label: "GPT-5.4",
+            isDefault: true,
+          },
+        ],
         modes: [],
       };
     }
@@ -2858,12 +3050,19 @@ test("reload releases the original writer before resuming the same session", asy
         provider: "codex",
         cwd: config?.cwd ?? workdir,
       });
-      this.current.describePersistence = () => ({ provider: "codex", sessionId: handle.sessionId });
+      this.current.describePersistence = () => ({
+        provider: "codex",
+        sessionId: handle.sessionId,
+      });
       return this.current;
     }
   }
   const client = new ExclusiveWriterClient();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
   try {
     const created = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
       workspaceId: undefined,
@@ -2887,7 +3086,11 @@ test("opening during reload waits for the replacement", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-reload-open-"));
   const storage = new AgentStorage(join(workdir, "agents"), logger);
   const client = new HeldReloadCloseClient();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
   try {
     const created = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
       workspaceId: undefined,
@@ -2920,7 +3123,11 @@ test("closing during reload leaves the replacement closed", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-reload-close-race-"));
   const storage = new AgentStorage(join(workdir, "agents"), logger);
   const client = new HeldReloadCloseClient();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
   try {
     const created = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
       workspaceId: undefined,
@@ -2932,7 +3139,9 @@ test("closing during reload leaves the replacement closed", async () => {
     await Promise.all([reloading, closing]);
     expect(manager.getAgent(created.id)).toBeNull();
     expect(client.replacementSessionClosed).toBe(true);
-    expect(await storage.get(created.id)).toMatchObject({ lastStatus: "closed" });
+    expect(await storage.get(created.id)).toMatchObject({
+      lastStatus: "closed",
+    });
   } finally {
     client.finishClosing();
     await storage.flush();
@@ -3029,7 +3238,11 @@ test("failed reload retains the closed agent for a later resume", async () => {
     }
   }
   const client = new FailingResumeClient();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
   try {
     const created = await manager.createAgent(
       { provider: "codex", cwd: workdir, title: "Keep me" },
@@ -3358,7 +3571,10 @@ test.each([
       ): Promise<AgentSession> {
         this.lastLaunchContext = context;
         const session = await super.createSession(config);
-        session.describePersistence = () => ({ provider, sessionId: session.id });
+        session.describePersistence = () => ({
+          provider,
+          sessionId: session.id,
+        });
         return session;
       }
 
@@ -3369,15 +3585,25 @@ test.each([
       ): Promise<AgentSession> {
         this.lastLaunchContext = context;
         const session = await super.resumeSession(handle, config, context);
-        session.describePersistence = () => ({ provider, sessionId: handle.sessionId });
+        session.describePersistence = () => ({
+          provider,
+          sessionId: handle.sessionId,
+        });
         return session;
       }
     }
 
     const client = new LaunchEnvClient(provider);
     let storage = new AgentStorage(storagePath, logger);
-    let manager = new AgentManager({ clients: { [provider]: client }, registry: storage, logger });
-    const env = { XDG_DATA_HOME: join(workdir, "agent-data"), CUSTOM_EMPTY: "" };
+    let manager = new AgentManager({
+      clients: { [provider]: client },
+      registry: storage,
+      logger,
+    });
+    const env = {
+      XDG_DATA_HOME: join(workdir, "agent-data"),
+      CUSTOM_EMPTY: "",
+    };
     const expectedEnv = { ...env };
     const agent = await manager.createAgent({ provider, cwd: workdir }, undefined, {
       workspaceId: undefined,
@@ -3402,7 +3628,11 @@ test.each([
     // Fresh storage and manager instances must read the environment from disk.
     for (let restart = 0; restart < 2; restart += 1) {
       storage = new AgentStorage(storagePath, logger);
-      manager = new AgentManager({ clients: { [provider]: client }, registry: storage, logger });
+      manager = new AgentManager({
+        clients: { [provider]: client },
+        registry: storage,
+        logger,
+      });
       const resumed = await ensureAgentLoaded(agent.id, {
         agentManager: manager,
         agentStorage: storage,
@@ -3410,12 +3640,20 @@ test.each([
       });
       expect(client.lastLaunchContext).toEqual({
         agentId: agent.id,
-        env: { ...expectedEnv, PASEO_AGENT_ID: agent.id, PASEO_AGENT_CWD: workdir },
+        env: {
+          ...expectedEnv,
+          PASEO_AGENT_ID: agent.id,
+          PASEO_AGENT_CWD: workdir,
+        },
       });
       await manager.reloadAgentSession(agent.id);
       expect(client.lastLaunchContext).toEqual({
         agentId: agent.id,
-        env: { ...expectedEnv, PASEO_AGENT_ID: agent.id, PASEO_AGENT_CWD: workdir },
+        env: {
+          ...expectedEnv,
+          PASEO_AGENT_ID: agent.id,
+          PASEO_AGENT_CWD: workdir,
+        },
       });
       expect(toAgentPayload(resumed)).not.toHaveProperty("launchEnv");
       expect(toAgentPayload(resumed).persistence?.metadata).not.toHaveProperty("launchEnv");
@@ -3449,7 +3687,12 @@ test("createAgent and resume give the agent its workspace id", async () => {
     ): Promise<AgentSession> {
       this.resumeLaunchContext = launchContext;
       const metadata = (handle.metadata ?? {}) as Partial<AgentSessionConfig>;
-      return new TestAgentSession({ ...metadata, ...overrides, provider: "codex", cwd: workdir });
+      return new TestAgentSession({
+        ...metadata,
+        ...overrides,
+        provider: "codex",
+        cwd: workdir,
+      });
     }
   }
 
@@ -3709,7 +3952,10 @@ test("createAgent closes and rejects a provider session that cannot honor MCP se
 test("resumeAgentFromPersistence closes and rejects a session that cannot honor external MCP", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
   const storage = new AgentStorage(join(workdir, "agents"), logger);
-  const replacement = new CloseRecordingTestAgentSession({ provider: "codex", cwd: workdir });
+  const replacement = new CloseRecordingTestAgentSession({
+    provider: "codex",
+    cwd: workdir,
+  });
 
   class UnsupportedResumeClient extends TestAgentClient {
     override async resumeSession(): Promise<AgentSession> {
@@ -3736,7 +3982,10 @@ test("resumeAgentFromPersistence closes and rejects a session that cannot honor 
         {
           cwd: workdir,
           mcpServers: {
-            hub: { type: "http", url: "https://hub.test/mcp/executions/resume" },
+            hub: {
+              type: "http",
+              url: "https://hub.test/mcp/executions/resume",
+            },
           },
         },
         agentId,
@@ -3753,8 +4002,14 @@ test("resumeAgentFromPersistence closes and rejects a session that cannot honor 
 
 test("reloadAgentSession preserves the live session when its replacement cannot honor external MCP", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
-  const original = new CloseRecordingTestAgentSession({ provider: "codex", cwd: workdir });
-  const replacement = new CloseRecordingTestAgentSession({ provider: "codex", cwd: workdir });
+  const original = new CloseRecordingTestAgentSession({
+    provider: "codex",
+    cwd: workdir,
+  });
+  const replacement = new CloseRecordingTestAgentSession({
+    provider: "codex",
+    cwd: workdir,
+  });
 
   class UnsupportedReloadClient extends TestAgentClient {
     override async createSession(): Promise<AgentSession> {
@@ -3958,7 +4213,10 @@ test("uses each provider's current policy for new sessions and snapshots it by a
 
   const codex = new CaptureClient("codex");
   const claude = new CaptureClient("claude");
-  const policyInputs: Array<{ callerAgentId?: string; paseoToolPolicy?: unknown }> = [];
+  const policyInputs: Array<{
+    callerAgentId?: string;
+    paseoToolPolicy?: unknown;
+  }> = [];
   const paseoTools: PaseoToolCatalog = {
     tools: new Map(),
     getTool: () => undefined,
@@ -3990,7 +4248,10 @@ test("uses each provider's current policy for new sessions and snapshots it by a
   );
 
   expect(policyInputs).toEqual([
-    { callerAgentId: codexAgent.id, paseoToolPolicy: { disabledTools: ["list_agents"] } },
+    {
+      callerAgentId: codexAgent.id,
+      paseoToolPolicy: { disabledTools: ["list_agents"] },
+    },
   ]);
   expect(codex.launchContexts[0]?.paseoTools).toBe(paseoTools);
   expect(claude.launchContexts[0]?.paseoTools).toBeUndefined();
@@ -3999,7 +4260,9 @@ test("uses each provider's current policy for new sessions and snapshots it by a
   expect(manager.getPaseoToolPolicy(codexAgent.id)).toEqual({
     disabledTools: ["list_agents"],
   });
-  expect(manager.getPaseoToolPolicy(claudeAgent.id)).toEqual({ enabled: false });
+  expect(manager.getPaseoToolPolicy(claudeAgent.id)).toEqual({
+    enabled: false,
+  });
 
   policies.set("codex", { disabledTools: ["create_agent"] });
   const nextCodexAgent = await manager.createAgent(
@@ -4015,7 +4278,10 @@ test("uses each provider's current policy for new sessions and snapshots it by a
     disabledTools: ["create_agent"],
   });
   expect(policyInputs).toEqual([
-    { callerAgentId: codexAgent.id, paseoToolPolicy: { disabledTools: ["list_agents"] } },
+    {
+      callerAgentId: codexAgent.id,
+      paseoToolPolicy: { disabledTools: ["list_agents"] },
+    },
     {
       callerAgentId: nextCodexAgent.id,
       paseoToolPolicy: { disabledTools: ["create_agent"] },
@@ -4086,7 +4352,9 @@ test("keeps the global Paseo-tools gate outside provider policy and MCP injectio
 
   expect(disabledClient.lastConfig?.mcpServers).toBeUndefined();
   expect(catalogFactoryCalls).toBe(0);
-  expect(disabledManager.getPaseoToolPolicy(disabledAgent.id)).toEqual({ enabled: false });
+  expect(disabledManager.getPaseoToolPolicy(disabledAgent.id)).toEqual({
+    enabled: false,
+  });
 
   rmSync(workdir, { recursive: true, force: true });
 });
@@ -4639,7 +4907,10 @@ test("a replacement prompt recovers when the retired session fails to start", as
 
     override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
       const session = new StaleReplacementSession(config);
-      session.describePersistence = () => ({ provider, sessionId: "plugin-session" });
+      session.describePersistence = () => ({
+        provider,
+        sessionId: "plugin-session",
+      });
       return session;
     }
   }
@@ -4897,14 +5168,21 @@ test("importProviderSession preserves the native model instead of applying the n
       return {
         session,
         config: context.storedConfig,
-        persistence: { provider: this.provider, sessionId: input.providerHandleId },
+        persistence: {
+          provider: this.provider,
+          sessionId: input.providerHandleId,
+        },
         timeline: [],
       };
     }
   }
 
   const client = new ImportClient();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
   const imported = await manager.importProviderSession({
     provider: "codex",
     providerHandleId: "native-session",
@@ -4954,7 +5232,10 @@ test("importProviderSession imports the selected session without listing and pub
         },
         timeline: [
           {
-            item: { type: "user_message" as const, text: "Trace provider imports" },
+            item: {
+              type: "user_message" as const,
+              text: "Trace provider imports",
+            },
             timestamp: "2026-01-02T00:00:00.000Z",
           },
           {
@@ -4995,7 +5276,10 @@ test("importProviderSession imports the selected session without listing and pub
             event: {
               type: "timeline" as const,
               id: "thread-child",
-              item: { type: "assistant_message" as const, text: "Child result" },
+              item: {
+                type: "assistant_message" as const,
+                text: "Child result",
+              },
             },
           },
         ],
@@ -5021,7 +5305,10 @@ test("importProviderSession imports the selected session without listing and pub
   });
 
   expect(client.listCalls).toBe(0);
-  expect(client.importInput).toEqual({ providerHandleId: "thread-selected", cwd: workdir });
+  expect(client.importInput).toEqual({
+    providerHandleId: "thread-selected",
+    cwd: workdir,
+  });
   expect(client.importLaunchContext).toEqual({
     agentId: imported.id,
     env: {
@@ -5050,10 +5337,16 @@ test("importProviderSession imports the selected session without listing and pub
     }),
   ]);
   expect(manager.listProviderSubagents(imported.id)).toEqual([
-    expect.objectContaining({ id: "thread-child", title: "Imported child", status: "completed" }),
+    expect.objectContaining({
+      id: "thread-child",
+      title: "Imported child",
+      status: "completed",
+    }),
   ]);
   expect(manager.fetchProviderSubagentTimeline(imported.id, "thread-child").rows).toEqual([
-    expect.objectContaining({ item: { type: "assistant_message", text: "Child result" } }),
+    expect.objectContaining({
+      item: { type: "assistant_message", text: "Child result" },
+    }),
   ]);
   expect(events).toHaveLength(3);
   expect(events[0]).toMatchObject({
@@ -5269,11 +5562,18 @@ test("reloadAgentSession clears provider children before rehydrating from disk",
   activeSession?.pushEvent({
     type: "provider_subagent",
     provider: "codex",
-    event: { type: "upsert", id: "stale-child", title: "Stale child", status: "running" },
+    event: {
+      type: "upsert",
+      id: "stale-child",
+      title: "Stale child",
+      status: "running",
+    },
   });
   await vi.waitFor(() => expect(manager.listProviderSubagents(snapshot.id)).toHaveLength(1));
 
-  await manager.reloadAgentSession(snapshot.id, undefined, { rehydrateFromDisk: true });
+  await manager.reloadAgentSession(snapshot.id, undefined, {
+    rehydrateFromDisk: true,
+  });
 
   expect(manager.listProviderSubagents(snapshot.id)).toEqual([]);
 });
@@ -5310,7 +5610,12 @@ test("reloadAgentSession terminalizes running provider children when preserving 
   activeSession?.pushEvent({
     type: "provider_subagent",
     provider: "codex",
-    event: { type: "upsert", id: "running-child", title: "Running child", status: "running" },
+    event: {
+      type: "upsert",
+      id: "running-child",
+      title: "Running child",
+      status: "running",
+    },
   });
   await vi.waitFor(() => expect(manager.listProviderSubagents(snapshot.id)).toHaveLength(1));
 
@@ -5358,7 +5663,10 @@ test("hydrateTimelineFromProvider restores and broadcasts provider children from
     replayState: false,
   });
 
-  await manager.hydrateTimelineFromProvider(snapshot.id, { force: true, broadcast: true });
+  await manager.hydrateTimelineFromProvider(snapshot.id, {
+    force: true,
+    broadcast: true,
+  });
 
   expect(manager.listProviderSubagents(snapshot.id)).toEqual([
     expect.objectContaining({
@@ -5417,7 +5725,10 @@ test("force provider hydration removes children absent from current history", as
     replayState: false,
   });
 
-  await manager.hydrateTimelineFromProvider(snapshot.id, { force: true, broadcast: true });
+  await manager.hydrateTimelineFromProvider(snapshot.id, {
+    force: true,
+    broadcast: true,
+  });
 
   expect(manager.listProviderSubagents(snapshot.id)).toEqual([]);
   expect(events).toContainEqual({
@@ -5585,9 +5896,15 @@ test("persists live mode, model, and thinking changes without an external snapsh
 test("model changes persist the resolved thinking and fresh provider handle before another turn", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-model-selection-"));
   class ModelSession extends TestAgentSession {
-    selection = { model: "source", thinkingOptionId: "medium" as string | undefined };
+    selection = {
+      model: "source",
+      thinkingOptionId: "medium" as string | undefined,
+    };
     async setModel(model: string | null) {
-      this.selection = { model: model ?? "default", thinkingOptionId: undefined };
+      this.selection = {
+        model: model ?? "default",
+        thinkingOptionId: undefined,
+      };
       this.pushEvent({
         type: "thinking_option_changed",
         provider: "codex",
@@ -5598,7 +5915,11 @@ test("model changes persist the resolved thinking and fresh provider handle befo
       return { ...(await super.getRuntimeInfo()), ...this.selection };
     }
     describePersistence() {
-      return { provider: "codex" as const, sessionId: this.id, metadata: { ...this.selection } };
+      return {
+        provider: "codex" as const,
+        sessionId: this.id,
+        metadata: { ...this.selection },
+      };
     }
   }
   class ModelClient extends TestAgentClient {
@@ -5614,7 +5935,12 @@ test("model changes persist the resolved thinking and fresh provider handle befo
   });
   try {
     const agent = await manager.createAgent(
-      { provider: "codex", cwd: workdir, model: "source", thinkingOptionId: "medium" },
+      {
+        provider: "codex",
+        cwd: workdir,
+        model: "source",
+        thinkingOptionId: "medium",
+      },
       undefined,
       { workspaceId: undefined },
     );
@@ -6003,7 +6329,11 @@ test("reopening a closed agent keeps metadata saved while the loader was reading
   const readByLoader = await storage.get(agentId);
   const saved = manager.setMetadata(agentId, { second: 2 });
   const reopened = manager.resumeAgentFromPersistence(
-    { provider: "codex", sessionId: "session-metadata", metadata: { cwd: workdir } },
+    {
+      provider: "codex",
+      sessionId: "session-metadata",
+      metadata: { cwd: workdir },
+    },
     { cwd: workdir },
     agentId,
     { metadata: readByLoader?.metadata },
@@ -6011,7 +6341,10 @@ test("reopening a closed agent keeps metadata saved while the loader was reading
 
   expect(await saved).toEqual({ first: 1, second: 2 });
   expect((await reopened).metadata).toEqual({ first: 1, second: 2 });
-  expect((await storage.get(agentId))?.metadata).toEqual({ first: 1, second: 2 });
+  expect((await storage.get(agentId))?.metadata).toEqual({
+    first: 1,
+    second: 2,
+  });
 });
 
 test("detachAgent removes relationship lifecycle labels from a live agent and emits state", async () => {
@@ -6285,14 +6618,21 @@ test("markAgentUnread restores error attention on a read errored agent", async (
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-mark-unread-error-"));
   const storage = new AgentStorage(join(workdir, "agents"), logger);
   class ErrorClient extends TestAgentClient {
-    readonly session = new TestAgentSession({ provider: "codex", cwd: workdir });
+    readonly session = new TestAgentSession({
+      provider: "codex",
+      cwd: workdir,
+    });
 
     override async createSession(): Promise<AgentSession> {
       return this.session;
     }
   }
   const client = new ErrorClient();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
   onTestFinished(async () => {
     await manager.closeAgent(agent.id);
     await manager.flush();
@@ -6302,7 +6642,11 @@ test("markAgentUnread restores error attention on a read errored agent", async (
     workspaceId: undefined,
   });
   const running = waitForAgentLifecycle(manager, agent.id, "running");
-  client.session.pushEvent({ type: "turn_started", provider: "codex", turnId: "failed-turn" });
+  client.session.pushEvent({
+    type: "turn_started",
+    provider: "codex",
+    turnId: "failed-turn",
+  });
   await running;
   const failed = waitForAgentLifecycle(manager, agent.id, "error");
   client.session.pushEvent({
@@ -6406,7 +6750,11 @@ test("reloadAgentSession cancels active run and resumes existing session once th
       this.activeTurnId = turnId;
       // Push turn_started, then thread_started, then wait on gate
       setTimeout(async () => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
         this.persistenceReady = true;
         this.pushEvent({
           type: "thread_started",
@@ -6422,7 +6770,11 @@ test("reloadAgentSession cancels active run and resumes existing session once th
             turnId,
           });
         } else {
-          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+          this.pushEvent({
+            type: "turn_completed",
+            provider: this.provider,
+            turnId,
+          });
         }
       }, 0);
       return { turnId };
@@ -7257,9 +7609,17 @@ test("waitForAgentEvent does not resolve idle until foreground turn is finalized
       this.interrupted = false;
       const turnId = `turn-${++this.turnIdCounter}`;
       void (async () => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
         await releaseTurnCompleted.promise;
-        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_completed",
+          provider: this.provider,
+          turnId,
+        });
       })();
       return { turnId };
     }
@@ -7363,7 +7723,11 @@ test("waitForAgentRunStart ignores a prior turn error while the next run starts"
       const turnId = `turn-${++this.turnIdCounter}`;
       if (this.turnIdCounter === 1) {
         void (async () => {
-          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          this.pushEvent({
+            type: "turn_started",
+            provider: this.provider,
+            turnId,
+          });
           this.pushEvent({
             type: "turn_failed",
             provider: this.provider,
@@ -7377,8 +7741,16 @@ test("waitForAgentRunStart ignores a prior turn error while the next run starts"
       retryStartEntered.resolve();
       await releaseRetryStart.promise;
       void (async () => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
-        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
+        this.pushEvent({
+          type: "turn_completed",
+          provider: this.provider,
+          turnId,
+        });
       })();
       return { turnId };
     }
@@ -7448,7 +7820,11 @@ test("replaceAgentRun does not emit idle or resolve waiters between interrupted 
       const turnNum = this.turnIdCounter;
 
       void (async () => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
         if (turnNum === 1) {
           await allowFirstRunToEnd.promise;
           this.pushEvent({
@@ -7459,7 +7835,11 @@ test("replaceAgentRun does not emit idle or resolve waiters between interrupted 
           });
         } else {
           await allowSecondRunToEnd.promise;
-          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+          this.pushEvent({
+            type: "turn_completed",
+            provider: this.provider,
+            turnId,
+          });
         }
       })();
       return { turnId };
@@ -7572,7 +7952,11 @@ test("replaceAgentRun stays running when a stale old terminal arrives before the
 
       if (turnNum === 1) {
         setTimeout(() => {
-          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          this.pushEvent({
+            type: "turn_started",
+            provider: this.provider,
+            turnId,
+          });
         }, 0);
         return { turnId };
       }
@@ -7580,9 +7964,17 @@ test("replaceAgentRun stays running when a stale old terminal arrives before the
       secondStartEntered.resolve();
       await allowSecondStartToResolve.promise;
       setTimeout(async () => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
         await allowSecondTurnToComplete.promise;
-        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_completed",
+          provider: this.provider,
+          turnId,
+        });
       }, 0);
       return { turnId };
     }
@@ -7674,7 +8066,11 @@ test("replaceAgentRun stays running when a stale old terminal arrives before the
   await secondStartEntered.promise;
 
   const replaceGapSnapshot = manager.getAgent(snapshot.id) as
-    | { pendingReplacement: boolean; activeForegroundTurnId: string | null; lifecycle: string }
+    | {
+        pendingReplacement: boolean;
+        activeForegroundTurnId: string | null;
+        lifecycle: string;
+      }
     | undefined;
   expect(replaceGapSnapshot?.pendingReplacement).toBe(true);
   expect(replaceGapSnapshot?.activeForegroundTurnId).toBeNull();
@@ -7687,7 +8083,11 @@ test("replaceAgentRun stays running when a stale old terminal arrives before the
   ]);
   expect(prematureStart).toBe("pending");
 
-  capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: "turn-1" });
+  capturedSession!.pushEvent({
+    type: "turn_completed",
+    provider: "codex",
+    turnId: "turn-1",
+  });
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   expect(manager.getAgent(snapshot.id)?.lifecycle).toBe("running");
@@ -7699,7 +8099,11 @@ test("replaceAgentRun stays running when a stale old terminal arrives before the
   allowSecondStartToResolve.resolve();
 
   await replacementStart;
-  capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: "turn-1" });
+  capturedSession!.pushEvent({
+    type: "turn_completed",
+    provider: "codex",
+    turnId: "turn-1",
+  });
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(
     manager
@@ -7862,7 +8266,11 @@ test("ignores stale autonomous terminals without lowering the active turn lifecy
     expect(priorFailure?.lastUsage).toEqual({ inputTokens: 7 });
   });
 
-  capturedSession!.pushEvent({ type: "turn_started", provider: "codex", turnId: "turn-b" });
+  capturedSession!.pushEvent({
+    type: "turn_started",
+    provider: "codex",
+    turnId: "turn-b",
+  });
   await vi.waitFor(() => {
     const running = manager.getAgent(snapshot.id);
     expect(running?.lifecycle).toBe("running");
@@ -7886,8 +8294,18 @@ test("ignores stale autonomous terminals without lowering the active turn lifecy
       turnId: "turn-a",
       usage: { inputTokens: 99 },
     },
-    { type: "turn_failed", provider: "codex", turnId: "turn-a", error: "late failure" },
-    { type: "turn_canceled", provider: "codex", turnId: "turn-a", reason: "late cancel" },
+    {
+      type: "turn_failed",
+      provider: "codex",
+      turnId: "turn-a",
+      error: "late failure",
+    },
+    {
+      type: "turn_canceled",
+      provider: "codex",
+      turnId: "turn-a",
+      reason: "late cancel",
+    },
   ];
   for (const terminal of staleTerminals) {
     const processed = new Promise<void>((resolve) => {
@@ -7916,7 +8334,11 @@ test("ignores stale autonomous terminals without lowering the active turn lifecy
     expect(manager.getTimeline(snapshot.id)).toEqual(timelineBeforeStaleTerminals);
   }
 
-  capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: "turn-b" });
+  capturedSession!.pushEvent({
+    type: "turn_completed",
+    provider: "codex",
+    turnId: "turn-b",
+  });
   await vi.waitFor(() => {
     const settled = manager.getAgent(snapshot.id);
     expect(settled?.lifecycle).toBe("idle");
@@ -8150,7 +8572,9 @@ test("waitForAgentEvent waitForActive resolves for autonomous live-event run", a
   );
 
   const autonomousTurnId = "autonomous-wait-1";
-  const waitPromise = manager.waitForAgentEvent(snapshot.id, { waitForActive: true });
+  const waitPromise = manager.waitForAgentEvent(snapshot.id, {
+    waitForActive: true,
+  });
   capturedSession!.pushEvent({
     type: "turn_started",
     provider: "codex",
@@ -8178,9 +8602,17 @@ test("autonomous events arriving during foreground run are processed via subscri
     override async startTurn(): Promise<{ turnId: string }> {
       const turnId = "fg-turn-1";
       setTimeout(async () => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
         await releaseForeground.promise;
-        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_completed",
+          provider: this.provider,
+          turnId,
+        });
       }, 0);
       return { turnId };
     }
@@ -8400,7 +8832,10 @@ test("keeps updatedAt monotonic when user message and run start happen in the sa
 
   const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_750_000_000_000);
   try {
-    await manager.appendTimelineItem(snapshot.id, { type: "user_message", text: "hello" });
+    await manager.appendTimelineItem(snapshot.id, {
+      type: "user_message",
+      text: "hello",
+    });
     const afterMessage = manager.getAgent(snapshot.id);
     expect(afterMessage).toBeDefined();
     const messageUpdatedAt = afterMessage!.updatedAt.getTime();
@@ -8652,7 +9087,12 @@ test("global subscribers receive internal agent events only when they opt in", a
     idFactory: () => internalAgentId,
   });
   await manager.createAgent(
-    { provider: "codex", cwd: workdir, title: "Internal Agent", internal: true },
+    {
+      provider: "codex",
+      cwd: workdir,
+      title: "Internal Agent",
+      internal: true,
+    },
     undefined,
     { workspaceId: undefined },
   );
@@ -8690,7 +9130,9 @@ test("agent removal notifications respect scoped subscriptions and internal visi
   const internalEvents: AgentManagerEvent[] = [];
   const unrelatedEvents: AgentManagerEvent[] = [];
   const releases = [
-    manager.subscribe((event) => publicEvents.push(event), { replayState: false }),
+    manager.subscribe((event) => publicEvents.push(event), {
+      replayState: false,
+    }),
     manager.subscribe((event) => allEvents.push(event), {
       replayState: false,
       includeInternal: true,
@@ -8710,7 +9152,11 @@ test("agent removal notifications respect scoped subscriptions and internal visi
   ];
   try {
     manager.notifyAgentRemoved({ id: removedId, workspaceId: "workspace" });
-    manager.notifyAgentRemoved({ id: internalId, workspaceId: "workspace", internal: true });
+    manager.notifyAgentRemoved({
+      id: internalId,
+      workspaceId: "workspace",
+      internal: true,
+    });
     const publicRemoval = {
       type: "agent_removed",
       agentId: removedId,
@@ -8825,7 +9271,12 @@ test("archiveAgent on an internal parent still archives its attached children", 
   });
 
   await manager.createAgent(
-    { provider: "codex", cwd: workdir, title: "Internal Parent", internal: true },
+    {
+      provider: "codex",
+      cwd: workdir,
+      title: "Internal Parent",
+      internal: true,
+    },
     undefined,
     { workspaceId: undefined },
   );
@@ -8865,9 +9316,17 @@ test("archiveAgent on a parent archives its live internal children", async () =>
   });
   // An internal child is never in storage, so only the live scan can reach it.
   await manager.createAgent(
-    { provider: "codex", cwd: workdir, title: "Internal Child", internal: true },
+    {
+      provider: "codex",
+      cwd: workdir,
+      title: "Internal Child",
+      internal: true,
+    },
     undefined,
-    { workspaceId: undefined, labels: { "paseo.parent-agent-id": parentAgentId } },
+    {
+      workspaceId: undefined,
+      labels: { "paseo.parent-agent-id": parentAgentId },
+    },
   );
   expect(manager.getAgent(childAgentId)).not.toBeNull();
 
@@ -8953,9 +9412,16 @@ test("subscribe hides provider subagents of internal parents from global subscri
   });
   const globalEvents: AgentManagerEvent[] = [];
   const scopedEvents: AgentManagerEvent[] = [];
-  manager.subscribe((event) => globalEvents.push(event), { replayState: false });
+  manager.subscribe((event) => globalEvents.push(event), {
+    replayState: false,
+  });
   await manager.createAgent(
-    { provider: "codex", cwd: workdir, title: "Internal Agent", internal: true },
+    {
+      provider: "codex",
+      cwd: workdir,
+      title: "Internal Agent",
+      internal: true,
+    },
     undefined,
     { workspaceId: undefined },
   );
@@ -8967,7 +9433,12 @@ test("subscribe hides provider subagents of internal parents from global subscri
   sessionHolder.current?.pushEvent({
     type: "provider_subagent",
     provider: "codex",
-    event: { type: "upsert", id: "hidden-child", title: "Hidden child", status: "running" },
+    event: {
+      type: "upsert",
+      id: "hidden-child",
+      title: "Hidden child",
+      status: "running",
+    },
   });
   await manager.flush();
 
@@ -9112,7 +9583,10 @@ test("onAgentAttention is not called for delegated child agents", async () => {
       title: "Delegated Child Agent",
     },
     undefined,
-    { labels: { [PARENT_AGENT_ID_LABEL]: "parent-agent" }, workspaceId: undefined },
+    {
+      labels: { [PARENT_AGENT_ID_LABEL]: "parent-agent" },
+      workspaceId: undefined,
+    },
   );
 
   await manager.runAgent(agent.id, "hello");
@@ -9133,7 +9607,11 @@ test("clearAgentAttention on errored agent stays cleared until a new error trans
       const attempt = this.attempt;
       const turnId = `fail-turn-${attempt}`;
       setTimeout(() => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
         this.pushEvent({
           type: "turn_failed",
           provider: this.provider,
@@ -9251,7 +9729,10 @@ test.each([
     }
 
     class RecoveryClient extends TestAgentClient {
-      readonly session = new RecoverySession({ provider: "codex", cwd: workdir });
+      readonly session = new RecoverySession({
+        provider: "codex",
+        cwd: workdir,
+      });
 
       override async createSession(): Promise<AgentSession> {
         return this.session;
@@ -9276,7 +9757,11 @@ test.each([
     });
 
     const running = waitForAgentLifecycle(manager, agent.id, "running");
-    client.session.pushEvent({ type: "turn_started", provider: "codex", turnId: "failed-turn" });
+    client.session.pushEvent({
+      type: "turn_started",
+      provider: "codex",
+      turnId: "failed-turn",
+    });
     await running;
     const failed = waitForAgentLifecycle(manager, agent.id, "error");
     client.session.pushEvent({
@@ -9415,7 +9900,10 @@ test("streamAgent clears pending run when startTurn fails before a turn id exist
       clientMessageId: "rejected-prompt",
       messageId: "rejected-prompt",
     },
-    { type: "assistant_message", text: "[System Error] Invalid request: missing field `text`" },
+    {
+      type: "assistant_message",
+      text: "[System Error] Invalid request: missing field `text`",
+    },
   ]);
 
   await expect(manager.runAgent(agent.id, "second turn")).resolves.toEqual(
@@ -9467,7 +9955,9 @@ test("acknowledged cancellation settles a pending run before it has a turn id", 
     expect(manager.getAgent(agent.id)?.lifecycle).toBe("idle");
     expect(manager.hasInFlightRun(agent.id)).toBe(true);
 
-    await expect(manager.cancelAgentRun(agent.id)).resolves.toEqual({ status: "settled" });
+    await expect(manager.cancelAgentRun(agent.id)).resolves.toEqual({
+      status: "settled",
+    });
     expect(manager.hasInFlightRun(agent.id)).toBe(false);
     expect(manager.getAgent(agent.id)?.lifecycle).toBe("idle");
 
@@ -9559,7 +10049,10 @@ test("fires onAgentArchived for archived parent and cascaded children", async ()
   const liveChild = await manager.createAgent(
     { provider: "codex", cwd: workdir, title: "Child" },
     undefined,
-    { labels: { [PARENT_AGENT_ID_LABEL]: liveParent.id }, workspaceId: undefined },
+    {
+      labels: { [PARENT_AGENT_ID_LABEL]: liveParent.id },
+      workspaceId: undefined,
+    },
   );
 
   await manager.archiveAgent(liveParent.id);
@@ -9620,7 +10113,11 @@ test("native archive and restore release the loaded session writer", async () =>
   }
   const client = new WriterClient();
   const storage = new AgentStorage(join(workdir, "agents"), logger);
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
   try {
     const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
       workspaceId: undefined,
@@ -9628,13 +10125,21 @@ test("native archive and restore release the loaded session writer", async () =>
     await manager.archiveAgent(agent.id);
     expect(client.archivedHandles).toHaveLength(1);
     // Opening archived history can retain a writer, including records archived by older daemons.
-    await ensureAgentLoaded(agent.id, { agentManager: manager, agentStorage: storage, logger });
+    await ensureAgentLoaded(agent.id, {
+      agentManager: manager,
+      agentStorage: storage,
+      logger,
+    });
     expect(client.session?.closed).toBe(false);
     await manager.unarchiveSnapshot(agent.id);
     expect(client.unarchivedHandles).toHaveLength(1);
     expect((await storage.get(agent.id))?.archivedAt).toBeNull();
     expect(client.session?.closed).toBe(true);
-    await ensureAgentLoaded(agent.id, { agentManager: manager, agentStorage: storage, logger });
+    await ensureAgentLoaded(agent.id, {
+      agentManager: manager,
+      agentStorage: storage,
+      logger,
+    });
     expect(client.session?.closed).toBe(false);
   } finally {
     for (const agent of manager.listAgents()) await manager.closeAgent(agent.id);
@@ -9915,7 +10420,11 @@ test.each([
       { workspaceId: "workspace-a" },
     );
     const child = await manager.createAgent(
-      { provider: "codex", cwd: workdir, title: "Closed cross-workspace child" },
+      {
+        provider: "codex",
+        cwd: workdir,
+        title: "Closed cross-workspace child",
+      },
       undefined,
       {
         workspaceId,
@@ -9970,7 +10479,10 @@ test("archiveAgent re-reads a child before deciding whether to cascade", async (
       if (parentIsArchived && staleChild) {
         await super.upsert({
           ...staleChild,
-          labels: { ...staleChild.labels, [MOBILE_OPEN_AGENT_TAB_LABEL]: "true" },
+          labels: {
+            ...staleChild.labels,
+            [MOBILE_OPEN_AGENT_TAB_LABEL]: "true",
+          },
         });
       }
       return records;
@@ -10074,9 +10586,17 @@ test("archiveAgent cascade closes a running child runtime", async () => {
     override async startTurn(): Promise<{ turnId: string }> {
       const turnId = "running-child-turn";
       void (async () => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
         await finishRun.promise;
-        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_completed",
+          provider: this.provider,
+          turnId,
+        });
       })();
       return { turnId };
     }
@@ -10313,7 +10833,11 @@ test("turn_failed emits a system error assistant timeline message and keeps erro
     override async startTurn(): Promise<{ turnId: string }> {
       const turnId = "turn-failed-1";
       setTimeout(() => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
         this.pushEvent({
           type: "turn_failed",
           provider: this.provider,
@@ -10389,7 +10913,11 @@ test("turn_failed surfaces provider code and diagnostic in system error message"
     override async startTurn(): Promise<{ turnId: string }> {
       const turnId = "turn-detailed-fail-1";
       setTimeout(() => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
         this.pushEvent({
           type: "turn_failed",
           provider: this.provider,
@@ -10468,7 +10996,11 @@ test("permission request notifies once without forcing unread attention state", 
     override async startTurn(): Promise<{ turnId: string }> {
       const turnId = "turn-perm-1";
       setTimeout(async () => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
         this.pushEvent({
           type: "permission_requested",
           provider: this.provider,
@@ -10488,7 +11020,11 @@ test("permission request notifies once without forcing unread attention state", 
           resolution: { behavior: "allow" },
           turnId,
         });
-        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_completed",
+          provider: this.provider,
+          turnId,
+        });
       }, 0);
       return { turnId };
     }
@@ -10543,7 +11079,9 @@ test("permission request notifies once without forcing unread attention state", 
 
   const withPermissionPending = manager.getAgent(agent.id);
   expect(withPermissionPending?.pendingPermissions.size).toBe(1);
-  expect(withPermissionPending?.attention).toEqual({ requiresAttention: false });
+  expect(withPermissionPending?.attention).toEqual({
+    requiresAttention: false,
+  });
 
   // Release permission resolution and drain the rest of the stream
   releasePermissionResolution.resolve();
@@ -10593,7 +11131,12 @@ test("respondToPermission updates currentModeId after plan approval", async () =
     async *streamHistory(): AsyncGenerator<AgentStreamEvent> {}
 
     async getRuntimeInfo() {
-      return { provider: this.provider, sessionId: this.id, model: null, modeId: sessionMode };
+      return {
+        provider: this.provider,
+        sessionId: this.id,
+        model: null,
+        modeId: sessionMode,
+      };
     }
 
     async getAvailableModes() {
@@ -10808,14 +11351,20 @@ test("respondToPermission applies provider option changes and refreshes runtime 
 
   const updated = manager.getAgent(snapshot.id);
   expect(updated?.pendingPermissions.size).toBe(0);
-  expect(updated?.effectiveOptions).toEqual({ web_search: true, plan_mode: false });
+  expect(updated?.effectiveOptions).toEqual({
+    web_search: true,
+    plan_mode: false,
+  });
   expect(updated?.runtimeInfo).toMatchObject({
     model: "gpt-5.4",
     extra: { collaborationMode: "Code" },
   });
 
   const persisted = await storage.get(snapshot.id);
-  expect(persisted?.config?.providerOptions).toEqual({ web_search: true, plan_mode: false });
+  expect(persisted?.config?.providerOptions).toEqual({
+    web_search: true,
+    plan_mode: false,
+  });
 });
 
 test("respondToPermission emits refreshed state before permission_resolved", async () => {
@@ -10946,7 +11495,11 @@ test("close during in-flight stream does not clear persistence sessionId", async
       const turnId = `turn-${++this.turnIdCounter}`;
       // Push turn_started, then block until closed
       setTimeout(() => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
         // The turn will be canceled when close() is called
       }, 0);
       return { turnId };
@@ -11136,7 +11689,11 @@ test("idle runtime cleanup honors a provider veto and resumes the saved conversa
       return session;
     }
   })();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
   const collect = runtimeCleanup(manager);
   try {
     const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
@@ -11148,7 +11705,11 @@ test("idle runtime cleanup honors a provider veto and resumes the saved conversa
     expect(await collect({ now })).toEqual({ collected: [], failures: [] });
     const later = new Date(now.getTime() + 61 * 60_000);
     expect((await collect({ now: later })).collected).toEqual([
-      { agentId: agent.id, provider: "codex", sessionId: agent.persistence?.sessionId },
+      {
+        agentId: agent.id,
+        provider: "codex",
+        sessionId: agent.persistence?.sessionId,
+      },
     ]);
     expect(manager.getAgent(agent.id)).toBeNull();
     const resumed = await ensureAgentLoaded(agent.id, {
@@ -11298,7 +11859,11 @@ test("a stored-only archive waits for an in-flight resume and then closes it", a
       return super.resumeSession(handle, config, launchContext);
     }
   })();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
 
   try {
     const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
@@ -11342,7 +11907,11 @@ test("a stored-only archive closes a shared resume before a later protected load
       return super.resumeSession(handle, config, launchContext);
     }
   })();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
 
   try {
     const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
@@ -11399,7 +11968,11 @@ test("a shared agent load upgrades provider history hydration to broadcast", asy
       })({ provider: "codex", cwd: config?.cwd ?? workdir });
     }
   })();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
 
   try {
     const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
@@ -11408,7 +11981,10 @@ test("a shared agent load upgrades provider history hydration to broadcast", asy
     await manager.closeAgent(agent.id);
     await manager.deleteAgentState(agent.id);
     const events: AgentManagerEvent[] = [];
-    manager.subscribe((event) => events.push(event), { agentId: agent.id, replayState: false });
+    manager.subscribe((event) => events.push(event), {
+      agentId: agent.id,
+      replayState: false,
+    });
 
     const quietLoad = ensureAgentLoaded(agent.id, {
       agentManager: manager,
@@ -11447,7 +12023,11 @@ test("explicit close cancels running provider subagents before resume", async ()
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-closed-provider-child-"));
   const storage = new AgentStorage(join(workdir, "agents"), logger);
   const client = new SessionRecordingAgentClient();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
 
   try {
     const parent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
@@ -11531,7 +12111,11 @@ test("load waits for an in-flight explicit close and creates one resumed runtime
       return super.resumeSession(handle, config);
     }
   })();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
 
   try {
     const created = await manager.createAgent(
@@ -11542,8 +12126,16 @@ test("load waits for an in-flight explicit close and creates one resumed runtime
     const close = manager.closeAgent(created.id);
     await closeStarted.promise;
     const loads = Promise.all([
-      ensureAgentLoaded(created.id, { agentManager: manager, agentStorage: storage, logger }),
-      ensureAgentLoaded(created.id, { agentManager: manager, agentStorage: storage, logger }),
+      ensureAgentLoaded(created.id, {
+        agentManager: manager,
+        agentStorage: storage,
+        logger,
+      }),
+      ensureAgentLoaded(created.id, {
+        agentManager: manager,
+        agentStorage: storage,
+        logger,
+      }),
     ]);
 
     expect(client.resumeCount).toBe(0);
@@ -11695,7 +12287,11 @@ test("provider close failure retains the runtime for cleanup instead of allowing
       })(config);
     }
   })();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
 
   try {
     const created = await manager.createAgent(
@@ -11710,7 +12306,11 @@ test("provider close failure retains the runtime for cleanup instead of allowing
     expect(stored?.archivedAt).toBeFalsy();
 
     await expect(
-      ensureAgentLoaded(created.id, { agentManager: manager, agentStorage: storage, logger }),
+      ensureAgentLoaded(created.id, {
+        agentManager: manager,
+        agentStorage: storage,
+        logger,
+      }),
     ).resolves.toMatchObject({ id: created.id, lifecycle: "idle" });
   } finally {
     await manager.closeAgent("00000000-0000-4000-8000-000000000217").catch(() => undefined);
@@ -11729,7 +12329,11 @@ test("hydrateTimeline keeps provider user_message items when no canonical user h
       yield {
         type: "timeline",
         provider: this.provider,
-        item: { type: "user_message", text: "hello from user", messageId: "msg_history_1" },
+        item: {
+          type: "user_message",
+          text: "hello from user",
+          messageId: "msg_history_1",
+        },
       };
       yield {
         type: "timeline",
@@ -11739,7 +12343,11 @@ test("hydrateTimeline keeps provider user_message items when no canonical user h
       yield {
         type: "timeline",
         provider: this.provider,
-        item: { type: "user_message", text: "second question", messageId: "msg_history_2" },
+        item: {
+          type: "user_message",
+          text: "second question",
+          messageId: "msg_history_2",
+        },
       };
       yield {
         type: "timeline",
@@ -11804,7 +12412,11 @@ test("hydrateTimeline preserves provider replay timestamps and marks missing one
         type: "timeline",
         provider: this.provider,
         timestamp: "2026-05-01T10:00:00.000Z",
-        item: { type: "user_message", text: "hello", messageId: "msg_history_1" },
+        item: {
+          type: "user_message",
+          text: "hello",
+          messageId: "msg_history_1",
+        },
       };
       yield {
         type: "timeline",
@@ -11850,7 +12462,10 @@ test("hydrateTimeline preserves provider replay timestamps and marks missing one
   );
 
   await manager.hydrateTimelineFromProvider(snapshot.id, { force: true });
-  const timeline = manager.fetchTimeline(snapshot.id, { direction: "tail", limit: 0 }).rows;
+  const timeline = manager.fetchTimeline(snapshot.id, {
+    direction: "tail",
+    limit: 0,
+  }).rows;
 
   expect(timeline).toHaveLength(2);
   expect(timeline[0]).toMatchObject({
@@ -11883,7 +12498,11 @@ test("provider user_message is recorded from the live stream", async () => {
         item: { type: "assistant_message", text: "continuation reply" },
         turnId,
       });
-      this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+      this.pushEvent({
+        type: "turn_completed",
+        provider: this.provider,
+        turnId,
+      });
       return { turnId };
     }
   }
@@ -11944,12 +12563,19 @@ test("canonical submitted prompt keeps wire identity while rewind resolves provi
       const turnId = "turn-submitted-user-message";
       const text = typeof prompt === "string" ? prompt : "";
       setTimeout(async () => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
         this.pushEvent({
           type: "timeline",
           provider: this.provider,
           turnId,
-          item: { type: "assistant_message", text: "output before provider echo" },
+          item: {
+            type: "assistant_message",
+            text: "output before provider echo",
+          },
         });
         await allowProviderEcho.promise;
         this.pushEvent({
@@ -11963,7 +12589,11 @@ test("canonical submitted prompt keeps wire identity while rewind resolves provi
             clientMessageId: options?.clientMessageId,
           },
         });
-        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_completed",
+          provider: this.provider,
+          turnId,
+        });
       }, 0);
       return { turnId };
     }
@@ -12051,7 +12681,10 @@ test("canonical submitted prompt keeps wire identity while rewind resolves provi
       { type: "turn_completed" },
     ]);
 
-    const timeline = manager.fetchTimeline(snapshot.id, { direction: "tail", limit: 20 }).rows;
+    const timeline = manager.fetchTimeline(snapshot.id, {
+      direction: "tail",
+      limit: 20,
+    }).rows;
     expect(timeline).toMatchObject([
       {
         seq: 1,
@@ -12069,7 +12702,10 @@ test("canonical submitted prompt keeps wire identity while rewind resolves provi
         seq: 2,
         timestamp: expect.any(String),
         turnId: "turn-submitted-user-message",
-        item: { type: "assistant_message", text: "output before provider echo" },
+        item: {
+          type: "assistant_message",
+          text: "output before provider echo",
+        },
       },
     ]);
 
@@ -12154,7 +12790,10 @@ test("authoritative timeline records a daemon-handled submitted prompt before it
       { type: "assistant_message", text: "Handled by the daemon" },
     ]);
 
-    const timeline = manager.fetchTimeline(snapshot.id, { direction: "tail", limit: 20 }).rows;
+    const timeline = manager.fetchTimeline(snapshot.id, {
+      direction: "tail",
+      limit: 20,
+    }).rows;
     expect(timeline.map((row) => row.item)).toEqual([
       {
         type: "user_message",
@@ -12191,7 +12830,10 @@ test("tryRunOutOfBand gives providers the command another agent sent, not its en
   });
 
   try {
-    const fromAgent = prepareAgentMessage("/handled", { kind: "agent-message", agentId: "sender" });
+    const fromAgent = prepareAgentMessage("/handled", {
+      kind: "agent-message",
+      agentId: "sender",
+    });
     expect(await manager.tryRunOutOfBand(agent.id, fromAgent.prompt)).toBe(true);
     expect(seenPrompts).toEqual(["/handled"]);
 
@@ -12221,14 +12863,22 @@ test("replaceAgentRun succeeds when foreground turn terminal event is never deli
       const turnNum = this.turnIdCounter;
 
       setTimeout(async () => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "turn_started",
+          provider: this.provider,
+          turnId,
+        });
         if (turnNum === 1) {
           // First turn: emit turn_started but NEVER emit a terminal event.
           // This simulates the provider suppressing the result.
         } else {
           // Subsequent turns: complete normally
           await allowSecondRunToEnd.promise;
-          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+          this.pushEvent({
+            type: "turn_completed",
+            provider: this.provider,
+            turnId,
+          });
         }
       }, 0);
       return { turnId };
@@ -12346,7 +12996,10 @@ test.each([
     const includedClient = new RecordingPersistedAgentsClient(includedProvider);
     const skippedClient = new RecordingPersistedAgentsClient(skippedProvider);
     const manager = new AgentManager({
-      clients: { [includedProvider]: includedClient, [skippedProvider]: skippedClient },
+      clients: {
+        [includedProvider]: includedClient,
+        [skippedProvider]: skippedClient,
+      },
       providerDefinitions,
       logger,
     });
@@ -12437,7 +13090,11 @@ test("listImportableSessions returns healthy rows alongside thrown and timed-out
     const hangingClient = new RecordingPersistedAgentsClient("pi");
     hangingClient.listImportableSessions = async () => await new Promise(() => undefined);
     const manager = new AgentManager({
-      clients: { claude: healthyClient, codex: failingClient, pi: hangingClient },
+      clients: {
+        claude: healthyClient,
+        codex: failingClient,
+        pi: hangingClient,
+      },
       providerDefinitions: {
         claude: { enabled: true, derivedFromProviderId: null },
         codex: { enabled: true, derivedFromProviderId: null },
@@ -12570,7 +13227,11 @@ test("system-injected prompts appear as trigger tools in the live timeline", asy
 
   const timeline = manager.getTimeline(snapshot.id);
   expect(timeline).toContainEqual(
-    expect.objectContaining({ type: "tool_call", name: "heartbeat", status: "completed" }),
+    expect.objectContaining({
+      type: "tool_call",
+      name: "heartbeat",
+      status: "completed",
+    }),
   );
   const userMessages = timeline.filter((item) => item.type === "user_message");
 
@@ -12614,7 +13275,11 @@ test("system-injected prompts appear as trigger tools during history replay", as
 
   const timeline = manager.getTimeline(snapshot.id);
   expect(timeline).toContainEqual(
-    expect.objectContaining({ type: "tool_call", name: "heartbeat", status: "completed" }),
+    expect.objectContaining({
+      type: "tool_call",
+      name: "heartbeat",
+      status: "completed",
+    }),
   );
   const userMessages = timeline.filter((item) => item.type === "user_message");
 
@@ -12785,7 +13450,11 @@ test("concurrent native restores run once before resuming the same agent", async
       return super.resumeSession(handle, config);
     }
   })();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
   let agentId: string | undefined;
   try {
     const created = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
@@ -12816,8 +13485,15 @@ test("concurrent native restores run once before resuming the same agent", async
 
 test("commits startup notices once on create and after restored history", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-startup-notice-"));
-  const notice: AgentTimelineItem = { type: "notification", level: "info", message: "Runtime v2" };
-  const history: AgentTimelineItem = { type: "assistant_message", text: "Existing conversation" };
+  const notice: AgentTimelineItem = {
+    type: "notification",
+    level: "info",
+    message: "Runtime v2",
+  };
+  const history: AgentTimelineItem = {
+    type: "assistant_message",
+    text: "Existing conversation",
+  };
   const toolOutput: AgentTimelineItem = {
     type: "tool_call",
     callId: "startup-output",
@@ -12900,7 +13576,11 @@ test("failed startup history closes the session without registering an agent", a
   class FailingHistorySession extends TestAgentSession {
     readonly initialTimeline = [
       {
-        item: { type: "notification", level: "info", message: "Runtime v2" } as const,
+        item: {
+          type: "notification",
+          level: "info",
+          message: "Runtime v2",
+        } as const,
         timestamp: "2026-09-22T00:00:00.000Z",
       },
     ];
@@ -12931,7 +13611,10 @@ test("failed startup history closes the session without registering an agent", a
         metadata: { cwd: tmpdir() },
       }),
     ).rejects.toThrow("History unavailable");
-    expect({ agents: manager.listAgents(), closed }).toEqual({ agents: [], closed: true });
+    expect({ agents: manager.listAgents(), closed }).toEqual({
+      agents: [],
+      closed: true,
+    });
   } finally {
     for (const agent of manager.listAgents()) await manager.closeAgent(agent.id);
   }
@@ -12980,7 +13663,11 @@ test.each(["live", "history"])(
     const codex = fakeCodexEmitting(
       path === "live" ? { turnItems: [item] } : { historyItems: [item] },
     );
-    const manager = new AgentManager({ clients: { codex }, registry: storage, logger });
+    const manager = new AgentManager({
+      clients: { codex },
+      registry: storage,
+      logger,
+    });
     const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
       workspaceId: undefined,
     });
@@ -13206,7 +13893,11 @@ test.each([
     expect(manager.getTimeline(agent.id)).toHaveLength(1);
     const readsBeforeDispatch = timelineStore.itemReads;
     const session = client.sessions[0]!;
-    session.pushEvent({ type: "turn_started", provider: "codex", turnId: "hook-turn" });
+    session.pushEvent({
+      type: "turn_started",
+      provider: "codex",
+      turnId: "hook-turn",
+    });
     await expect
       .poll(() => events.filter(({ name }) => name === "agent.turn.before").length)
       .toBe(1);
@@ -13244,7 +13935,11 @@ test.each(["live", "history", "accepted"] as const)(
     const entries = [
       {
         id: "report",
-        source: { kind: "agent-message" as const, agentId: "worker", serverId: "remote-host" },
+        source: {
+          kind: "agent-message" as const,
+          agentId: "worker",
+          serverId: "remote-host",
+        },
         text: "Result <ready>",
       },
       {
@@ -13285,7 +13980,10 @@ test.each(["live", "history", "accepted"] as const)(
         manager
           .getTimeline(agent.id)
           .filter((row) => row.type === "tool_call")
-          .map((row) => ({ callId: row.callId, agentMessage: row.agentMessage })),
+          .map((row) => ({
+            callId: row.callId,
+            agentMessage: row.agentMessage,
+          })),
       ).toEqual([
         {
           callId: "paseo-agent-message:report",
@@ -13321,7 +14019,11 @@ test("reads the last durable assistant response without loading a stored-only ch
     type: "assistant_message",
     text: "Partial work saved before restart",
   });
-  const manager = new AgentManager({ clients: {}, durableTimelineStore: store, logger });
+  const manager = new AgentManager({
+    clients: {},
+    durableTimelineStore: store,
+    logger,
+  });
   expect(manager.getAgent("stored-child")).toBeNull();
   expect(await manager.getLastAssistantMessage("stored-child")).toBe(
     "Partial work saved before restart",
@@ -13396,7 +14098,11 @@ function idleCleanupHarness() {
       return recordPrompts(session);
     }
   })();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
   onTestFinished(async () => {
     closeGate = undefined;
     await Promise.all(manager.listAgents().map((agent) => manager.closeAgent(agent.id)));
@@ -13559,7 +14265,11 @@ describe("agent options", () => {
     const client = new OptionsClient();
     client.openOptionsPatch = openOptionsPatch;
     client.runtimeModel = opened.runtimeModel ?? null;
-    const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+    const manager = new AgentManager({
+      clients: { codex: client },
+      registry: storage,
+      logger,
+    });
     const agent = await manager.createAgent(
       {
         provider: "codex",
@@ -13578,12 +14288,21 @@ describe("agent options", () => {
 
     const agent = manager.getAgent(agentId);
     expect(agent?.config.providerOptions).toEqual({ web_search: true });
-    expect(agent?.effectiveOptions).toEqual({ service_tier: "default", web_search: true });
-    expect(toAgentPayload(agent!).options).toEqual({ service_tier: "default", web_search: true });
+    expect(agent?.effectiveOptions).toEqual({
+      service_tier: "default",
+      web_search: true,
+    });
+    expect(toAgentPayload(agent!).options).toEqual({
+      service_tier: "default",
+      web_search: true,
+    });
   });
 
   test("a stored legacy Codex record reads its saved Fast speed as the speed its control selects", () => {
-    const manager = new AgentManager({ clients: { codex: new OptionsClient() }, logger });
+    const manager = new AgentManager({
+      clients: { codex: new OptionsClient() },
+      logger,
+    });
     // Written by a daemon that took `fast_mode`; never reopened since the upgrade.
     const record = parseStoredAgentRecord({
       id: "agent-legacy-fast",
@@ -13619,7 +14338,10 @@ describe("agent options", () => {
   });
 
   test("a stored record with a malformed legacy speed still reads; opening it is what rejects it", () => {
-    const manager = new AgentManager({ clients: { codex: new OptionsClient() }, logger });
+    const manager = new AgentManager({
+      clients: { codex: new OptionsClient() },
+      logger,
+    });
     // An older daemon accepted any value here; this one rejects it on create and on change.
     const record = parseStoredAgentRecord({
       id: "agent-legacy-malformed",
@@ -13636,18 +14358,29 @@ describe("agent options", () => {
       manager.effectiveOptionsFor(provider, own),
     );
 
-    expect(payload.options).toEqual({ service_tier: "default", fast_mode: "false" });
+    expect(payload.options).toEqual({
+      service_tier: "default",
+      fast_mode: "false",
+    });
   });
 
   test("setAgentOptions hands the provider only the keys the patch sets", async () => {
-    const { manager, client, storage, agentId } = await createOptionsAgent({ web_search: true });
+    const { manager, client, storage, agentId } = await createOptionsAgent({
+      web_search: true,
+    });
 
     await manager.setAgentOptions(agentId, { service_tier: "fast" });
 
     expect(client.session?.applied).toEqual([{ service_tier: "fast" }]);
     const agent = manager.getAgent(agentId);
-    expect(agent?.config.providerOptions).toEqual({ web_search: true, service_tier: "fast" });
-    expect(agent?.effectiveOptions).toEqual({ service_tier: "fast", web_search: true });
+    expect(agent?.config.providerOptions).toEqual({
+      web_search: true,
+      service_tier: "fast",
+    });
+    expect(agent?.effectiveOptions).toEqual({
+      service_tier: "fast",
+      web_search: true,
+    });
     await manager.flush();
     expect((await storage.get(agentId))?.config?.providerOptions).toEqual({
       web_search: true,
@@ -13724,7 +14457,9 @@ describe("agent options", () => {
   });
 
   test("setAgentOptions sends a removal to the provider like any change, as the default it falls back to", async () => {
-    const { manager, client, agentId } = await createOptionsAgent({ service_tier: "fast" });
+    const { manager, client, agentId } = await createOptionsAgent({
+      service_tier: "fast",
+    });
 
     await manager.setAgentOptions(agentId, { service_tier: null });
 
@@ -13735,7 +14470,9 @@ describe("agent options", () => {
   });
 
   test("a removal with no default is sent as null", async () => {
-    const { manager, client, agentId } = await createOptionsAgent({ web_search: true });
+    const { manager, client, agentId } = await createOptionsAgent({
+      web_search: true,
+    });
 
     await manager.setAgentOptions(agentId, { web_search: null });
 
@@ -13744,21 +14481,29 @@ describe("agent options", () => {
   });
 
   test("a value the provider kept through a removal is stored", async () => {
-    const { manager, client, agentId } = await createOptionsAgent({ web_search: true });
+    const { manager, client, agentId } = await createOptionsAgent({
+      web_search: true,
+    });
     client.session!.ended = { web_search: true };
 
     await manager.setAgentOptions(agentId, { web_search: null });
 
     const agent = manager.getAgent(agentId);
     expect(agent?.config.providerOptions).toEqual({ web_search: true });
-    expect(agent?.effectiveOptions).toEqual({ service_tier: "default", web_search: true });
+    expect(agent?.effectiveOptions).toEqual({
+      service_tier: "default",
+      web_search: true,
+    });
   });
 
   test("what the provider ended up with is stored together with the patch", async () => {
     const { manager, client, agentId } = await createOptionsAgent();
     client.session!.ended = { service_tier: "slow" };
 
-    await manager.setAgentOptions(agentId, { service_tier: "fast", plan_mode: true });
+    await manager.setAgentOptions(agentId, {
+      service_tier: "fast",
+      plan_mode: true,
+    });
 
     expect(manager.getAgent(agentId)?.config.providerOptions).toEqual({
       service_tier: "slow",
@@ -13781,7 +14526,11 @@ describe("agent options", () => {
     });
 
     const agent = await manager.createAgent(
-      { provider: "codex", cwd: workdir, providerOptions: { web_search: true } },
+      {
+        provider: "codex",
+        cwd: workdir,
+        providerOptions: { web_search: true },
+      },
       undefined,
       { workspaceId: undefined },
     );
@@ -13817,7 +14566,9 @@ describe("agent options", () => {
   });
 
   test("an option the session dropped when opening does not come back from a configured default", async () => {
-    const { manager, agentId } = await createOptionsAgent(undefined, { service_tier: null });
+    const { manager, agentId } = await createOptionsAgent(undefined, {
+      service_tier: null,
+    });
 
     const agent = manager.getAgent(agentId);
     expect(agent?.effectiveOptions).toEqual({});
@@ -13832,7 +14583,9 @@ describe("agent options", () => {
 
     expect(client.session?.applied).toEqual([{ sandbox_mode: "read-only" }]);
     const agent = manager.getAgent(agentId);
-    expect(agent?.config.providerOptions).toEqual({ sandbox_mode: "read-only" });
+    expect(agent?.config.providerOptions).toEqual({
+      sandbox_mode: "read-only",
+    });
     expect(toAgentPayload(agent!).options).toEqual({
       service_tier: "default",
       sandbox_mode: "read-only",
@@ -13850,7 +14603,9 @@ describe("agent options", () => {
       release = resolve;
     });
 
-    const slow = manager.setAgentOptions(agentId, { sandbox_mode: "read-only" });
+    const slow = manager.setAgentOptions(agentId, {
+      sandbox_mode: "read-only",
+    });
     const next = manager.setAgentOptions(agentId, { web_search: true });
     await new Promise<void>((resolve) => setTimeout(resolve, 20));
     // The second patch waits for the first to be answered: the provider never sees two at once.
@@ -13878,11 +14633,16 @@ describe("agent options", () => {
 
     await manager.markAgentUnread(agentId);
 
-    expect(states.at(-1)?.effectiveOptions).toEqual({ service_tier: "default", web_search: true });
+    expect(states.at(-1)?.effectiveOptions).toEqual({
+      service_tier: "default",
+      web_search: true,
+    });
   });
 
   test("editing a provider default does not change the options of a loaded agent", async () => {
-    const { manager, client, agentId } = await createOptionsAgent({ web_search: true });
+    const { manager, client, agentId } = await createOptionsAgent({
+      web_search: true,
+    });
     expect(manager.getAgent(agentId)?.effectiveOptions).toEqual({
       service_tier: "default",
       web_search: true,
@@ -13893,19 +14653,29 @@ describe("agent options", () => {
     await manager.markAgentUnread(agentId);
 
     const agent = manager.getAgent(agentId);
-    expect(agent?.effectiveOptions).toEqual({ service_tier: "default", web_search: true });
-    expect(toAgentPayload(agent!).options).toEqual({ service_tier: "default", web_search: true });
+    expect(agent?.effectiveOptions).toEqual({
+      service_tier: "default",
+      web_search: true,
+    });
+    expect(toAgentPayload(agent!).options).toEqual({
+      service_tier: "default",
+      web_search: true,
+    });
   });
 
   test("a provider that rejects an option leaves the stored options unchanged", async () => {
-    const { manager, client, agentId } = await createOptionsAgent({ web_search: false });
+    const { manager, client, agentId } = await createOptionsAgent({
+      web_search: false,
+    });
     client.session!.rejectWith = new Error("fast mode unavailable");
 
     await expect(manager.setAgentOptions(agentId, { web_search: true })).rejects.toThrow(
       "fast mode unavailable",
     );
 
-    expect(manager.getAgent(agentId)?.config.providerOptions).toEqual({ web_search: false });
+    expect(manager.getAgent(agentId)?.config.providerOptions).toEqual({
+      web_search: false,
+    });
   });
 
   test("a provider whose session cannot apply options rejects a patch and stores nothing", async () => {
@@ -13928,7 +14698,11 @@ describe("agent options", () => {
       logger,
     });
     const agent = await manager.createAgent(
-      { provider: "codex", cwd: workdir, providerOptions: { web_search: false } },
+      {
+        provider: "codex",
+        cwd: workdir,
+        providerOptions: { web_search: false },
+      },
       undefined,
       { workspaceId: undefined },
     );
@@ -13937,7 +14711,9 @@ describe("agent options", () => {
       /web_search.*cannot change on a running session/,
     );
 
-    expect(manager.getAgent(agent.id)?.config.providerOptions).toEqual({ web_search: false });
+    expect(manager.getAgent(agent.id)?.config.providerOptions).toEqual({
+      web_search: false,
+    });
   });
 
   test("agent.create.before hook featureValues fold into providerOptions", async () => {
@@ -13961,7 +14737,9 @@ describe("agent options", () => {
       workspaceId: undefined,
     });
 
-    expect(manager.getAgent(created.id)?.config.providerOptions).toEqual({ web_search: true });
+    expect(manager.getAgent(created.id)?.config.providerOptions).toEqual({
+      web_search: true,
+    });
     expect(manager.getAgent(created.id)?.config).not.toHaveProperty("featureValues");
   });
 
@@ -13982,7 +14760,10 @@ describe("agent options", () => {
                 ...request,
                 config: {
                   ...request.config,
-                  featureValues: { ...request.config.featureValues, web_search: true },
+                  featureValues: {
+                    ...request.config.featureValues,
+                    web_search: true,
+                  },
                 },
               }
             : request,
@@ -13990,7 +14771,11 @@ describe("agent options", () => {
     });
 
     const created = await manager.createAgent(
-      { provider: "codex", cwd: workdir, providerOptions: { web_search: false, plan_mode: true } },
+      {
+        provider: "codex",
+        cwd: workdir,
+        providerOptions: { web_search: false, plan_mode: true },
+      },
       undefined,
       { workspaceId: undefined },
     );
@@ -14017,7 +14802,10 @@ describe("agent options", () => {
                 ...request,
                 config: {
                   ...request.config,
-                  providerOptions: { ...request.config.providerOptions, plan_mode: false },
+                  providerOptions: {
+                    ...request.config.providerOptions,
+                    plan_mode: false,
+                  },
                 },
               }
             : request,
@@ -14025,7 +14813,11 @@ describe("agent options", () => {
     });
 
     const created = await manager.createAgent(
-      { provider: "codex", cwd: workdir, providerOptions: { web_search: false, plan_mode: true } },
+      {
+        provider: "codex",
+        cwd: workdir,
+        providerOptions: { web_search: false, plan_mode: true },
+      },
       undefined,
       { workspaceId: undefined },
     );
@@ -14068,14 +14860,21 @@ describe("agent options", () => {
             name === "agent.create.before"
               ? {
                   ...request,
-                  config: { ...request.config, ...edit(request.config.featureValues) },
+                  config: {
+                    ...request.config,
+                    ...edit(request.config.featureValues),
+                  },
                 }
               : request,
         },
       });
 
       const created = await manager.createAgent(
-        { provider: "codex", cwd: workdir, providerOptions: { web_search: true, plan_mode: true } },
+        {
+          provider: "codex",
+          cwd: workdir,
+          providerOptions: { web_search: true, plan_mode: true },
+        },
         undefined,
         { workspaceId: undefined },
       );
@@ -14105,7 +14904,10 @@ test("folds provider background work and clears it when the agent closes", async
     workspaceId: undefined,
   });
   const events: AgentManagerEvent[] = [];
-  manager.subscribe((event) => events.push(event), { agentId: snapshot.id, replayState: false });
+  manager.subscribe((event) => events.push(event), {
+    agentId: snapshot.id,
+    replayState: false,
+  });
 
   activeSession?.pushEvent({
     type: "background_work",
@@ -14115,7 +14917,12 @@ test("folds provider background work and clears it when the agent closes", async
 
   await vi.waitFor(() =>
     expect(manager.listAgentBackgroundWork(snapshot.id)).toEqual([
-      { id: "bash-1", kind: "shell", description: "sleep 20", startedAt: expect.any(String) },
+      {
+        id: "bash-1",
+        kind: "shell",
+        description: "sleep 20",
+        startedAt: expect.any(String),
+      },
     ]),
   );
   expect(events).toContainEqual({
@@ -14124,14 +14931,20 @@ test("folds provider background work and clears it when the agent closes", async
     items: [expect.objectContaining({ id: "bash-1" })],
   });
   expect(manager.getAgent(snapshot.id)?.lifecycle).toBe("idle");
-  expect(manager.getAgentBackgroundWorkSummary(snapshot.id)).toEqual({ count: 1 });
+  expect(manager.getAgentBackgroundWorkSummary(snapshot.id)).toEqual({
+    count: 1,
+  });
   expect(
     events.some((event) => event.type === "agent_stream" && event.event.type === "background_work"),
   ).toBe(false);
 
   await manager.closeAgent(snapshot.id);
 
-  expect(events).toContainEqual({ type: "background_work", agentId: snapshot.id, items: [] });
+  expect(events).toContainEqual({
+    type: "background_work",
+    agentId: snapshot.id,
+    items: [],
+  });
   expect(manager.getAgentBackgroundWorkSummary(snapshot.id)).toBeUndefined();
 });
 
@@ -14178,7 +14991,11 @@ test("does not deliver an internal agent's background work to global subscribers
 
   expect(events.some((event) => event.type === "background_work")).toBe(false);
   await expect(
-    manager.stopAgentBackgroundWork({ agentId: agent.id, itemId: "bash-1", stopToken: "token" }),
+    manager.stopAgentBackgroundWork({
+      agentId: agent.id,
+      itemId: "bash-1",
+      stopToken: "token",
+    }),
   ).rejects.toThrow("Unknown agent");
 });
 
@@ -14218,7 +15035,11 @@ test("stops only a currently owned public background item with its current token
   await vi.waitFor(() => expect(manager.listAgentBackgroundWork(agent.id)).toHaveLength(2));
   const [one] = manager.listAgentBackgroundWork(agent.id);
   await expect(
-    manager.stopAgentBackgroundWork({ agentId: agent.id, itemId: "one", stopToken: "stale-token" }),
+    manager.stopAgentBackgroundWork({
+      agentId: agent.id,
+      itemId: "one",
+      stopToken: "stale-token",
+    }),
   ).rejects.toThrow();
   await expect(
     manager.stopAgentBackgroundWork({
@@ -14258,20 +15079,30 @@ test("turns keep distinct identities across an idle runtime collection and resum
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-turn-identity-"));
   const storage = new AgentStorage(join(workdir, "agents"), logger);
   const client = new TestAgentClient();
-  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
   const collect = runtimeCleanup(manager);
   try {
     const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
       workspaceId: undefined,
     });
     const consume = async (prompt: string, clientMessageId: string) => {
-      for await (const _event of manager.streamAgent(agent.id, prompt, { clientMessageId })) {
+      for await (const _event of manager.streamAgent(agent.id, prompt, {
+        clientMessageId,
+      })) {
       }
     };
     await consume("first", "first");
     const later = new Date(Date.now() + 61 * 60_000);
     expect((await collect({ now: later })).collected).toHaveLength(1);
-    await ensureAgentLoaded(agent.id, { agentManager: manager, agentStorage: storage, logger });
+    await ensureAgentLoaded(agent.id, {
+      agentManager: manager,
+      agentStorage: storage,
+      logger,
+    });
     await consume("second", "second");
     const rows = manager.fetchTimeline(agent.id, { limit: 0 }).rows;
     const userTurnIds = rows
@@ -14284,4 +15115,146 @@ test("turns keep distinct identities across an idle runtime collection and resum
     await storage.flush();
     rmSync(workdir, { recursive: true, force: true });
   }
+});
+
+async function conversationLifecycleFixture() {
+  const dir = mkdtempSync(join(tmpdir(), "assistant-lifecycle-"));
+  const storage = new AgentStorage(join(dir, "agents"), logger);
+  const client = new NativeArchiveRecordingClient();
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+  });
+  const create = async () => {
+    const agent = await manager.createAgent({ provider: "codex", cwd: dir }, undefined, {
+      workspaceId: undefined,
+    });
+    await manager.setLabels(agent.id, { "paseo.role": "assistant" });
+    await manager.flush();
+    return agent;
+  };
+  onTestFinished(async () => {
+    for (const agent of manager.listAgents()) await manager.closeAgent(agent.id).catch(() => {});
+    await manager.flush();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  return { manager, storage, create, client };
+}
+
+test("assistant lifecycle locally archives/restores/deletes all segments without native archive", async () => {
+  const f = await conversationLifecycleFixture();
+  const a = await f.create();
+  const b = await f.create();
+  const ids = [a.id, b.id];
+  await f.manager.mutateAssistantConversationRecords(ids, "archive");
+  for (const id of ids) expect((await f.storage.get(id))?.archivedAt).toEqual(expect.any(String));
+  await f.manager.mutateAssistantConversationRecords(ids, "restore");
+  for (const id of ids) expect((await f.storage.get(id))?.archivedAt).toBeNull();
+  await f.manager.mutateAssistantConversationRecords(ids, "delete");
+  for (const id of ids) expect(await f.storage.get(id)).toBeNull();
+  await f.manager.mutateAssistantConversationRecords(ids, "delete");
+  expect(f.client.archivedHandles).toEqual([]);
+  expect(f.client.unarchivedHandles).toEqual([]);
+});
+
+test("assistant lifecycle refuses running/permission work and leaves every segment intact", async () => {
+  const f = await conversationLifecycleFixture();
+  const a = await f.create();
+  const b = await f.create();
+  const running = waitForAgentLifecycle(f.manager, b.id, "running");
+  (b.session as TestAgentSession).pushEvent({
+    type: "turn_started",
+    provider: "codex",
+    turnId: "test-running",
+  });
+  await running;
+  await expect(
+    f.manager.mutateAssistantConversationRecords([a.id, b.id], "delete"),
+  ).rejects.toThrow("running work");
+  expect(f.manager.getAgent(a.id)).not.toBeNull();
+  expect(f.manager.getAgent(b.id)).not.toBeNull();
+  expect((await f.storage.get(a.id))?.archivedAt).toBeUndefined();
+  (b.session as TestAgentSession).pushEvent({
+    type: "turn_completed",
+    provider: "codex",
+    turnId: "test-running",
+  });
+  await f.manager.flush();
+});
+
+test("assistant lifecycle refuses active children and non-assistant records", async () => {
+  const f = await conversationLifecycleFixture();
+  const parent = await f.create();
+  const child = await f.create();
+  await f.manager.setLabels(child.id, { [PARENT_AGENT_ID_LABEL]: parent.id });
+  await expect(
+    f.manager.mutateAssistantConversationRecords([parent.id], "archive"),
+  ).rejects.toThrow("subagents");
+  await f.manager.setLabels(child.id, { "paseo.role": "worker" });
+  await expect(f.manager.mutateAssistantConversationRecords([child.id], "delete")).rejects.toThrow(
+    "Only assistant",
+  );
+});
+
+test("assistant lifecycle blocks new prompts during close and propagates close failure before deletion", async () => {
+  const f = await conversationLifecycleFixture();
+  const a = await f.create();
+  const entered = deferred<void>();
+  const release = deferred<void>();
+  const session = a.session as TestAgentSession;
+  session.close = async () => {
+    entered.resolve();
+    await release.promise;
+    throw new Error("writer still owned");
+  };
+  const deletion = f.manager.mutateAssistantConversationRecords([a.id], "delete");
+  const rejected = expect(deletion).rejects.toThrow("writer still owned");
+  await entered.promise;
+  expect(() => f.manager.streamAgent(a.id, "must not run")).toThrow("being archived");
+  release.resolve();
+  await rejected;
+  expect(await f.storage.get(a.id)).not.toBeNull();
+  session.close = async () => {};
+});
+
+test("assistant lifecycle respects provider background-work veto", async () => {
+  const f = await conversationLifecycleFixture();
+  const a = await f.create();
+  a.session!.canStopRuntime = async () => false;
+  await expect(f.manager.mutateAssistantConversationRecords([a.id], "archive")).rejects.toThrow(
+    "background work",
+  );
+  expect(f.manager.getAgent(a.id)).not.toBeNull();
+  expect((await f.storage.get(a.id))?.archivedAt).toBeUndefined();
+});
+
+test("individual session deletion removes only the selected Paseo record and keeps native history", async () => {
+  const f = await conversationLifecycleFixture();
+  const selected = await f.create();
+  const other = await f.create();
+  await f.manager.setLabels(selected.id, { "paseo.role": "worker" });
+  await f.manager.mutateAssistantConversationRecords([selected.id], "delete", false);
+  expect(await f.storage.get(selected.id)).toBeNull();
+  expect(await f.storage.get(other.id)).not.toBeNull();
+  expect(f.client.archivedHandles).toEqual([]);
+  expect(f.client.unarchivedHandles).toEqual([]);
+});
+
+test("individual session deletion refuses a segment belonging to an assistant conversation", async () => {
+  const f = await conversationLifecycleFixture();
+  const selected = await f.create();
+  await expect(
+    f.manager.mutateAssistantConversationRecords([selected.id], "delete", false),
+  ).rejects.toThrow("linked segments");
+  expect(await f.storage.get(selected.id)).not.toBeNull();
+});
+
+test("individual session deletion rejects malformed identifiers before touching storage", async () => {
+  const f = await conversationLifecycleFixture();
+  const selected = await f.create();
+  await expect(
+    f.manager.mutateAssistantConversationRecords(["../other"], "delete", false),
+  ).rejects.toThrow("UUID");
+  expect(await f.storage.get(selected.id)).not.toBeNull();
 });

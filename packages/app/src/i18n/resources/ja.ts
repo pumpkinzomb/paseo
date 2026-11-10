@@ -2,6 +2,10 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ja: TranslationResources = {
+  localSessions: en.localSessions,
+  sessionRecordDeletion: en.sessionRecordDeletion,
+  assistantLifecycle: en.assistantLifecycle,
+  defaultAssistant: en.defaultAssistant,
   pluginCombobox: {
     searching: "検索中…",
     empty: "結果がありません",
@@ -1152,7 +1156,10 @@ export const ja: TranslationResources = {
     creating: "作成中…",
     name: "ラベル名",
     updateHostUse: "ラベルを使用するにはホストを更新してください。",
-    errors: { update: "ラベルを更新できません", load: "ラベルを読み込めません" },
+    errors: {
+      update: "ラベルを更新できません",
+      load: "ラベルを読み込めません",
+    },
     colors: {
       violet: "紫",
       sky: "空色",
@@ -1754,7 +1761,10 @@ export const ja: TranslationResources = {
           connectDocs: "ドキュメント",
           openConnectDocs: "接続のドキュメントを開く",
           recommended: "おすすめ",
-          relay: { title: "リレー", hint: "エンドツーエンド暗号化、QR コードをスキャン" },
+          relay: {
+            title: "リレー",
+            hint: "エンドツーエンド暗号化、QR コードをスキャン",
+          },
           tailscale: { title: "Tailscale", hint: "少し設定が必要です" },
         },
       },

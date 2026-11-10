@@ -780,7 +780,10 @@ export class VoiceAssistantWebSocketServer {
     this.workspaceAutoName = workspaceAutoName;
     this.downloadTokenStore = downloadTokenStore;
     this.paseoHome = paseoHome;
-    this.connectedHosts = new ConnectedHosts(paseoHome, { serverId, label: getHostName() });
+    this.connectedHosts = new ConnectedHosts(paseoHome, {
+      serverId,
+      label: getHostName(),
+    });
     this.passwordHash = auth?.password;
     this.daemonConfigStore = daemonConfigStore;
     this.mcpBaseUrl = mcpBaseUrl;
@@ -944,7 +947,11 @@ export class VoiceAssistantWebSocketServer {
 
   // Main-loop stall visibility: terminal frames and agent traffic share one event
   // loop, so delay percentiles here are the ground truth for "the daemon is busy".
-  private snapshotEventLoopDelay(): { p50Ms: number; p99Ms: number; maxMs: number } | null {
+  private snapshotEventLoopDelay(): {
+    p50Ms: number;
+    p99Ms: number;
+    maxMs: number;
+  } | null {
     const monitor = this.eventLoopDelayMonitor;
     if (!monitor) {
       return null;
@@ -1296,7 +1303,11 @@ export class VoiceAssistantWebSocketServer {
       return null;
     }
 
-    return { sockets: writableSockets, payload, bytes: outboundFrameByteLength(payload) };
+    return {
+      sockets: writableSockets,
+      payload,
+      bytes: outboundFrameByteLength(payload),
+    };
   }
 
   private sendHelloResponse(ws: WebSocketLike, session: Session, hello: WSHelloMessage): void {
@@ -1631,8 +1642,16 @@ export class VoiceAssistantWebSocketServer {
     };
     connection =
       lifecycle.kind === "ephemeral-plugin"
-        ? { ...base, lifecycle: "ephemeral-plugin", pluginId: lifecycle.pluginId }
-        : { ...base, lifecycle: "reconnectable", externalDisconnectCleanupTimeout: null };
+        ? {
+            ...base,
+            lifecycle: "ephemeral-plugin",
+            pluginId: lifecycle.pluginId,
+          }
+        : {
+            ...base,
+            lifecycle: "reconnectable",
+            externalDisconnectCleanupTimeout: null,
+          };
     session.updateClientCapabilities(clientCapabilities, ws, appVersion);
     return connection;
   }
@@ -1924,7 +1943,13 @@ export class VoiceAssistantWebSocketServer {
     // They never send hello.auth, so avoid sending an unknown envelope to them.
     if (hello.auth || hello.capabilities?.[CLIENT_CAPS.helloRejection] === true) {
       try {
-        await ws.send(JSON.stringify({ type: "hello.rejected", reason, accepts: ["password"] }));
+        await ws.send(
+          JSON.stringify({
+            type: "hello.rejected",
+            reason,
+            accepts: ["password"],
+          }),
+        );
       } catch {
         // The close reason remains the compatibility signal.
       }
@@ -2006,7 +2031,9 @@ export class VoiceAssistantWebSocketServer {
     const producer = hello.producer;
     const sourceId =
       hello.routed && producer
-        ? `route:${[principalId, producer.serverId, producer.sourceId].map(encodeURIComponent).join(":")}`
+        ? `route:${[principalId, producer.serverId, producer.sourceId]
+            .map(encodeURIComponent)
+            .join(":")}`
         : principalId;
     connection.session.setHostSource(sourceId);
   }
@@ -2033,6 +2060,13 @@ export class VoiceAssistantWebSocketServer {
         ownedSubscriptions: true,
         providerOptionControls: true,
         entityMetadata: true,
+        defaultAssistant: true,
+        defaultAssistantModelSelection: true,
+        defaultAssistantContextHandoff: true,
+        defaultAssistantConversations: true,
+        assistantConversationLifecycle: true,
+        agentRecordDeletion: true,
+        localProviderSessions: true,
         diffSubscription: true,
         binaryChunkingV1: true,
         agentRequestReceipts: true,
@@ -2662,7 +2696,12 @@ export class VoiceAssistantWebSocketServer {
 
       if (message.type === "session") {
         void this.dispatchSessionMessage(ws, activeConnection, message).catch((error: unknown) => {
-          this.handleRawMessageError({ ws, data, error, log: activeConnection.connectionLogger });
+          this.handleRawMessageError({
+            ws,
+            data,
+            error,
+            log: activeConnection.connectionLogger,
+          });
         });
       }
     } catch (error) {

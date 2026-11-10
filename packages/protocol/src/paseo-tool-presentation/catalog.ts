@@ -171,6 +171,20 @@ export const PASEO_TOOL_CATALOG = {
     context: targetAgent(),
     detail: { inputOrder: ["agentId", "limit"] },
   },
+  list_provider_sessions: {
+    label: "List local sessions",
+    completedLabel: "Listed local sessions",
+    detail: { inputOrder: ["providers", "cwd", "query", "limit"] },
+  },
+  connect_provider_session: {
+    label: "Connect local session",
+    completedLabel: "Connected local session",
+    context: field("providerHandleId"),
+    detail: {
+      inputOrder: ["providerId", "providerHandleId", "cwd", "externalSessionIdleConfirmed"],
+      outputFields: ["agentId", "workspaceId", "reused"],
+    },
+  },
   list_agents: {
     label: "List agents",
     completedLabel: "Listed agents",

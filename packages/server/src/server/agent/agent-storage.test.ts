@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, afterEach } from "vitest";
+import { describe, expect, test, beforeEach, afterEach, vi } from "vitest";
 import os from "node:os";
 import path from "node:path";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
@@ -194,6 +194,24 @@ describe("AgentStorage", () => {
     await reloaded.remove("a");
     expect(await reloaded.listActive()).toEqual([]);
     expect(await reloaded.lastUserMessageAtByWorkspace(["two"])).toEqual(new Map());
+  });
+
+  test("strict deletion reports disk failure and permits a retry", async () => {
+    await storage.applySnapshot(createManagedAgent({ id: "delete-failure" }));
+    await storage.flush();
+    const unlink = vi
+      .spyOn(fs, "unlink")
+      .mockRejectedValueOnce(Object.assign(new Error("disk denied"), { code: "EACCES" }));
+    try {
+      await expect(storage.remove("delete-failure", { strict: true })).rejects.toThrow(
+        "disk denied",
+      );
+      expect(await storage.get("delete-failure")).not.toBeNull();
+    } finally {
+      unlink.mockRestore();
+    }
+    await storage.remove("delete-failure", { strict: true });
+    expect(await storage.get("delete-failure")).toBeNull();
   });
 
   test("single-agent lookups keep allocations bounded with a large stored history", async () => {

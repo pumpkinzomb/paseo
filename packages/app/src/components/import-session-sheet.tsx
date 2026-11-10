@@ -1,5 +1,5 @@
 import React, { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, type PressableStateCallbackType, Text, View } from "react-native";
+import { Pressable, type PressableStateCallbackType, ScrollView, Text, View } from "react-native";
 import { keepPreviousData, useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import type {
@@ -9,7 +9,11 @@ import type {
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import { ChevronDown, Inbox, Layers, RotateCw } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import {
+  AdaptiveModalSheet,
+  InlineHeaderView,
+  type SheetHeader,
+} from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { ImportSessionList } from "@/components/import-session-list";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -57,6 +61,10 @@ type ImportedAgent = Awaited<ReturnType<RecentProviderSessionsClient["importAgen
 
 interface ImportSessionSheetProps {
   visible: boolean;
+  presentation?: "sheet" | "page";
+  includeImported?: boolean;
+  confirmExternalIdle?: () => Promise<boolean>;
+  onOpenLinkedAgent?: (agentId: string) => void;
   client: RecentProviderSessionsClient | null;
   serverId: string | null;
   cwd?: string | null;
@@ -72,9 +80,11 @@ type RecentSessionsResponse = Awaited<
   ReturnType<RecentProviderSessionsClient["fetchRecentProviderSessions"]>
 >;
 
-type SessionsQueryKey = ReadonlyArray<string | number | null>;
+type SessionsQueryKey = ReadonlyArray<string | number | boolean | null>;
 
 function buildSessionsQueryKey(input: {
+  serverId: string | null;
+  includeImported: boolean;
   cwd: string | null;
   query: string;
   limit: number;
@@ -82,6 +92,8 @@ function buildSessionsQueryKey(input: {
 }): SessionsQueryKey {
   return [
     "recent-provider-sessions",
+    input.serverId,
+    input.includeImported,
     input.cwd,
     input.query,
     input.limit,
@@ -102,6 +114,8 @@ interface SessionsQueryConfig {
 
 function buildSessionsQueriesConfig(args: {
   providersToFetch: AgentProvider[] | null;
+  serverId: string | null;
+  includeImported: boolean;
   visible: boolean;
   client: RecentProviderSessionsClient | null;
   cwd: string | null;
@@ -113,7 +127,14 @@ function buildSessionsQueriesConfig(args: {
   if (providersToFetch === null) return [];
   const enabled = visible && Boolean(client);
   return providersToFetch.map((provider) => ({
-    queryKey: buildSessionsQueryKey({ cwd, query, limit, provider }),
+    queryKey: buildSessionsQueryKey({
+      serverId: args.serverId,
+      includeImported: args.includeImported,
+      cwd,
+      query,
+      limit,
+      provider,
+    }),
     enabled,
     retry: false as const,
     placeholderData: keepPreviousData,
@@ -122,6 +143,7 @@ function buildSessionsQueriesConfig(args: {
         throw new Error(hostDisconnectedMessage ?? i18n.t("workspace.terminal.hostDisconnected"));
       }
       return await client.fetchRecentProviderSessions({
+        ...(args.includeImported ? { includeImported: true } : {}),
         ...(cwd ? { cwd } : {}),
         providers: [provider],
         limit,
@@ -344,6 +366,9 @@ function ImportSessionSheetRow({
           <Text style={styles.rowTitle} numberOfLines={1}>
             {title}
           </Text>
+          {entry.linkedAgentId ? (
+            <Text style={styles.rowMeta}>{t("localSessions.connected")}</Text>
+          ) : null}
           {importing ? (
             <Text style={styles.rowMeta}>{t("importSession.row.importing")}</Text>
           ) : (
@@ -394,6 +419,7 @@ function hasListHeader(
 }
 
 function SessionRows({
+  presentation,
   visible,
   onClose,
   header,
@@ -406,6 +432,7 @@ function SessionRows({
   resolveFolder,
   onImportSession,
 }: {
+  presentation: "sheet" | "page";
   visible: boolean;
   onClose: () => void;
   header: SheetHeader;
@@ -449,6 +476,31 @@ function SessionRows({
     [listFooter],
   );
 
+  if (presentation === "page") {
+    return (
+      <View style={styles.page} testID="local-session-list">
+        <InlineHeaderView header={header} />
+        {ImportSessionList ? (
+          <View style={styles.list}>
+            <ImportSessionList
+              data={entries}
+              keyExtractor={getSessionRowKey}
+              renderItem={renderItem}
+              header={virtualHeader}
+              footer={virtualFooter}
+            />
+          </View>
+        ) : (
+          <ScrollView>
+            {listHeader}
+            {entries.map(renderSessionRow)}
+            {listFooter}
+          </ScrollView>
+        )}
+      </View>
+    );
+  }
+
   return (
     <AdaptiveModalSheet
       visible={visible}
@@ -485,6 +537,10 @@ function SessionRows({
 }
 
 export function ImportSessionSheet({
+  presentation = "sheet",
+  includeImported = false,
+  confirmExternalIdle,
+  onOpenLinkedAgent,
   visible,
   client,
   serverId,
@@ -543,12 +599,17 @@ export function ImportSessionSheet({
     [snapshotEntries],
   );
 
-  const sessionsQueryRoot = useMemo(() => ["recent-provider-sessions", scopeCwd], [scopeCwd]);
+  const sessionsQueryRoot = useMemo(
+    () => ["recent-provider-sessions", serverId, includeImported, scopeCwd],
+    [serverId, includeImported, scopeCwd],
+  );
 
   const queriesConfig = useMemo(
     () =>
       buildSessionsQueriesConfig({
         providersToFetch,
+        serverId,
+        includeImported,
         visible,
         client,
         cwd: scopeCwd,
@@ -556,7 +617,7 @@ export function ImportSessionSheet({
         limit: pageLimit,
         hostDisconnectedMessage: t("workspace.terminal.hostDisconnected"),
       }),
-    [providersToFetch, visible, client, scopeCwd, query, pageLimit, t],
+    [providersToFetch, serverId, includeImported, visible, client, scopeCwd, query, pageLimit, t],
   );
 
   const queries = useQueries({ queries: queriesConfig });
@@ -716,11 +777,26 @@ export function ImportSessionSheet({
       ? `${importMutation.variables.providerId}:${importMutation.variables.providerHandleId}`
       : null;
 
+  const connectionPendingRef = useRef(false);
   const handleImportSession = useCallback(
-    (entry: FetchRecentProviderSessionEntry) => {
-      importMutation.mutate(entry);
+    async (entry: FetchRecentProviderSessionEntry) => {
+      if (entry.linkedAgentId && onOpenLinkedAgent) {
+        onOpenLinkedAgent(entry.linkedAgentId);
+        return;
+      }
+      if (connectionPendingRef.current) return;
+      connectionPendingRef.current = true;
+      if (confirmExternalIdle && !(await confirmExternalIdle())) {
+        connectionPendingRef.current = false;
+        return;
+      }
+      importMutation.mutate(entry, {
+        onSettled: () => {
+          connectionPendingRef.current = false;
+        },
+      });
     },
-    [importMutation],
+    [importMutation, confirmExternalIdle, onOpenLinkedAgent],
   );
 
   const providerErrorRows = useMemo(
@@ -738,10 +814,17 @@ export function ImportSessionSheet({
   const handleRetryProvider = useCallback(
     (provider: string) => {
       void queryClient.refetchQueries({
-        queryKey: buildSessionsQueryKey({ cwd: scopeCwd, query, limit: pageLimit, provider }),
+        queryKey: buildSessionsQueryKey({
+          serverId,
+          includeImported,
+          cwd: scopeCwd,
+          query,
+          limit: pageLimit,
+          provider,
+        }),
       });
     },
-    [pageLimit, query, queryClient, scopeCwd],
+    [pageLimit, query, queryClient, scopeCwd, serverId, includeImported],
   );
 
   const handleShowAll = useCallback(() => setIsShowingAllDirectories(true), []);
@@ -755,7 +838,7 @@ export function ImportSessionSheet({
 
   const header = useMemo<SheetHeader>(
     () => ({
-      title: t("importSession.title"),
+      title: presentation === "page" ? hostLabel : t("importSession.title"),
       subtitle: (
         <ScopeSubtitle
           hostLabel={hostLabel}
@@ -777,7 +860,17 @@ export function ImportSessionSheet({
         : {}),
       actions: <RefreshAction isRefreshing={isRefreshing} onPress={handleRefresh} />,
     }),
-    [handleRefresh, handleShowAll, hostLabel, isRefreshing, scopeCwd, supportsSearch, t, visible],
+    [
+      handleRefresh,
+      handleShowAll,
+      hostLabel,
+      isRefreshing,
+      scopeCwd,
+      supportsSearch,
+      t,
+      visible,
+      presentation,
+    ],
   );
 
   const isSnapshotUnsupported = requiresHostUpgrade;
@@ -863,6 +956,9 @@ export function ImportSessionSheet({
             hasRows={visibleEntries.length > 0}
             importErrored={importMutation.isError}
           />
+          {importMutation.error instanceof Error ? (
+            <Text style={styles.errorText}>{importMutation.error.message}</Text>
+          ) : null}
           {providerErrorRows.length > 0 ? (
             <ProviderErrorBanner rows={providerErrorRows} onRetry={handleRetryProvider} />
           ) : null}
@@ -887,6 +983,7 @@ export function ImportSessionSheet({
       isLoadingSessions,
       visibleEntries.length,
       importMutation.isError,
+      importMutation.error,
       providerErrorRows,
       handleRetryProvider,
     ],
@@ -913,6 +1010,7 @@ export function ImportSessionSheet({
   );
   return (
     <SessionRows
+      presentation={presentation}
       visible={visible}
       onClose={onClose}
       header={header}
@@ -929,6 +1027,7 @@ export function ImportSessionSheet({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  page: { flex: 1, minHeight: 0, padding: theme.spacing[4] },
   subtitleRow: {
     flexDirection: "row",
     alignItems: "center",

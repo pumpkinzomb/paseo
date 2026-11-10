@@ -6,11 +6,7 @@ import type {
   StartDaemonIfEnabledInput,
 } from "@/runtime/daemon-start-service";
 import type { Href } from "expo-router";
-import {
-  buildHostRootRoute,
-  buildHostWorkspaceRoute,
-  buildOpenProjectRoute,
-} from "@/utils/host-routes";
+import { buildHostRootRoute, buildOpenProjectRoute } from "@/utils/host-routes";
 
 export interface HostRuntimeBootstrapStore {
   boot: () => Promise<void>;
@@ -152,20 +148,6 @@ export function resolveWorkspaceSelectionStatus(input: {
     return "exists";
   }
   return input.hasHydratedWorkspaces ? "missing" : "unknown";
-}
-
-export function resolveHostIndexRoute(input: {
-  serverId: string;
-  workspaceSelection: ActiveWorkspaceSelection | null;
-  workspaceSelectionStatus: WorkspaceSelectionStatus;
-}): Href {
-  if (
-    input.workspaceSelection?.serverId === input.serverId &&
-    shouldRestoreWorkspaceSelection(input)
-  ) {
-    return buildHostWorkspaceRoute(input.serverId, input.workspaceSelection.workspaceId);
-  }
-  return buildOpenProjectRoute();
 }
 
 function isIndexPathname(pathname: string) {

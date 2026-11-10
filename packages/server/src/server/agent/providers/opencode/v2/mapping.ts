@@ -23,6 +23,7 @@ export function modelsFromV2(models: ModelInfo[]): AgentModelDefinition[] {
       metadata: {
         providerId: model.providerID,
         modelId: model.id,
+        cost: model.cost,
         supportsAttachments: model.capabilities.input.includes("image"),
         supportsToolCall: model.capabilities.tools,
         contextWindowMaxTokens: model.limit.context,

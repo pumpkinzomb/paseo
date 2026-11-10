@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   resolveStartupBlocker,
   resolveStartupNavigationReady,
-  resolveHostIndexRoute,
   resolveStartupRoute,
   shouldRunStartupGiveUpTimer,
   startHostRuntimeBootstrap,
@@ -364,58 +363,6 @@ describe("resolveStartupRoute", () => {
         route: { kind: "host", serverId: "server-removed" },
       }),
     ).toEqual({ kind: "redirect", href: "/welcome" });
-  });
-});
-
-describe("resolveHostIndexRoute", () => {
-  it("restores the remembered workspace when the host index opens for the same host", () => {
-    expect(
-      resolveHostIndexRoute({
-        serverId: "server-saved",
-        workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-a" },
-        workspaceSelectionStatus: "exists",
-      }),
-    ).toEqual("/h/server-saved/workspace/workspace-a");
-  });
-
-  it("keeps restoring a remembered workspace before the host workspace list hydrates", () => {
-    expect(
-      resolveHostIndexRoute({
-        serverId: "server-saved",
-        workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-a" },
-        workspaceSelectionStatus: "unknown",
-      }),
-    ).toEqual("/h/server-saved/workspace/workspace-a");
-  });
-
-  it("opens global project selection when the remembered workspace is proven missing", () => {
-    expect(
-      resolveHostIndexRoute({
-        serverId: "server-saved",
-        workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-a" },
-        workspaceSelectionStatus: "missing",
-      }),
-    ).toEqual("/open-project");
-  });
-
-  it("opens global project selection when the remembered workspace belongs to another host", () => {
-    expect(
-      resolveHostIndexRoute({
-        serverId: "server-saved",
-        workspaceSelection: { serverId: "server-other", workspaceId: "workspace-a" },
-        workspaceSelectionStatus: "exists",
-      }),
-    ).toEqual("/open-project");
-  });
-
-  it("opens global project selection when no workspace is remembered", () => {
-    expect(
-      resolveHostIndexRoute({
-        serverId: "server-saved",
-        workspaceSelection: null,
-        workspaceSelectionStatus: "unknown",
-      }),
-    ).toEqual("/open-project");
   });
 });
 
