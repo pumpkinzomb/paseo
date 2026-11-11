@@ -62,6 +62,7 @@ import {
   type ProjectPlacementPayload,
   type WorkspaceSetupSnapshot,
   type WorkspaceDescriptorPayload,
+  type ArchivedSubSessionPayload,
 } from "./messages.js";
 import type {
   TerminalManager,
@@ -1976,6 +1977,11 @@ export class Session {
         [mutation.workspaceId],
         mutation.expectsInitialAgent ? { optimisticStatus: "running" } : undefined,
       );
+      // A parent lists its archived sub-sessions, so archiving or restoring one changes it too.
+      const parentWorkspaceId = mutation.workspace?.parentWorkspaceId;
+      if (parentWorkspaceId && !this.isCleanedUp) {
+        await this.emitWorkspaceUpdatesForWorkspaceIds([parentWorkspaceId]);
+      }
     } catch (error) {
       this.sessionLogger.warn(
         {
@@ -6793,6 +6799,7 @@ export class Session {
       metadata: workspace.metadata,
       background: workspace.background,
       parentWorkspaceId: workspace.parentWorkspaceId,
+      ...(await this.describeArchivedSubSessions(workspace.workspaceId)),
       archivingAt: null,
       status: "done",
       statusEnteredAt: null,
@@ -6805,6 +6812,46 @@ export class Session {
             project: await this.buildProjectPlacementForWorkspace(workspace, resolvedProjectRecord),
           }
         : {}),
+    };
+  }
+
+  /**
+   * Archived workspaces created by this workspace's agents. Cleanup archives a sub-session and
+   * may remove its worktree, but the parent keeps a reviewable record of it.
+   */
+  private async describeArchivedSubSessions(
+    workspaceId: string,
+  ): Promise<{ archivedSubSessions?: ArchivedSubSessionPayload[] }> {
+    const children = (await this.workspaceRegistry.listAll()).filter(
+      (candidate) =>
+        candidate.parentWorkspaceId === workspaceId &&
+        candidate.archivedAt !== null &&
+        !candidate.background,
+    );
+    if (children.length === 0) return {};
+    const firstAgentIdByWorkspaceId = new Map<string, { id: string; createdAt: string }>();
+    for (const agent of await this.agentStorage.listByWorkspaces(
+      children.map((child) => child.workspaceId),
+      { includeArchived: true },
+    )) {
+      if (!agent.workspaceId || agent.internal) continue;
+      const current = firstAgentIdByWorkspaceId.get(agent.workspaceId);
+      if (!current || agent.createdAt < current.createdAt) {
+        firstAgentIdByWorkspaceId.set(agent.workspaceId, {
+          id: agent.id,
+          createdAt: agent.createdAt,
+        });
+      }
+    }
+    return {
+      archivedSubSessions: children
+        .sort((left, right) => right.archivedAt!.localeCompare(left.archivedAt!))
+        .map((child) => ({
+          workspaceId: child.workspaceId,
+          name: resolveWorkspaceDisplayName(child),
+          archivedAt: child.archivedAt!,
+          agentId: firstAgentIdByWorkspaceId.get(child.workspaceId)?.id ?? null,
+        })),
     };
   }
 

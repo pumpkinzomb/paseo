@@ -273,6 +273,64 @@ test("archiving a branch-off worktree removes its checkout but keeps its branch 
   expect(runGit(repoDir, "rev-parse", "refs/heads/feature/sub-session")).toBe(head);
 }, 180000);
 
+test("an archived sub-session stays listed on its parent with the agent that ran it", async () => {
+  const daemon = await createTestPaseoDaemon();
+  const { repoDir, tempRoot } = createGitRepoWithBranch();
+  const client = new DaemonClient({
+    url: `ws://127.0.0.1:${daemon.port}/ws`,
+    appVersion: "0.11.2",
+  });
+  onTestFinished(async () => {
+    await client.close().catch(() => undefined);
+    await daemon.close();
+    await rm(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  });
+  await client.connect();
+  const parent = await client.createWorkspace({ source: { kind: "directory", path: repoDir } });
+  expect(parent.error).toBeNull();
+  const parentWorkspaceId = parent.workspace!.id;
+  const orchestrator = await client.createAgent({
+    workspaceId: parentWorkspaceId,
+    config: { provider: "codex", cwd: repoDir },
+  });
+  const child = await client.createWorkspace({
+    source: {
+      kind: "worktree",
+      cwd: repoDir,
+      action: "branch-off",
+      branchName: "sub-session/review",
+      baseBranch: "main",
+    },
+    callerAgentId: orchestrator.id,
+  });
+  expect(child.error).toBeNull();
+  const childWorkspace = child.workspace!;
+  expect(childWorkspace.parentWorkspaceId).toBe(parentWorkspaceId);
+  const worker = await client.createAgent({
+    workspaceId: childWorkspace.id,
+    config: { provider: "codex", cwd: childWorkspace.workspaceDirectory },
+  });
+  const beforeArchive = await client.fetchWorkspaces();
+  expect(
+    beforeArchive.entries.find((entry) => entry.id === parentWorkspaceId)?.archivedSubSessions,
+  ).toBeUndefined();
+
+  expect((await client.archiveWorkspace(childWorkspace.id)).error).toBeNull();
+
+  const listed = await client.fetchWorkspaces();
+  expect(listed.entries.map((entry) => entry.id)).not.toContain(childWorkspace.id);
+  expect(
+    listed.entries.find((entry) => entry.id === parentWorkspaceId)?.archivedSubSessions,
+  ).toEqual([
+    {
+      workspaceId: childWorkspace.id,
+      name: childWorkspace.name,
+      archivedAt: expect.any(String),
+      agentId: worker.id,
+    },
+  ]);
+}, 180000);
+
 test("adopting a linked worktree as a directory workspace joins its main repo's project", async () => {
   const daemon = await createTestPaseoDaemon();
   const { repoDir, tempRoot } = createGitRepoWithBranch();

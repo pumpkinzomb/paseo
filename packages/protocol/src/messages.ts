@@ -4561,10 +4561,22 @@ export const WorkspaceGitHubRuntimePayloadSchema = z
   .optional()
   .nullable();
 
+export const ArchivedSubSessionPayloadSchema = z.object({
+  workspaceId: z.string(),
+  name: z.string(),
+  archivedAt: z.string(),
+  // The sub-session's first agent, whose timeline records what the sub-session did.
+  agentId: z.string().nullable(),
+});
+
 export const WorkspaceDescriptorPayloadSchema = z
   .object({
-    // Informational creation ancestry; independent of placement and lifecycle.
+    // Creation ancestry. Clients nest sub-sessions under this parent; placement and lifecycle
+    // stay independent of it.
     parentWorkspaceId: z.string().optional(),
+    // Archived workspaces this one's agents created, so finished sub-sessions stay reviewable
+    // from the parent after cleanup. Absent from daemons that predate the field.
+    archivedSubSessions: z.array(ArchivedSubSessionPayloadSchema).optional(),
     id: z.string(),
     projectId: z.string(),
     projectDisplayName: z.string(),
@@ -7879,6 +7891,7 @@ export type ProjectCheckoutLitePayload = z.infer<typeof ProjectCheckoutLitePaylo
 export type ProjectPlacementPayload = z.infer<typeof ProjectPlacementPayloadSchema>;
 export type WorkspaceStateBucket = z.infer<typeof WorkspaceStateBucketSchema>;
 export type WorkspaceDescriptorPayload = z.infer<typeof WorkspaceDescriptorPayloadSchema>;
+export type ArchivedSubSessionPayload = z.infer<typeof ArchivedSubSessionPayloadSchema>;
 export type WorkspaceProjectDescriptorPayload = z.infer<
   typeof WorkspaceProjectDescriptorPayloadSchema
 >;
