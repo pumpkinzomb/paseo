@@ -193,7 +193,7 @@ export function useUsageHostReports({
     staleTimeMs: REPORTS_STALE_TIME_MS,
     refetchInterval: shouldPoll ? REPORTS_REFETCH_INTERVAL_MS : false,
   });
-  return setting.enabled ? (query.data ?? NO_REPORTS) : NO_REPORTS;
+  return setting.enabled ? query.data ?? NO_REPORTS : NO_REPORTS;
 }
 
 /**
@@ -262,7 +262,7 @@ export function useReportRefresh(
   serverId: string,
   reportId: string,
   agentId?: string,
-): { refresh: () => void; refreshState: UsageRefresh } {
+): { refresh: () => void; refreshAfterLogin: () => Promise<void>; refreshState: UsageRefresh } {
   const queryClient = useQueryClient();
   const usageScopeKey = useAgentUsageScopeKey(serverId, agentId);
   const mutation = useMutation({
@@ -278,5 +278,21 @@ export function useReportRefresh(
   });
   const { mutate } = mutation;
   const refresh = useCallback(() => mutate(), [mutate]);
-  return { refresh, refreshState: resolveUsageRefresh(mutation) };
+  const refreshAfterLogin = useCallback(async () => {
+    // A new login can change both account identity and credential source. Rediscover
+    // the scope instead of fetching the old report ID with the rejected credential.
+    const queryKey =
+      agentId === undefined
+        ? usageReportsQueryKey(serverId)
+        : agentUsageQueryKey(serverId, agentId, usageScopeKey);
+    const reports = await streamReports({
+      queryClient,
+      queryKey,
+      serverId,
+      agentId,
+      forceRefresh: true,
+    });
+    queryClient.setQueryData(queryKey, reports);
+  }, [queryClient, serverId, agentId, usageScopeKey]);
+  return { refresh, refreshAfterLogin, refreshState: resolveUsageRefresh(mutation) };
 }

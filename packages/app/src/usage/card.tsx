@@ -58,7 +58,11 @@ export function UsageCard({
 }) {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
-  const { refresh, refreshState } = useReportRefresh(serverId, entry.id, agentId);
+  const { refresh, refreshAfterLogin, refreshState } = useReportRefresh(
+    serverId,
+    entry.id,
+    agentId,
+  );
   const isLocal = useIsLocalDaemon(serverId);
   const [authPending, setAuthPending] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -73,7 +77,7 @@ export function UsageCard({
     setAuthPending(true);
     try {
       await getElectronHost()!.usageAuth!.start(entry.sourceId);
-      refresh();
+      await refreshAfterLogin();
     } catch {
       setAuthError(t("providerUsage.reconnectFailed"));
     } finally {

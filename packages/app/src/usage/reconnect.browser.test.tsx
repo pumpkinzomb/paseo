@@ -8,6 +8,7 @@ import type { UsageReportEntry } from "./types";
 
 const state = vi.hoisted(() => ({
   refresh: vi.fn(),
+  refreshAfterLogin: vi.fn().mockResolvedValue(undefined),
   login: vi.fn().mockResolvedValue(undefined),
   refreshState: "idle" as "idle" | "pending",
 }));
@@ -55,6 +56,7 @@ let container: HTMLDivElement;
 beforeEach(async () => {
   vi.stubGlobal("React", React);
   state.refresh.mockClear();
+  state.refreshAfterLogin.mockClear();
   state.login.mockReset().mockResolvedValue(undefined);
   state.refreshState = "idle";
   await i18n.changeLanguage("en");
@@ -91,7 +93,8 @@ it("starts sign-in, not a refresh of rejected credentials", async () => {
   expect(container.textContent).toContain("Complete the browser login");
   await act(async () => button.click());
   expect(state.login).toHaveBeenCalledWith("cursor");
-  expect(state.refresh).toHaveBeenCalledOnce();
+  expect(state.refreshAfterLogin).toHaveBeenCalledOnce();
+  expect(state.refresh).not.toHaveBeenCalled();
 });
 
 it("renders the reconnect guidance tooltip as Text without raw text node warnings", async () => {
@@ -111,7 +114,8 @@ it("renders the reconnect guidance tooltip as Text without raw text node warning
     expect(errors.mock.calls.flat().join(" ")).not.toContain("Unexpected text node");
     await act(async () => button.click());
     expect(state.login).toHaveBeenCalledWith("cursor");
-    expect(state.refresh).toHaveBeenCalledOnce();
+    expect(state.refreshAfterLogin).toHaveBeenCalledOnce();
+    expect(state.refresh).not.toHaveBeenCalled();
     act(() => {
       button.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
       button.dispatchEvent(new PointerEvent("pointerleave", { pointerType: "mouse" }));
