@@ -120,7 +120,7 @@ describe("resident browser webviews", () => {
     expectResidentWebviewParking(webview);
   });
 
-  it("presents and parks a browser without changing its webview parent", () => {
+  it("mounts a visible browser inside its panel and parks only when released", () => {
     const webview = ensureTestBrowser({
       browserId: "browser-stable-parent",
       workspaceId: "workspace-stable-parent",
@@ -142,16 +142,12 @@ describe("resident browser webviews", () => {
     presentBrowserWebview("browser-stable-parent", webview, anchor, clip, {
       mode: "responsive",
     });
-    expect(webview.parentElement).toBe(permanentParent);
-    expect(permanentParent.style.left).toBe("40px");
-    expect(permanentParent.style.top).toBe("60px");
-    expect(permanentParent.style.width).toBe("640px");
-    expect(permanentParent.style.height).toBe("480px");
-    expect(permanentParent.style.pointerEvents).toBe("auto");
-    expect(permanentParent.getAttribute("aria-hidden")).toBe("false");
-    expect(webview.style.flex).toBe("0 0 auto");
-    expect(webview.style.width).toBe("640px");
-    expect(webview.style.height).toBe("480px");
+    expect(webview.parentElement).toBe(anchor);
+    expect(clip.style.overflow).toBe("hidden");
+    expect(clip.style.contain).toBe("paint");
+    expect(webview.style.position).toBe("");
+    expect(webview.style.width).toBe("100%");
+    expect(webview.style.height).toBe("100%");
 
     releaseResidentBrowserWebview("browser-stable-parent", webview);
     expect(webview.parentElement).toBe(permanentParent);
@@ -160,7 +156,7 @@ describe("resident browser webviews", () => {
     presentBrowserWebview("browser-stable-parent", webview, anchor, clip, {
       mode: "responsive",
     });
-    expect(webview.parentElement).toBe(permanentParent);
+    expect(webview.parentElement).toBe(anchor);
   });
 
   it("clips an oversized fixed viewport to its pane without resizing the webview", () => {
@@ -187,21 +183,18 @@ describe("resident browser webviews", () => {
       height: 1440,
     });
 
-    expect(webview.parentElement.style.left).toBe("100px");
-    expect(webview.parentElement.style.top).toBe("150px");
-    expect(webview.parentElement.style.width).toBe("800px");
-    expect(webview.parentElement.style.height).toBe("600px");
-    expect(webview.style.left).toBe("-900px");
-    expect(webview.style.top).toBe("-450px");
+    expect(webview.parentElement).toBe(anchor);
+    expect(clip.style.overflow).toBe("hidden");
+    expect(webview.style.left).toBe("");
+    expect(webview.style.top).toBe("");
     expect(webview.style.width).toBe("2560px");
     expect(webview.style.height).toBe("1440px");
 
     resizeResidentBrowserWebview({ browserId: "browser-oversized", width: 2560, height: 1440 });
 
-    expect(webview.style.left).toBe("-900px");
-    expect(webview.style.top).toBe("-450px");
-    expect(webview.parentElement.style.width).toBe("800px");
-    expect(webview.parentElement.style.height).toBe("600px");
+    expect(webview.style.left).toBe("");
+    expect(webview.style.top).toBe("");
+    expect(webview.parentElement).toBe(anchor);
   });
 
   it("creates a resident webview for an agent-created unfocused tab", () => {
@@ -240,7 +233,9 @@ describe("resident browser webviews", () => {
     Object.assign(secondWebview, { getWebContentsId: () => 202 });
 
     firstWebview.dispatchEvent(new Event("did-attach"));
-    secondWebview.dispatchEvent(new Event("did-attach"));
+    expect(attachedBrowsers).toEqual([]);
+    firstWebview.dispatchEvent(new Event("dom-ready"));
+    secondWebview.dispatchEvent(new Event("dom-ready"));
 
     expect(firstWebview.getAttribute("partition")).toBe("persist:paseo-browser");
     expect(secondWebview.getAttribute("partition")).toBe("persist:paseo-browser");

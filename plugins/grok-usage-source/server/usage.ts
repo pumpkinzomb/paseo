@@ -1,3 +1,4 @@
+import { refreshGrokToken } from "./auth-refresh.js";
 import type { UsageInput } from "../shared/input.js";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
@@ -33,6 +34,10 @@ const GrokUsageResponseSchema = z.object({
           val: ApiNumberSchema.optional(),
         })
         .nullish(),
+      // Official CLI CentAmount defaults omitted proto3 val to zero. Amounts are cents.
+      prepaidBalance: z.object({ val: ApiNumberSchema.default(0) }).nullish(),
+      onDemandUsed: z.object({ val: ApiNumberSchema.default(0) }).nullish(),
+      onDemandCap: z.object({ val: ApiNumberSchema.default(0) }).nullish(),
       creditUsagePercent: ApiNumberSchema.optional(),
       currentPeriod: z
         .object({
@@ -112,38 +117,84 @@ function grokUsageWindow(response: z.infer<typeof GrokUsageResponseSchema>): Usa
   });
 }
 
+function grokBalances(resp: z.infer<typeof GrokUsageResponseSchema>): UsageBalance[] {
+  const balance = grokCreditBalance(resp);
+  const balances: UsageBalance[] = balance ? [balance] : [];
+  const config = resp.config;
+  if (config?.prepaidBalance) {
+    balances.push({
+      id: "prepaid",
+      label: "Prepaid balance",
+      unit: "usd",
+      remaining: Math.abs(config.prepaidBalance.val) / 100,
+    });
+  }
+  if (config?.onDemandUsed || config?.onDemandCap) {
+    const used = config.onDemandUsed ? Math.abs(config.onDemandUsed.val) / 100 : null;
+    const limit = config.onDemandCap ? Math.abs(config.onDemandCap.val) / 100 : null;
+    balances.push({
+      id: "on_demand",
+      label: "Pay as you go",
+      unit: "usd",
+      used,
+      limit,
+      remaining: used !== null && limit !== null ? Math.max(0, limit - used) : null,
+      tone: toneFromUsedPct(usedPctOf(used, limit)),
+    });
+  }
+
+  return balances;
+}
+
 export async function fetchUsage(
   input: UsageInput,
   fetchApi: typeof fetch = fetch,
+  refreshToken: (locator: string) => Promise<string | undefined> = refreshGrokToken,
 ): Promise<UsageReport> {
   const token = await readToken(input);
   if (!token) throw new Error("Grok login store no longer exists");
 
   // The Grok CLI's /usage uses ?format=credits; without it, unified-billing accounts
   // get a zeroed legacy monthly shape (monthlyLimit.val 0) instead of real usage.
-  const res = await fetchApi("https://cli-chat-proxy.grok.com/v1/billing?format=credits", {
-    signal: AbortSignal.timeout(15_000),
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "X-XAI-Token-Auth": "xai-grok-cli",
-      Accept: "application/json",
-    },
-  });
+  const request = (bearer: string) =>
+    fetchApi("https://cli-chat-proxy.grok.com/v1/billing?format=credits", {
+      signal: AbortSignal.timeout(15_000),
+      headers: {
+        Authorization: `Bearer ${bearer}`,
+        "X-XAI-Token-Auth": "xai-grok-cli",
+        Accept: "application/json",
+      },
+    });
 
+  let res = await request(token);
+  // Only an expired/rejected file credential can use the official native refresh.
+  // Environment keys and forbidden (403) responses must not trigger auth changes.
+  if (res.status === 401 && input.store === "file") {
+    const refreshed = await refreshToken(input.locator).catch(() => undefined);
+    if (refreshed && refreshed !== token) res = await request(refreshed);
+  }
   if (res.status === 401 || res.status === 403)
     return unavailable({ kind: "rejected", status: res.status });
   if (!res.ok) throw new Error(`Grok usage API returned ${res.status}`);
 
   const resp = GrokUsageResponseSchema.parse(await res.json());
-  const balance = grokCreditBalance(resp);
   const window = grokUsageWindow(resp);
+  const balances = grokBalances(resp);
 
   return {
     status: "available",
     planLabel: undefined,
     windows: window ? [window] : [],
-    balances: balance ? [balance] : [],
-    details: [],
+    balances,
+    details: window
+      ? []
+      : [
+          {
+            id: "quota_unreported",
+            label: "Plan quota",
+            value: "Grok did not report plan usage percentage for this account.",
+          },
+        ],
   };
 }
 

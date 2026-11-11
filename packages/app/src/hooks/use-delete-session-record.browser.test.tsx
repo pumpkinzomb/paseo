@@ -21,25 +21,34 @@ vi.mock("@/runtime/host-runtime", () => ({
   }),
   getHostRuntimeStore: () => ({ refreshDirectories: mocks.refresh }),
 }));
-vi.mock("@/runtime/host-features", () => ({ useHostFeature: () => mocks.supported }));
+vi.mock("@/runtime/host-features", () => ({
+  useHostFeature: () => mocks.supported,
+}));
 vi.mock("@/utils/confirm-dialog", () => ({ confirmDialog: mocks.confirm }));
 vi.mock("@/contexts/toast-context", () => ({ useToast: () => mocks.toast }));
 vi.mock("@/default-assistant/conversation", () => ({
   ASSISTANT_CONVERSATION_QUERY_ROOT: "testConversation",
 }));
 vi.mock("@/stores/session-store", () => ({
-  useSessionStore: Object.assign(() => mocks.manager, { getState: () => ({ sessions: {} }) }),
+  useSessionStore: Object.assign(() => mocks.manager, {
+    getState: () => ({ sessions: {} }),
+  }),
 }));
 vi.mock("@/stores/workspace-layout-store", () => ({
   useWorkspaceLayoutStore: { getState: () => ({}) },
 }));
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
 beforeEach(() => {
   vi.stubGlobal("React", React);
   mocks.supported = true;
   mocks.manager = false;
   mocks.fetch.mockReset().mockImplementation(async () => ({
-    agent: { id: "test", labels: mocks.manager ? { "paseo.role": "assistant" } : {} },
+    agent: {
+      id: "test",
+      labels: mocks.manager ? { "paseo.role": "assistant" } : {},
+    },
   }));
   mocks.deleteRecord.mockReset().mockResolvedValue({ agentIds: ["test"], error: null });
   mocks.deleteConversation.mockReset().mockResolvedValue({ agentIds: ["test"], error: null });
@@ -49,8 +58,8 @@ beforeEach(() => {
   mocks.toast.error.mockReset();
 });
 afterEach(cleanup);
-function Harness() {
-  const remove = useDeleteSessionRecord("fake", "test");
+function Harness({ workspaceId }: { workspaceId?: string }) {
+  const remove = useDeleteSessionRecord("fake", "test", undefined, workspaceId);
   const handleClick = useCallback(() => {
     void remove?.();
   }, [remove]);
@@ -60,14 +69,35 @@ function Harness() {
     </button>
   );
 }
-function show() {
+function show(workspaceId?: string) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <Harness />
+      <Harness workspaceId={workspaceId} />
     </QueryClientProvider>,
   );
 }
 describe("session delete routing (no real backend)", () => {
+  it("refuses a stale workspace target before confirmation", async () => {
+    mocks.fetch.mockResolvedValue({
+      agent: { id: "test", title: "Moved", workspaceId: "other", labels: {} },
+    });
+    show("expected");
+    fireEvent.click(screen.getByRole("button"));
+    await waitFor(() =>
+      expect(mocks.toast.error).toHaveBeenCalledWith("workspaceSessionDeletion.moved"),
+    );
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.deleteRecord).not.toHaveBeenCalled();
+  });
+  it("names the selected session in the final confirmation", async () => {
+    mocks.fetch.mockResolvedValue({
+      agent: { id: "test", title: "Chosen task", labels: {} },
+    });
+    show();
+    fireEvent.click(screen.getByRole("button"));
+    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1));
+    expect(mocks.confirm.mock.calls[0][0].title).toBe("sessionRecordDeletion.title: Chosen task");
+  });
   it("cancel preserves an ordinary session", async () => {
     show();
     fireEvent.click(screen.getByRole("button"));

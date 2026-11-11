@@ -1,3 +1,7 @@
+import {
+  useWorkspaceSessionDeletePages,
+  WORKSPACE_SESSION_DELETE_PAGE_ID,
+} from "./workspace-session-delete-page";
 import { useMemo, type ComponentProps, type PropsWithChildren, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { PressableStateCallbackType } from "react-native";
@@ -267,6 +271,14 @@ function SidebarWorkspaceMenuItems({
         path={openInFileManagerPath}
         testID={`sidebar-workspace-menu-open-folder-${workspaceKey}`}
       />
+      {serverId && workspaceId ? (
+        <DropdownMenuSubTrigger
+          id={WORKSPACE_SESSION_DELETE_PAGE_ID}
+          testID={`sidebar-workspace-menu-delete-session-${workspaceKey}`}
+        >
+          {t("workspaceSessionDeletion.menu")}
+        </DropdownMenuSubTrigger>
+      ) : null}
       {onArchive ? (
         <WorkspaceMenuItem
           surface={surface}
@@ -311,7 +323,9 @@ export function SidebarWorkspaceMenu({
       serverId && workspaceId ? { serverId, workspaceId, labels: workspaceLabels ?? [] } : null,
     [serverId, workspaceId, workspaceLabels],
   );
-  const pages = useWorkspaceLabelMenuPages(workspaceTarget);
+  const labelPages = useWorkspaceLabelMenuPages(workspaceTarget);
+  const sessionPages = useWorkspaceSessionDeletePages(workspaceTarget);
+  const pages = useMemo(() => [...labelPages, ...sessionPages], [labelPages, sessionPages]);
   return (
     <DropdownMenu compactMode="sheet" open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
@@ -425,7 +439,9 @@ export function SidebarWorkspaceContextMenu({
     }),
     [workspace],
   );
-  const pages = useWorkspaceLabelMenuPages(workspaceTarget);
+  const labelPages = useWorkspaceLabelMenuPages(workspaceTarget);
+  const sessionPages = useWorkspaceSessionDeletePages(workspaceTarget);
+  const pages = useMemo(() => [...labelPages, ...sessionPages], [labelPages, sessionPages]);
 
   return (
     <ContextMenu open={contextMenuOpen} onOpenChange={onContextMenuOpenChange}>

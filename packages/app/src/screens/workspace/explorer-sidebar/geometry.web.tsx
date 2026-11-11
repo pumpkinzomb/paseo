@@ -41,9 +41,7 @@ export function useExplorerGeometry({
         <ResizeHandle
           testID="workspace-explorer-sidebar-resize-handle"
           direction="horizontal"
-          // Keep the grab strip outside the dock: the resident browser surface
-          // is hosted above pane content and would intercept the inside strip.
-          hitAreaAlignment="start"
+          hitAreaAlignment="end"
           groupId="explorer-sidebar"
           index={0}
           sizes={sizes}

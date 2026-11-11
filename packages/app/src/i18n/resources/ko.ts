@@ -2,6 +2,14 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
+  workspaceSessionDeletion: {
+    menu: "세션 삭제…",
+    choose: "이 워크스페이스에서 삭제할 세션을 선택하세요. 프로젝트 파일은 삭제되지 않습니다.",
+    empty: "이 워크스페이스에 세션이 없습니다.",
+    loading: "세션 불러오는 중…",
+    moved: "세션이 다른 워크스페이스로 이동했습니다. 해당 메뉴를 다시 열어주세요.",
+    scope: "상위 대화는 연결된 모델 구간 전체를 삭제하며, 제공자 원본은 유지합니다.",
+  },
   localSessions: {
     title: "로컬 세션",
     description:

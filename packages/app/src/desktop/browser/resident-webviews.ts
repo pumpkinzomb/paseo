@@ -59,8 +59,9 @@ function registerBrowserWhenAttached(
   browser: BrowserWebviewProfileHost,
 ): void {
   // Reparenting a webview can replace its guest WebContents without replacing
-  // this DOM element, so every attachment needs a fresh main-process registration.
-  webview.addEventListener("did-attach", () => {
+  // this DOM element. Electron permits getWebContentsId only after dom-ready,
+  // so register each ready guest rather than racing did-attach.
+  webview.addEventListener("dom-ready", () => {
     const webContentsId = webview.getWebContentsId();
     void browser
       .registerAttachedBrowser({
@@ -87,8 +88,8 @@ function readDocument(): Document | null {
 }
 
 function applyResidentHostParkingStyle(host: HTMLElement): void {
-  // The host is permanent. Individual browser surfaces switch between their
-  // pane bounds and the proven paintable 1x1 parking geometry.
+  // Parking is only for pages without a mounted panel. Visible guests are
+  // children of their panel and never use this global layer.
   host.removeAttribute("aria-hidden");
   host.style.position = "fixed";
   host.style.left = "0";
@@ -249,48 +250,25 @@ export function presentBrowserWebview(
   if (!ownerDocument) {
     return;
   }
-  const surface = getBrowserSurface(normalizedBrowserId, ownerDocument);
-  if (webview.parentElement !== surface) {
-    surface.appendChild(webview);
-  }
-  const anchorBounds = anchor.getBoundingClientRect();
-  const clipBounds = clip.getBoundingClientRect();
-  const left = Math.max(anchorBounds.left, clipBounds.left);
-  const top = Math.max(anchorBounds.top, clipBounds.top);
-  const right = Math.min(
-    anchorBounds.left + anchorBounds.width,
-    clipBounds.left + clipBounds.width,
-  );
-  const bottom = Math.min(
-    anchorBounds.top + anchorBounds.height,
-    clipBounds.top + clipBounds.height,
-  );
-  const surfaceLeft = Math.ceil(left);
-  const surfaceTop = Math.ceil(top);
-  const surfaceRight = Math.floor(right);
-  const surfaceBottom = Math.floor(bottom);
-  const hasVisibleArea = surfaceRight > surfaceLeft && surfaceBottom > surfaceTop;
-  surface.setAttribute("aria-hidden", "false");
-  surface.style.position = "fixed";
-  surface.style.left = `${surfaceLeft}px`;
-  surface.style.top = `${surfaceTop}px`;
-  surface.style.width = `${Math.max(0, surfaceRight - surfaceLeft)}px`;
-  surface.style.height = `${Math.max(0, surfaceBottom - surfaceTop)}px`;
-  surface.style.overflow = "hidden";
-  surface.style.opacity = "1";
-  surface.style.pointerEvents = hasVisibleArea ? "auto" : "none";
-  surface.style.display = "flex";
-  surface.style.visibility = "visible";
+  // The guest belongs to the panel DOM. CSS owns its position and clipping;
+  // no viewport coordinates, detached visible surface or per-frame sync.
+  residentWebviewsByBrowserId.set(normalizedBrowserId, webview);
+  anchor.style.position = "relative";
+  anchor.style.overflow = "hidden";
+  anchor.style.minWidth = "0";
+  clip.style.overflow = "hidden";
+  clip.style.isolation = "isolate";
+  clip.style.contain = "paint";
+  if (webview.parentElement !== anchor) anchor.appendChild(webview);
   clearResidentWebviewParkingStyle(webview);
-  applyBrowserWebviewDimensions(
-    webview,
-    viewport.mode === "responsive"
-      ? { width: anchorBounds.width, height: anchorBounds.height }
-      : viewport,
-  );
-  webview.style.position = "absolute";
-  webview.style.left = `${Math.round(anchorBounds.left - surfaceLeft)}px`;
-  webview.style.top = `${Math.round(anchorBounds.top - surfaceTop)}px`;
+  webview.style.display = "flex";
+  webview.style.border = "0";
+  webview.style.background = "transparent";
+  webview.style.flex = viewport.mode === "responsive" ? "1 1 auto" : "0 0 auto";
+  webview.style.minWidth = "0";
+  webview.style.minHeight = "0";
+  webview.style.width = viewport.mode === "responsive" ? "100%" : `${viewport.width}px`;
+  webview.style.height = viewport.mode === "responsive" ? "100%" : `${viewport.height}px`;
 }
 
 export function prepareBrowserWebview(
@@ -330,10 +308,7 @@ export function ensureResidentBrowserWebview(input: {
   }
 
   const resident = residentWebviewsByBrowserId.get(browserId) ?? null;
-  if (resident?.isConnected) {
-    releaseResidentBrowserWebview(browserId, resident);
-    return resident;
-  }
+  if (resident?.isConnected) return resident;
 
   const existing = findBrowserWebview(browserId, ownerDocument);
   if (existing) {

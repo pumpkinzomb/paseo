@@ -12,7 +12,12 @@ import { allAgentHistoryQueryRootKey } from "./agent-history-query-key";
 import { ASSISTANT_CONVERSATION_QUERY_ROOT } from "@/default-assistant/conversation";
 
 /** One visible session action. Managers route through whole-conversation lifecycle, never raw deletion. */
-export function useDeleteSessionRecord(serverId: string, agentId?: string, onDeleted?: () => void) {
+export function useDeleteSessionRecord(
+  serverId: string,
+  agentId?: string,
+  onDeleted?: () => void,
+  expectedWorkspaceId?: string,
+) {
   const { t } = useTranslation();
   const toast = useToast();
   const client = useHostRuntimeClient(serverId);
@@ -42,9 +47,12 @@ export function useDeleteSessionRecord(serverId: string, agentId?: string, onDel
     try {
       const current = await client.fetchAgent({ agentId });
       if (!current) throw new Error(t("sessionRecordDeletion.notFound"));
+      if (expectedWorkspaceId && current.agent.workspaceId !== expectedWorkspaceId) {
+        throw new Error(t("workspaceSessionDeletion.moved"));
+      }
       const manager = current.agent.labels?.["paseo.role"] === "assistant";
       const confirmed = await confirmDialog({
-        title: t(manager ? "assistantLifecycle.delete" : "sessionRecordDeletion.title"),
+        title: `${t(manager ? "assistantLifecycle.delete" : "sessionRecordDeletion.title")}: ${current.agent.title || agentId}`,
         message: t(manager ? "assistantLifecycle.deleteConfirm" : "sessionRecordDeletion.confirm"),
         confirmLabel: t("assistantLifecycle.delete"),
         cancelLabel: t("common.actions.cancel"),
@@ -74,6 +82,6 @@ export function useDeleteSessionRecord(serverId: string, agentId?: string, onDel
     } finally {
       locked.current = false;
     }
-  }, [agentId, client, onDeleted, queryClient, serverId, supported, t, toast]);
+  }, [agentId, client, expectedWorkspaceId, onDeleted, queryClient, serverId, supported, t, toast]);
   return supported && agentId ? remove : undefined;
 }

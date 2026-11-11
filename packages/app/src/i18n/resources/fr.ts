@@ -2,6 +2,7 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const fr: TranslationResources = {
+  workspaceSessionDeletion: en.workspaceSessionDeletion,
   browserDock: en.browserDock,
   localSessions: en.localSessions,
   sessionRecordDeletion: en.sessionRecordDeletion,

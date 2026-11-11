@@ -369,3 +369,78 @@ it("does not call credits monthly when no monthly limit was reported", async () 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+describe("unified billing amounts", () => {
+  it("shows cents as USD without inventing a missing quota", async () => {
+    process.env.GROK_USAGE_FIXTURE = "fixture";
+    try {
+      const report = await fetchUsage(
+        { store: "env", locator: "GROK_USAGE_FIXTURE" },
+        vi.fn(async () =>
+          jsonResponse({
+            config: {
+              prepaidBalance: { val: -1234 },
+              onDemandUsed: {},
+              onDemandCap: { val: 5000 },
+            },
+          }),
+        ) as unknown as typeof fetch,
+      );
+      expect(report).toMatchObject({
+        status: "available",
+        windows: [],
+        balances: [
+          { id: "prepaid", remaining: 12.34, unit: "usd" },
+          { id: "on_demand", used: 0, limit: 50, remaining: 50, unit: "usd" },
+        ],
+        details: [{ id: "quota_unreported" }],
+      });
+    } finally {
+      delete process.env.GROK_USAGE_FIXTURE;
+    }
+  });
+});
+
+it("retries rejected file authentication once using the official refresh dependency", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "grok-refresh-test-"));
+  const path = join(dir, "auth.json");
+  writeFileSync(path, JSON.stringify({ access_token: "old-fixture" }));
+  const refresh = vi.fn(async () => "fresh-fixture");
+  const request = vi.fn(async (_url, options) =>
+    options?.headers?.Authorization === "Bearer fresh-fixture"
+      ? jsonResponse({ config: { creditUsagePercent: 7 } })
+      : new Response(null, { status: 401 }),
+  );
+  try {
+    const report = await fetchUsage(
+      { store: "file", locator: path },
+      request as typeof fetch,
+      refresh,
+    );
+    expect(report.status).toBe("available");
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledTimes(2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+it.each([401, 403])("bounds retry and leaves forbidden credentials intact (%i)", async (status) => {
+  const dir = mkdtempSync(join(tmpdir(), "grok-refresh-fail-"));
+  const path = join(dir, "auth.json");
+  writeFileSync(path, JSON.stringify({ access_token: "old-fixture" }));
+  const refresh = vi.fn(async () => "fresh-fixture");
+  const request = vi.fn(async () => new Response(null, { status }));
+  try {
+    const report = await fetchUsage(
+      { store: "file", locator: path },
+      request as typeof fetch,
+      refresh,
+    );
+    expect(report).toEqual({ status: "unavailable", problem: { kind: "rejected", status } });
+    expect(refresh).toHaveBeenCalledTimes(status === 401 ? 1 : 0);
+    expect(request).toHaveBeenCalledTimes(status === 401 ? 2 : 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

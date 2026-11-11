@@ -1,4 +1,13 @@
 export const en = {
+  workspaceSessionDeletion: {
+    menu: "Delete session…",
+    choose: "Choose a session in this workspace. No project files will be deleted.",
+    empty: "No sessions in this workspace.",
+    loading: "Loading sessions…",
+    moved: "This session moved to another workspace. Reopen its menu.",
+    scope:
+      "Assistant conversations delete all connected model segments; provider originals are kept.",
+  },
   localSessions: {
     title: "Local sessions",
     description:

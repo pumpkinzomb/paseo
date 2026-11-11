@@ -1,4 +1,3 @@
-import { trackBrowserSurfaceGeometry } from "../surface-geometry";
 import {
   useCallback,
   useEffect,
@@ -66,7 +65,6 @@ import {
   useBrowserStore,
 } from "@/desktop/browser/store";
 import {
-  applyInactiveBrowserWebviewViewport,
   prepareBrowserWebview,
   presentBrowserWebview,
   rememberBrowserWebviewSize,
@@ -747,12 +745,7 @@ export function BrowserPane({
         initialUrl: initialUnsafeNavigationMessage ? "about:blank" : initialUrlRef.current,
       });
     }
-    releaseResidentBrowserWebview(browserId, webview);
-    if (isPresentedRef.current) {
-      presentBrowserWebview(browserId, webview, host, clip, browserViewportRef.current);
-    } else {
-      applyInactiveBrowserWebviewViewport(browserId, webview, browserViewportRef.current);
-    }
+    presentBrowserWebview(browserId, webview, host, clip, browserViewportRef.current);
     const sizeObserver =
       typeof ResizeObserver === "undefined"
         ? null
@@ -915,10 +908,8 @@ export function BrowserPane({
     if (!webview) {
       return;
     }
-    if (!isPresented) {
-      releaseResidentBrowserWebview(browserId, webview);
-      return;
-    }
+    // RetainedPanel hides inactive pages in place. Do not detach/reparent the
+    // guest during tab switches or sidebar visibility changes.
     const host = webviewHostRef.current;
     const clip = webviewClipRef.current;
     if (host && clip) {
@@ -933,12 +924,6 @@ export function BrowserPane({
     } else {
       rememberResolvedBrowserWebviewSize(browserId, webview);
     }
-    if (!host || !clip) return;
-    // Only the visible page tracks position; retained background pages stay parked.
-    return trackBrowserSurfaceGeometry(host, clip, () => {
-      presentBrowserWebview(browserId, webview, host, clip, browserViewport);
-      rememberResolvedBrowserWebviewSize(browserId, webview);
-    });
   }, [browserId, browserViewport, isPresented]);
 
   const navigate = useCallback(

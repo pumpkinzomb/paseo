@@ -82,7 +82,7 @@ export interface UsageSourceRegistration {
   input: ZodType;
   /** Accounts for this scope only. The same key in any scope identifies the same account. */
   discover(scope: UsageScope): Promise<UsageAccount[]>;
-  /** Re-reads the login store; never writes it. */
+  /** Re-reads login state. Never writes credentials directly; a native CLI may refresh its own login. */
   fetch(input: unknown): Promise<UsageReport>;
 }
 
