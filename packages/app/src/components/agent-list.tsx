@@ -250,90 +250,97 @@ function SessionRow({
   );
 
   return (
-    <Pressable
-      style={pressableStyle}
-      onPress={handlePress}
-      onLongPress={handleLongPress}
-      accessibilityRole="button"
-      testID={`agent-row-${agent.serverId}-${agent.id}`}
-    >
-      <View style={styles.rowContent}>
-        <View style={styles.rowTitleRow}>
-          <HighlightedText
-            text={workspaceName || projectName}
-            ranges={workspaceName ? ranges.workspace : ranges.project}
-            style={styles.workspaceTitleText}
-            numberOfLines={1}
-            testID={`agent-row-workspace-${agent.serverId}-${agent.id}`}
-          />
-          {!isMobile ? (
-            <>
-              <ChevronRight size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />
-              {agentTitle}
-            </>
+    <View style={styles.rowContainer}>
+      <Pressable
+        style={pressableStyle}
+        onPress={handlePress}
+        onLongPress={handleLongPress}
+        accessibilityRole="button"
+        testID={`agent-row-${agent.serverId}-${agent.id}`}
+      >
+        <View style={styles.rowContent}>
+          <View style={styles.rowTitleRow}>
+            <HighlightedText
+              text={workspaceName || projectName}
+              ranges={workspaceName ? ranges.workspace : ranges.project}
+              style={styles.workspaceTitleText}
+              numberOfLines={1}
+              testID={`agent-row-workspace-${agent.serverId}-${agent.id}`}
+            />
+            {!isMobile ? (
+              <>
+                <ChevronRight size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />
+                {agentTitle}
+              </>
+            ) : null}
+            <SessionRowBadges
+              agent={agent}
+              archivedIcon={archivedIcon}
+              pendingPermissionCount={pendingPermissionCount}
+              showDesktopAttention={showDesktopAttention}
+            />
+          </View>
+          {isMobile ? agentTitle : null}
+          {isMobile ? (
+            <View style={styles.rowMetaRow}>
+              <HighlightedText
+                text={projectName}
+                ranges={ranges.project}
+                style={styles.sessionMetaText}
+                numberOfLines={1}
+                testID={`agent-row-project-${agent.serverId}-${agent.id}`}
+              />
+              <Text style={styles.sessionMetaSeparator}>·</Text>
+              <HighlightedText
+                text={branch}
+                ranges={ranges.branch}
+                style={styles.sessionMetaText}
+                numberOfLines={1}
+                testID={`agent-row-branch-${agent.serverId}-${agent.id}`}
+              />
+              <Text style={styles.sessionMetaSeparator}>·</Text>
+              <AgentActivityTime date={agent.lastActivityAt} isMobile />
+              {showHostColumn && agent.serverLabel ? (
+                <>
+                  <Text style={styles.sessionMetaSeparator}>·</Text>
+                  <Text style={styles.sessionMetaText} numberOfLines={1}>
+                    {agent.serverLabel}
+                  </Text>
+                </>
+              ) : null}
+            </View>
           ) : null}
-          <SessionRowBadges
-            agent={agent}
-            archivedIcon={archivedIcon}
-            pendingPermissionCount={pendingPermissionCount}
-            showDesktopAttention={showDesktopAttention}
-          />
         </View>
-        {isMobile ? agentTitle : null}
-        {isMobile ? (
-          <View style={styles.rowMetaRow}>
+        {!isMobile ? (
+          <View style={styles.rowColumns}>
             <HighlightedText
               text={projectName}
               ranges={ranges.project}
-              style={styles.sessionMetaText}
+              style={styles.columnMeta}
               numberOfLines={1}
               testID={`agent-row-project-${agent.serverId}-${agent.id}`}
             />
-            <Text style={styles.sessionMetaSeparator}>·</Text>
+            {showHostColumn ? (
+              <Text style={styles.columnMetaHost} numberOfLines={1}>
+                {agent.serverLabel}
+              </Text>
+            ) : null}
             <HighlightedText
               text={branch}
               ranges={ranges.branch}
-              style={styles.sessionMetaText}
+              style={styles.columnMeta}
               numberOfLines={1}
               testID={`agent-row-branch-${agent.serverId}-${agent.id}`}
             />
-            <Text style={styles.sessionMetaSeparator}>·</Text>
-            <AgentActivityTime date={agent.lastActivityAt} isMobile />
-            {showHostColumn && agent.serverLabel ? (
-              <>
-                <Text style={styles.sessionMetaSeparator}>·</Text>
-                <Text style={styles.sessionMetaText} numberOfLines={1}>
-                  {agent.serverLabel}
-                </Text>
-              </>
-            ) : null}
+            <AgentActivityTime date={agent.lastActivityAt} isMobile={false} />
           </View>
         ) : null}
-      </View>
-      {!isMobile ? (
-        <View style={styles.rowColumns}>
-          <HighlightedText
-            text={projectName}
-            ranges={ranges.project}
-            style={styles.columnMeta}
-            numberOfLines={1}
-            testID={`agent-row-project-${agent.serverId}-${agent.id}`}
-          />
-          {showHostColumn ? (
-            <Text style={styles.columnMetaHost} numberOfLines={1}>
-              {agent.serverLabel}
-            </Text>
-          ) : null}
-          <HighlightedText
-            text={branch}
-            ranges={ranges.branch}
-            style={styles.columnMeta}
-            numberOfLines={1}
-            testID={`agent-row-branch-${agent.serverId}-${agent.id}`}
-          />
-          <AgentActivityTime date={agent.lastActivityAt} isMobile={false} />
-        </View>
-      ) : null}
+        <SessionRowTrailingAttention
+          isMobile={isMobile}
+          showAttentionIndicator={showAttentionIndicator}
+          requiresAttention={agent.requiresAttention}
+        />
+      </Pressable>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t("sessionRecordDeletion.actions")}
@@ -343,12 +350,7 @@ function SessionRow({
       >
         <Text>⋯</Text>
       </Pressable>
-      <SessionRowTrailingAttention
-        isMobile={isMobile}
-        showAttentionIndicator={showAttentionIndicator}
-        requiresAttention={agent.requiresAttention}
-      />
-    </Pressable>
+    </View>
   );
 }
 
@@ -632,7 +634,13 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foregroundMuted,
   },
+  rowContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   row: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: theme.spacing[2],
