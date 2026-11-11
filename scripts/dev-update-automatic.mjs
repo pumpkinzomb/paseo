@@ -120,7 +120,8 @@ export class AutomaticUpdateController {
     try {
       lease = await this.createLease({ instance, candidateDigest: digest, mode });
     } catch (error) {
-      return { state: "blocked", reason: String(error) };
+      this.cooldownUntil = this.now() + this.cooldownMs;
+      return { state: "blocked", reason: String(error), retryAt: this.cooldownUntil };
     }
     if (
       !lease ||

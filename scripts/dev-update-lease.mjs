@@ -209,8 +209,14 @@ export async function createDaemonUpdateLease({
       if (response) {
         if (response.version !== 1 || response.id !== id || typeof response.ok !== "boolean")
           throw new Error("Invalid daemon update response");
-        if (!response.ok)
-          throw new Error(`Daemon update blocked: ${response.error?.code ?? "unknown"}`);
+        if (!response.ok) {
+          const detail = response.error?.message;
+          throw new Error(
+            `Daemon update blocked: ${response.error?.code ?? "unknown"}${
+              typeof detail === "string" ? `: ${detail.slice(0, 512)}` : ""
+            }`,
+          );
+        }
         await verifyDescriptor();
         return response.result;
       }

@@ -196,3 +196,24 @@ test("mismatched ready token fails closed and concurrent ticks create only one l
   f.respond("ready", { prepareToken: "other" });
   assert.equal((await f.controller.advance(f.input)).reason, "invalid-ready-receipt");
 });
+
+test("busy daemon preparation backs off without signalling the desktop", async () => {
+  const f = fixture();
+  let attempts = 0;
+  f.controller.createLease = async () => {
+    attempts++;
+    throw new Error("plugin work pending");
+  };
+  assert.deepEqual(await f.controller.advance(f.input), {
+    state: "blocked",
+    reason: "Error: plugin work pending",
+    retryAt: 60000,
+  });
+  assert.equal((await f.controller.advance(f.input)).state, "cooldown");
+  assert.equal(attempts, 1);
+  f.time(60000);
+  assert.equal((await f.controller.advance(f.input)).state, "blocked");
+  assert.equal(attempts, 2);
+  assert.deepEqual(f.calls, []);
+  assert.equal(f.controller.current, null);
+});
