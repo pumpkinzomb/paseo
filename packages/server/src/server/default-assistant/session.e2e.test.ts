@@ -27,8 +27,8 @@ test("default assistant RPC creates without prompting, restores, and deduplicate
     expect(first.error).toBeNull();
     if (!first.agent || !first.workspace) throw new Error("Expected assistant and workspace");
     expect(first.agent.labels["paseo.role"]).toBe("assistant");
-    expect(first.workspace.projectDisplayName).toBe("Assistant");
-    expect(first.workspace.projectCustomName).toBe("Assistant");
+    expect(first.workspace.projectDisplayName).toBe("Lead agent");
+    expect(first.workspace.projectCustomName).toBe("Lead agent");
     expect(first.agent.status).toBe("idle");
     expect(turns).toBe(0);
     expect(first.workspace.workspaceDirectory?.startsWith(daemon.paseoHome)).toBe(true);
@@ -37,7 +37,7 @@ test("default assistant RPC creates without prompting, restores, and deduplicate
     const fresh = await client.ensureDefaultAssistant({ requestId: "new", newSession: true });
     expect(fresh.error).toBeNull();
     expect(fresh.agent?.model).toBe(first.agent.model);
-    expect(fresh.workspace?.projectDisplayName).toBe("Assistant");
+    expect(fresh.workspace?.projectDisplayName).toBe("Lead agent");
     expect(fresh.workspace?.workspaceDirectory).not.toBe(first.workspace.workspaceDirectory);
     expect(fresh.agent?.id).not.toBe(first.agent.id);
     const retry = await client.ensureDefaultAssistant({ requestId: "new", newSession: true });

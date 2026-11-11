@@ -5,7 +5,7 @@ import {
 } from "@getpaseo/protocol/messages";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { writeJsonFileAtomic } from "../atomic-file.js";
 
@@ -364,20 +364,47 @@ export const DEFAULT_ASSISTANT_PROMPT = `You are the user's persistent personal 
 Start with the user's goal, without requiring them to choose a project or agent. Answer simple questions directly. For substantial work, inspect the available providers/profiles and tools, choose a suitable agent, and use Paseo's create_agent and messaging tools to delegate in an explicit appropriate workspace. Collect the result and report what was actually verified. Reuse suitable existing sessions instead of duplicating work. Use list_provider_sessions to discover local Codex/Claude histories across projects. Before connect_provider_session or sending work into a native session owned by another app, ask the user to stop that session in the original app/CLI and confirm it is idle; timestamps do not prove idleness. A connection preserves the native session ID and is not an independent copy. Use a returned linkedAgentId rather than importing a duplicate. When continuing prior work, search list_provider_sessions first. For already connected agents, use list_agents/get_agent_status and send_agent_prompt to delegate authorized work. Never bulk-import native session histories automatically. Your current directory is the conversation workspace selected by Paseo. It may be a user-selected project or a private scratch workspace. Check before assuming it is the user's project.
 For requests to use Paseo's internal browser, use the injected Paseo browser_list_tabs/browser_new_tab and browser_* tools when available. Do not treat a Personal Browser or another app's IAB connection as the same browser. If Paseo browser tools are unavailable, explain the host Browser tools opt-in and request permission before enabling browser access; do not alter other browser integrations. Verify the returned tab and page state before claiming success.
 Preserve the user's language and preferences. Keep ongoing decisions and handoff summaries concise. Do not claim that a delegation or tool action succeeded before checking its result. You cannot control ChatGPT dot or another product unless a connected tool explicitly supports it. Respect tool permissions and approval prompts; never enable bypass permissions, publish, delete data, or make purchases without the user's authorization. Do not run background work merely because this conversation was reopened.`;
+/**
+ * Name the daemon stores for the assistant's own agent, scratch project and scratch
+ * workspace. Stored values are not localized; clients show their own translation
+ * where they can identify the assistant (the `paseo.role` agent label).
+ */
+export const DEFAULT_ASSISTANT_DISPLAY_NAME = "Lead agent";
+/** Auto-generated name written before the rename to "Lead agent". */
+export const LEGACY_DEFAULT_ASSISTANT_DISPLAY_NAME = "Assistant";
+
+const ASSISTANT_GIT_SCRATCH_DIRECTORY = ".paseo-assistant-workspaces";
+
+function assistantHomeIdentity(paseoHome: string): string {
+  return createHash("sha256").update(resolve(paseoHome)).digest("hex").slice(0, 24);
+}
+
 export function assistantWorkspaceDirectory(input: {
   paseoHome: string;
   requestKey: string;
   gitRoot: string | null;
 }): string {
-  const homeIdentity = createHash("sha256")
-    .update(resolve(input.paseoHome))
-    .digest("hex")
-    .slice(0, 24);
+  const homeIdentity = assistantHomeIdentity(input.paseoHome);
   const sessionIdentity = createHash("sha256").update(input.requestKey).digest("hex").slice(0, 24);
   const root = input.gitRoot
-    ? join(dirname(input.gitRoot), ".paseo-assistant-workspaces", homeIdentity)
+    ? join(dirname(input.gitRoot), ASSISTANT_GIT_SCRATCH_DIRECTORY, homeIdentity)
     : join(input.paseoHome, "assistant");
   return join(root, sessionIdentity);
+}
+
+/** True when `directory` is a scratch directory created by `assistantWorkspaceDirectory`. */
+export function isAssistantScratchDirectory(input: {
+  paseoHome: string;
+  directory: string;
+}): boolean {
+  const directory = resolve(input.directory);
+  const parent = dirname(directory);
+  if (parent === directory) return false;
+  if (parent === resolve(input.paseoHome, "assistant")) return true;
+  return (
+    basename(parent) === assistantHomeIdentity(input.paseoHome) &&
+    basename(dirname(parent)) === ASSISTANT_GIT_SCRATCH_DIRECTORY
+  );
 }
 
 export function selectDefaultAssistantProvider(available: string[], preferred?: string): string {

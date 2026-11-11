@@ -8,6 +8,7 @@ import type { AgentStorage } from "./agent/agent-storage.js";
 import { classifyDirectoryForProjectMembership } from "./workspace-registry-bootstrap-legacy.js";
 import { generateWorkspaceId } from "./workspace-registry-model.js";
 import { backfillWorkspaceIdForLegacyAgents } from "./migrations/backfill-workspace-id.migration.js";
+import { renameLegacyDefaultAssistantNames } from "./migrations/rename-default-assistant.migration.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 import {
   createPersistedProjectRecord,
@@ -85,6 +86,7 @@ export async function bootstrapWorkspaceRegistries(options: {
 
   if (projectsExists && workspacesExists) {
     await backfillWorkspaceIdForLegacyAgents(options);
+    await renameLegacyDefaultAssistantNames(options);
     return;
   }
 
@@ -208,6 +210,7 @@ export async function bootstrapWorkspaceRegistries(options: {
   );
 
   await backfillWorkspaceIdForLegacyAgents(options);
+  await renameLegacyDefaultAssistantNames(options);
 
   options.logger.info(
     {
