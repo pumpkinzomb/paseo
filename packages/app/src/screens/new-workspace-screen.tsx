@@ -479,6 +479,9 @@ async function createWorkspaceChatAgent(input: CreateChatAgentInput): Promise<Su
       prompt: text,
       attachments: workspaceNamingAttachments,
       withInitialAgent: false,
+      // Runs while `ensureWorkspace` is still pending, so `createdWorkspace` is not assigned
+      // yet: everything here must come from the snapshot. A throw is swallowed by the creation
+      // client after `navigated` is set, which leaves the user on this screen.
       onEvent: (snapshot) => {
         if (!snapshot.workspace || navigated) return;
         navigated = true;
@@ -489,7 +492,7 @@ async function createWorkspaceChatAgent(input: CreateChatAgentInput): Promise<Su
         ]);
         const initialSetup = buildWorkspaceDraftSetupForCreatedWorkspace({
           forkDraftSetup: input.forkDraftSetup,
-          workspaceDirectory: createdWorkspace.workspaceDirectory,
+          workspaceDirectory: workspace.workspaceDirectory,
           provider,
           composerState,
         });
@@ -504,7 +507,7 @@ async function createWorkspaceChatAgent(input: CreateChatAgentInput): Promise<Su
           draftId: input.draftId,
           initialSetup,
           workspaceId: workspace.id,
-          workspaceDirectory: createdWorkspace.workspaceDirectory,
+          workspaceDirectory: workspace.workspaceDirectory,
           text,
           attachments,
           provider,

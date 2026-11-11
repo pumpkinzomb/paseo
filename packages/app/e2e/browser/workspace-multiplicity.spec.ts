@@ -5,6 +5,7 @@ import {
   assertNewWorkspaceSidebarAndHeader,
   connectNewWorkspaceDaemonClient,
   openGlobalNewWorkspaceComposer,
+  openNewWorkspaceComposer,
   selectNewWorkspaceProject,
   selectWorkspaceIsolation,
   submitNewWorkspaceEmpty,
@@ -165,6 +166,49 @@ test.describe("Workspace multiplicity creation flow", () => {
       await client
         .archivePaseoWorktree({ worktreePath: worktree.workspaceDirectory })
         .catch(() => undefined);
+    } finally {
+      await seeded.cleanup();
+    }
+  });
+
+  test("a prompt sent from a non-git project's + opens the new agent", async ({ page }) => {
+    const seeded: SeededWorkspace = await seedWorkspace({
+      repoPrefix: "multiplicity-prompt-nongit-",
+      git: false,
+    });
+
+    try {
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+      await openNewWorkspaceComposer(page, {
+        projectKey: seeded.projectKey,
+        projectDisplayName: seeded.projectDisplayName,
+      });
+
+      const composer = page.getByRole("textbox", { name: "Message agent..." });
+      await expect(composer).toBeEditable({ timeout: 30_000 });
+      await composer.fill("Hello from a non-git project");
+      await composer.press("Enter");
+
+      const created = await assertNewWorkspaceSidebarAndHeader(page, {
+        serverId: getServerId(),
+        client,
+        previousWorkspaceId: seeded.workspaceId,
+        projectDisplayName: seeded.projectDisplayName,
+        assertSidebarRow: false,
+        assertHeader: false,
+      });
+      expect(created.workspaceDirectory).toBe(seeded.workspaceDirectory);
+
+      const deckEntry = page
+        .getByTestId(`workspace-deck-entry-${getServerId()}:${created.workspaceId}`)
+        .filter({ visible: true });
+      await expect(deckEntry.locator('[data-testid^="workspace-tab-agent_"]')).toHaveCount(1, {
+        timeout: 30_000,
+      });
+      await expect(page.getByRole("textbox", { name: "Message agent..." })).toBeVisible({
+        timeout: 30_000,
+      });
     } finally {
       await seeded.cleanup();
     }
