@@ -1,3 +1,4 @@
+import { CURSOR_CLI_KEYCHAIN_SERVICE, readCursorCliKeychainToken } from "./keychain.js";
 import type { UsageInput } from "../shared/input.js";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -231,6 +232,10 @@ export async function fetchUsage(
 
 async function readToken(input: UsageInput): Promise<string | undefined> {
   if (input.store === "env") return process.env[input.locator];
+  if (input.store === "keychain") {
+    if (input.locator !== CURSOR_CLI_KEYCHAIN_SERVICE) return undefined;
+    return (await readCursorCliKeychainToken()) ?? undefined;
+  }
   const token =
     input.store === "sqlite"
       ? await readCursorTokenFromSqlite(input.locator)
@@ -258,12 +263,24 @@ function cursorAccount(token: string, input: UsageInput): UsageAccount {
   return { key: `store-${key}`, input };
 }
 
-export async function discover(): Promise<UsageAccount[]> {
+export async function discover(
+  platform: NodeJS.Platform = process.platform,
+): Promise<UsageAccount[]> {
   const home = homedir();
   const candidates: UsageInput[] = ["CURSOR_ACCESS_TOKEN", "CURSOR_TOKEN"].map((locator) => ({
     store: "env",
     locator,
   }));
+  if (platform === "darwin") {
+    candidates.push({
+      store: "keychain",
+      locator: CURSOR_CLI_KEYCHAIN_SERVICE,
+    });
+    candidates.push({
+      store: "file",
+      locator: join(home, ".cursor", "auth.json"),
+    });
+  }
   if (process.env.APPDATA)
     candidates.push({
       store: "sqlite",
@@ -297,6 +314,20 @@ export async function discoverSession(
   platform: NodeJS.Platform = process.platform,
 ): Promise<UsageAccount[]> {
   if (scope.provider !== "cursor") return [];
+  if (
+    platform === "darwin" &&
+    !scope.env.CURSOR_API_KEY &&
+    !scope.env.CURSOR_AUTH_TOKEN &&
+    scope.env.AGENT_CLI_CREDENTIAL_STORE !== "file" &&
+    scope.env.AGENT_CLI_CREDENTIAL_STORE !== "memory"
+  ) {
+    const input: UsageInput = {
+      store: "keychain",
+      locator: CURSOR_CLI_KEYCHAIN_SERVICE,
+    };
+    const token = await readToken(input);
+    return token ? [cursorAccount(token, input)] : [];
+  }
   const locator = cursorAgentAuthPath(scope.env, platform);
   if (!locator) return [];
   const input: UsageInput = { store: "file", locator };

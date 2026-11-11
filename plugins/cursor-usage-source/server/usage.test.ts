@@ -3,6 +3,11 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readCursorCliKeychainToken } from "./keychain.js";
+vi.mock("./keychain.js", () => ({
+  CURSOR_CLI_KEYCHAIN_SERVICE: "cursor-access-token",
+  readCursorCliKeychainToken: vi.fn(async () => null),
+}));
 import { discover, discoverSession, fetchUsage } from "./usage.js";
 import type { UsageReport } from "@getpaseo/plugin/server/usage";
 
@@ -58,6 +63,7 @@ describe("cursor usage source", () => {
   let fetchApi: typeof fetch;
   let originalEnv: Record<string, string | undefined>;
   beforeEach(() => {
+    vi.mocked(readCursorCliKeychainToken).mockReset().mockResolvedValue(null);
     homeDir = mkdtempSync(join(tmpdir(), "usage-home-"));
     originalEnv = { ...process.env };
     process.env["HOME"] = homeDir;
@@ -87,6 +93,41 @@ describe("cursor usage source", () => {
     for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
     for (const key in originalEnv) process.env[key] = originalEnv[key];
   });
+  it("prefers the CLI keychain over stale desktop/file logins after reconnect", async () => {
+    writeCursorAuthJson(homeDir, "stale-desktop-token");
+    vi.mocked(readCursorCliKeychainToken).mockResolvedValue("fresh-cli-token");
+    const accounts = await discover("darwin");
+    expect(accounts[0]?.input).toEqual({
+      store: "keychain",
+      locator: "cursor-access-token",
+    });
+    const request = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({ billingCycleStart: null, billingCycleEnd: null }),
+    );
+    await fetchUsage(accounts[0]!.input, request as typeof fetch);
+    expect((request.mock.calls[0]?.[1]?.headers as Record<string, string>).Authorization).toBe(
+      "Bearer fresh-cli-token",
+    );
+  });
+
+  it("keeps explicit environment credentials ahead of CLI credentials", async () => {
+    process.env.CURSOR_ACCESS_TOKEN = "explicit-env-token";
+    vi.mocked(readCursorCliKeychainToken).mockResolvedValue("cli-token");
+    expect((await discover("darwin"))[0]?.input.store).toBe("env");
+    expect(readCursorCliKeychainToken).not.toHaveBeenCalled();
+  });
+
+  it("falls back to file credentials when the CLI keychain is unavailable", async () => {
+    writeCursorAuthJson(homeDir, "file-token");
+    const accounts = await discover("darwin");
+    expect(accounts[0]?.input.store).toBe("file");
+  });
+
+  it("does not query the macOS keychain on Linux discovery", async () => {
+    await discover("linux");
+    expect(readCursorCliKeychainToken).not.toHaveBeenCalled();
+  });
+
   function service(
     _options: {
       platform?: typeof process.platform;
@@ -272,6 +313,13 @@ describe("cursor usage source", () => {
       mkdirSync(join(path, ".."), { recursive: true });
       writeFileSync(path, JSON.stringify({ accessToken: "session-token" }));
     }
+
+    it("discovers default macOS CLI sessions from the same keychain as reconnect", async () => {
+      vi.mocked(readCursorCliKeychainToken).mockResolvedValue("session-cli-token");
+      const accounts = await discoverSession(cursorSession({}), "darwin");
+      expect(accounts[0]?.input).toEqual({ store: "keychain", locator: "cursor-access-token" });
+      expect(await discoverSession(cursorSession({ AGENT_CLI_CREDENTIAL_STORE: "memory" }), "darwin")).toEqual([]);
+    });
 
     it("keeps different accounts separate while joining global and session logins for the same account", async () => {
       function token(sub: string, nonce: string) {
