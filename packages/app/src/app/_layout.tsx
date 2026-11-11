@@ -1,3 +1,4 @@
+import { SupervisedUpdateCheckpoint } from "@/desktop/dev-update/provider";
 import { useHardwareKeyboardPresent } from "@/keyboard";
 import {
   WindowLayoutProvider,
@@ -931,6 +932,7 @@ function RuntimeProviders({ children }: { children: ReactNode }) {
   return (
     <HostRuntimeBootstrapProvider>
       <NotificationOpenBridge />
+      <SupervisedUpdateCheckpoint />
       <SidebarCalloutProvider>
         <ProvidersWrapper>{children}</ProvidersWrapper>
       </SidebarCalloutProvider>

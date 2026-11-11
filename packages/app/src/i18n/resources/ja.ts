@@ -1617,6 +1617,12 @@ export const ja: TranslationResources = {
     details: "詳細",
   },
   startup: {
+    workspaceRestore: {
+      title: "ワークスペースを復元できませんでした",
+      description:
+        "保存されたホストに接続できないか、ワークスペース一覧を読み込めませんでした。保存された選択は変更していません。再接続するか、ホスト設定を確認するか、プロジェクトを選んでください。",
+      hostSettings: "ホスト設定",
+    },
     errorTitle: "問題が発生しました",
     errorDescription:
       "ローカルサーバーの起動に失敗しました。この問題が続く場合は、以下のログを添えてGitHubでIssueを作成してください。",

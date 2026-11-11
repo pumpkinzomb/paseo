@@ -33,3 +33,26 @@ describe("panel instance attributes", () => {
     unsubscribe();
   });
 });
+
+test("aggregate checkpoint sees modified panels in every workspace and invalidates on change", async () => {
+  const { getModifiedPanelCheckpoint, subscribeAllPanelInstanceAttributes } =
+    await import("./panel-instance-attributes");
+  const before = getModifiedPanelCheckpoint();
+  const identity = { serverId: "other-host", workspaceId: "hidden", tabId: "editor" };
+  let notifications = 0;
+  const unsubscribe = subscribeAllPanelInstanceAttributes(() => {
+    notifications++;
+  });
+  setPanelInstanceAttributes(identity, { modified: true });
+  expect(getModifiedPanelCheckpoint()).toEqual({
+    revision: before.revision + 1,
+    count: before.count + 1,
+  });
+  setPanelInstanceAttributes(identity, { modified: false });
+  expect(getModifiedPanelCheckpoint()).toEqual({
+    revision: before.revision + 2,
+    count: before.count,
+  });
+  expect(notifications).toBe(2);
+  unsubscribe();
+});

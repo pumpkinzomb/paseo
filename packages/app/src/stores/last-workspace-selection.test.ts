@@ -71,3 +71,49 @@ describe("last workspace selection", () => {
     });
   });
 });
+
+it("serializes selection writes and strict flush waits for the latest", async () => {
+  let release!: () => void;
+  let saved: string | null = null;
+  const writes: string[] = [];
+  const store = createLastWorkspaceSelectionStore({
+    read: async () => saved,
+    clear: async () => {
+      saved = null;
+    },
+    write: async (value) => {
+      writes.push(value);
+      if (writes.length === 1)
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      saved = value;
+    },
+  });
+  store.remember({ serverId: "host", workspaceId: "first" });
+  store.remember({ serverId: "host", workspaceId: "latest" });
+  expect(writes).toHaveLength(1);
+  let done = false;
+  const flush = store.flushStrict().then(() => {
+    done = true;
+    return null;
+  });
+  await Promise.resolve();
+  expect(done).toBe(false);
+  release();
+  await flush;
+  expect(saved).toBe(JSON.stringify({ serverId: "host", workspaceId: "latest" }));
+});
+
+it("strict flush reports a failed selection write", async () => {
+  const store = createLastWorkspaceSelectionStore({
+    read: async () => null,
+    clear: async () => {},
+    write: async () => {
+      throw new Error("storage-unavailable");
+    },
+  });
+  store.remember({ serverId: "host", workspaceId: "keep-selection" });
+  await expect(store.flushStrict()).rejects.toThrow("storage-unavailable");
+  expect(store.getSelection()).toEqual({ serverId: "host", workspaceId: "keep-selection" });
+});

@@ -172,7 +172,35 @@ export interface DesktopInvokeBridge {
   invoke?: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 }
 
+export interface DesktopDevUpdateBridge {
+  onPrepare(
+    handler: (input: {
+      requestId: string;
+      phase?: "prepare" | "commit" | "abort";
+      generation: string;
+      releaseDigest: string;
+      activityEpoch: number;
+    }) => Promise<{
+      blockers: string[];
+      receipt?: {
+        schemaVersion: 1;
+        sealed?: true;
+        digest: string;
+        activityEpoch: number;
+        revision: number;
+        capturedAt: number;
+      };
+    }>,
+  ): () => void;
+  onStatus(
+    handler: (status: { state: string; countdownSeconds?: number; blockers?: string[] }) => void,
+  ): () => void;
+  cancel(): Promise<void>;
+  activity(reason: string): void;
+}
+
 export interface DesktopHostBridge {
+  devUpdate?: DesktopDevUpdateBridge;
   platform?: string;
   windowChromeMode?: string;
   invoke?: DesktopInvokeBridge["invoke"];

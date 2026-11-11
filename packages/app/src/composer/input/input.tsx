@@ -1,3 +1,4 @@
+import { useUpdateTransientBlocker } from "@/desktop/dev-update/transient-state";
 import { useKeyboardFocusSurface } from "@/keyboard";
 import type { SendShortcut } from "@/hooks/use-settings";
 import {
@@ -1652,6 +1653,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }
       sendAfterTranscriptRef.current = false;
     }, [dictationStatus, isDictating, isDictationProcessing]);
+    useUpdateTransientBlocker("dictation-or-voice-active", showOverlay);
 
     const startDictationIfAvailable = useCallback(
       () =>

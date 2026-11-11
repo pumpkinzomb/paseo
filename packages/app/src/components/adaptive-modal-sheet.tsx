@@ -1,3 +1,4 @@
+import { useUpdateTransientBlocker } from "@/desktop/dev-update/transient-state";
 import { useOverlayRegistration, type KeyboardInputEvent } from "@/keyboard";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ComponentProps, ReactNode } from "react";
@@ -651,6 +652,7 @@ export function AdaptiveModalSheet({
   bodyStyle,
   contextBridge = null,
 }: AdaptiveModalSheetProps) {
+  useUpdateTransientBlocker("dialog-or-sheet-open", visible);
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
   const isKeyboardVisible = useKeyboardVisibility(visible);

@@ -1643,6 +1643,12 @@ export const es: TranslationResources = {
     details: "Detalles",
   },
   startup: {
+    workspaceRestore: {
+      title: "No se pudo restaurar tu espacio de trabajo",
+      description:
+        "El host guardado no está disponible o no se pudo cargar su lista de espacios de trabajo. No se ha cambiado tu selección guardada. Reintenta la conexión, revisa los ajustes del host o elige un proyecto.",
+      hostSettings: "Ajustes del host",
+    },
     errorTitle: "algo salió mal",
     errorDescription:
       "El servidor local no pudo iniciarse. Si esto continúa sucediendo, informe el problema enGitHube incluya los registros a continuación.",

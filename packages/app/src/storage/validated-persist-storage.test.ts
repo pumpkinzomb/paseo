@@ -126,3 +126,36 @@ it("saves the same state again after removal or rehydration clears invalid stora
   await storage.setItem("layout", value);
   expect(backing.getItem("layout")).toBe(JSON.stringify(value));
 });
+
+it("checkpoint barrier waits for pending removals so readback cannot race a late delete", async () => {
+  const { waitForValidatedPersistWrites } = await import("./validated-persist-storage");
+  let release!: () => void;
+  let saved: string | null = JSON.stringify({ state: { enabled: true }, version: 0 });
+  const storage = createValidatedPersistStorage(
+    {
+      getItem: () => saved,
+      setItem: (_name, value) => {
+        saved = value;
+      },
+      removeItem: async () => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        saved = null;
+      },
+    },
+    StateSchema,
+  );
+  const removal = storage.removeItem("removal-regression");
+  let done = false;
+  const barrier = waitForValidatedPersistWrites("removal-regression").then(() => {
+    done = true;
+    return undefined;
+  });
+  await Promise.resolve();
+  expect(done).toBe(false);
+  release();
+  await removal;
+  await barrier;
+  expect(saved).toBeNull();
+});

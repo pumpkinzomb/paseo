@@ -107,3 +107,48 @@ describe("draft persistence", () => {
     expect(drafts.text()).toBe("pending checkpoint");
   });
 });
+
+it("strict flush waits for in-flight writes and drains a newer value", async () => {
+  let release!: () => void;
+  let saved: StorageValue<DraftState> | null = null;
+  let first = true;
+  const drafts = createDraftPersistStorage<DraftState>({
+    getItem: () => saved,
+    setItem: async (_name, value) => {
+      if (first) {
+        first = false;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      saved = value;
+    },
+    removeItem: () => {
+      saved = null;
+    },
+  });
+  void drafts.setItem("drafts", { state: { text: "first" } });
+  void drafts.setItem("drafts", { state: { text: "latest" } });
+  let finished = false;
+  const flush = drafts.flushStrict().then(() => {
+    finished = true;
+    return null;
+  });
+  await Promise.resolve();
+  expect(finished).toBe(false);
+  release();
+  await flush;
+  expect(await drafts.getItem("drafts")).toEqual({ state: { text: "latest" } });
+});
+
+it("strict flush rejects a failed background write even without new pending input", async () => {
+  const drafts = createDraftPersistStorage<DraftState>({
+    getItem: () => null,
+    setItem: () => {
+      throw new Error("disk-full");
+    },
+    removeItem: () => {},
+  });
+  await drafts.setItem("drafts", { state: { text: "keep me" } });
+  await expect(drafts.flushStrict()).rejects.toThrow("disk-full");
+});

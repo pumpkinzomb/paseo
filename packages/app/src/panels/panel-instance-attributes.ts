@@ -19,6 +19,18 @@ const listenersByPanel = new Map<string, Set<() => void>>();
 const allListeners = new Set<() => void>();
 let attributesRevision = 0;
 
+/** Aggregate includes modified panels outside the currently visible workspace. */
+export function getModifiedPanelCheckpoint(): { revision: number; count: number } {
+  return { revision: attributesRevision, count: attributesByPanel.size };
+}
+
+export function subscribeAllPanelInstanceAttributes(listener: () => void): () => void {
+  allListeners.add(listener);
+  return () => {
+    allListeners.delete(listener);
+  };
+}
+
 function buildWorkspacePanelKey(workspaceKey: string, tabId: string): string {
   return `${workspaceKey}:${tabId}`;
 }

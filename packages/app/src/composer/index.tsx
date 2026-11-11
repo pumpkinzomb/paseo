@@ -1,3 +1,4 @@
+import { useUpdateTransientBlocker } from "@/desktop/dev-update/transient-state";
 import {
   useComposerEditingSession,
   useComposerFullscreen,
@@ -2509,6 +2510,7 @@ function ComposerContentImpl({
 
   const isSubmitLoadingVisible =
     isProcessing || isSubmitLoading || isUploadingFile || pendingNativeImagePastes > 0;
+  useUpdateTransientBlocker("composer-operation-pending", isSubmitLoadingVisible);
   const isSubmitDisabled =
     isSubmitLoadingVisible || (waitForForgeAutoAttachOnSubmit && isForgeResolving);
 

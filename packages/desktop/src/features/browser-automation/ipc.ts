@@ -1,3 +1,5 @@
+import { updateActivity } from "../../dev-update/activity.js";
+import { beginBrowserAutomation } from "../../dev-update/browser-guard.js";
 import { ipcMain } from "electron";
 import { BrowserAutomationExecuteRequestSchema } from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import type {
@@ -477,8 +479,16 @@ export function registerBrowserAutomationIpc(options?: { ipc?: IpcHandlerRegistr
         },
       };
     }
-    return executeAutomationCommand(parsed.data, registry, {
-      snapshotEngine: hostSnapshotEngines.get(hostContents),
+    return updateActivity.run("browser-automation", async () => {
+      // Commands may execute arbitrary JS; never infer read-only from a snapshot label.
+      const finish = beginBrowserAutomation();
+      try {
+        return await executeAutomationCommand(parsed.data, registry, {
+          snapshotEngine: hostSnapshotEngines.get(hostContents),
+        });
+      } finally {
+        finish();
+      }
     });
   });
 }

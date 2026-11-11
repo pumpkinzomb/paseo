@@ -1639,6 +1639,12 @@ export const fr: TranslationResources = {
     details: "Détails",
   },
   startup: {
+    workspaceRestore: {
+      title: "Impossible de restaurer votre espace de travail",
+      description:
+        "L’hôte enregistré est indisponible ou sa liste d’espaces de travail n’a pas pu être chargée. Votre sélection enregistrée n’a pas changé. Réessayez la connexion, vérifiez les paramètres de l’hôte ou choisissez un projet.",
+      hostSettings: "Paramètres de l’hôte",
+    },
     errorTitle: "Une erreur s’est produite",
     errorDescription:
       "Le serveur local n’a pas pu démarrer. Si le problème persiste, signalez-le sur GitHub en joignant les journaux ci-dessous.",

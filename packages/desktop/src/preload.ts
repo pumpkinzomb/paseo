@@ -30,6 +30,31 @@ interface AttachedBrowserRegistration {
 }
 
 contextBridge.exposeInMainWorld("paseoDesktop", {
+  devUpdate: {
+    onPrepare: (handler: (request: unknown) => Promise<unknown>) => {
+      const listener = (_event: Electron.IpcRendererEvent, request: { checkpointId: string }) => {
+        Promise.resolve()
+          .then(() => handler(request))
+          .then(
+            (receipt) =>
+              ipcRenderer.send("paseo:dev-update:receipt", request.checkpointId, receipt),
+            () =>
+              ipcRenderer.send("paseo:dev-update:receipt", request.checkpointId, {
+                blockers: ["renderer-checkpoint-failed"],
+              }),
+          );
+      };
+      ipcRenderer.on("paseo:dev-update:prepare", listener);
+      return () => ipcRenderer.removeListener("paseo:dev-update:prepare", listener);
+    },
+    onStatus: (handler: (status: unknown) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: unknown) => handler(status);
+      ipcRenderer.on("paseo:dev-update:status", listener);
+      return () => ipcRenderer.removeListener("paseo:dev-update:status", listener);
+    },
+    cancel: () => ipcRenderer.invoke("paseo:dev-update:cancel"),
+    activity: (reason: string) => ipcRenderer.send("paseo:dev-update:activity", reason),
+  },
   platform: process.platform,
   windowChromeMode: readWindowChromeMode(),
   invoke: (command: string, args?: Record<string, unknown>) =>
@@ -139,3 +164,13 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
       ipcRenderer.invoke("paseo:browser:copy-element", payload),
   },
 });
+
+for (const name of ["pointerdown", "keydown", "input", "drop"] as const) {
+  window.addEventListener(
+    name,
+    (event) => {
+      if (event.isTrusted) ipcRenderer.send("paseo:dev-update:activity", "trusted-input");
+    },
+    true,
+  );
+}

@@ -1741,6 +1741,12 @@ export const en = {
     details: "Details",
   },
   startup: {
+    workspaceRestore: {
+      title: "Could not restore your workspace",
+      description:
+        "Your saved host is unavailable or its workspace list could not be loaded. Your saved workspace has not been changed. Retry the connection, check this host’s settings, or choose a project yourself.",
+      hostSettings: "Host settings",
+    },
     errorTitle: "Something went wrong",
     errorDescription:
       "The local server failed to start. If this keeps happening, please report the issue on GitHub and include the logs below.",

@@ -6,7 +6,11 @@ import type {
   StartDaemonIfEnabledInput,
 } from "@/runtime/daemon-start-service";
 import type { Href } from "expo-router";
-import { buildHostRootRoute, buildOpenProjectRoute } from "@/utils/host-routes";
+import {
+  buildHostRootRoute,
+  buildHostWorkspaceRoute,
+  buildOpenProjectRoute,
+} from "@/utils/host-routes";
 
 export interface HostRuntimeBootstrapStore {
   boot: () => Promise<void>;
@@ -108,10 +112,12 @@ interface ResolveStartupRouteBaseInput {
 
 export interface ResolveIndexStartupRouteInput extends ResolveStartupRouteBaseInput {
   route: IndexStartupRouteTarget;
+  restoreDesktopWorkspace: boolean;
   anyOnlineHostServerId: string | null;
   workspaceSelection: ActiveWorkspaceSelection | null;
   workspaceSelectionStatus: WorkspaceSelectionStatus;
   isWorkspaceSelectionLoaded: boolean;
+  hasHydratedWorkspaceSelectionHost: boolean;
   hasGivenUpWaitingForHost: boolean;
   /** Setup may still open over the empty home; see `useIsSetupDecisionPending`. */
   isWaitingForSetup: boolean;
@@ -171,11 +177,32 @@ function resolveReadyIndexStartupRoute(input: ResolveIndexStartupRouteInput): St
   }
 
   if (
+    input.restoreDesktopWorkspace &&
+    input.workspaceSelection &&
+    hostExists(input.hosts, input.workspaceSelection.serverId)
+  ) {
+    // A cached workspace is not proof that it still exists. Wait for the saved
+    // host's directory, even when another host is already online.
+    if (!input.hasHydratedWorkspaceSelectionHost || input.workspaceSelectionStatus === "unknown") {
+      return { kind: "splash" };
+    }
+    if (input.workspaceSelectionStatus === "exists") {
+      return {
+        kind: "redirect",
+        href: buildHostWorkspaceRoute(
+          input.workspaceSelection.serverId,
+          input.workspaceSelection.workspaceId,
+        ),
+      };
+    }
+  }
+
+  if (
     shouldRestoreWorkspaceSelection(input) &&
     hostExists(input.hosts, input.workspaceSelection.serverId)
   ) {
-    // Native cold launch must enter the host boundary first. The host index
-    // owns workspace restore after its local dynamic params exist.
+    // Native cold launch must enter the host boundary first. Non-desktop
+    // startup uses the saved host's default assistant, not its last workspace.
     return {
       kind: "redirect",
       href: buildHostRootRoute(input.workspaceSelection.serverId),

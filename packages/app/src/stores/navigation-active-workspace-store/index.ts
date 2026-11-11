@@ -57,6 +57,12 @@ export function hydrateLastWorkspaceSelection(): Promise<void> {
   return lastWorkspaceSelectionStore.hydrate();
 }
 
+export function flushLastWorkspaceSelectionStrict(): Promise<void> {
+  return lastWorkspaceSelectionStore.flushStrict();
+}
+
+export const subscribeLastWorkspaceSelection = lastWorkspaceSelectionStore.subscribe;
+
 export function getLastWorkspaceSelection(): ActiveWorkspaceSelection | null {
   return lastWorkspaceSelectionStore.getSelection();
 }

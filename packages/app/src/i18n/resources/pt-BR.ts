@@ -1628,6 +1628,12 @@ export const ptBR: TranslationResources = {
     details: "Detalhes",
   },
   startup: {
+    workspaceRestore: {
+      title: "Não foi possível restaurar seu espaço de trabalho",
+      description:
+        "O host salvo está indisponível ou não foi possível carregar a lista de espaços de trabalho. Sua seleção salva não foi alterada. Tente conectar novamente, confira as configurações do host ou escolha um projeto.",
+      hostSettings: "Configurações do host",
+    },
     errorTitle: "Algo deu errado",
     errorDescription:
       "O servidor local falhou ao iniciar. Se isso continuar acontecendo, reporte o problema no GitHub e inclua os logs abaixo.",

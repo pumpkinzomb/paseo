@@ -631,6 +631,13 @@ export function BrowserPane({
   // scroll drift) and reused when the annotation card is submitted.
   const pendingScreenshotRef = useRef<AttachmentMetadata | undefined>(undefined);
   const [draftUrl, setDraftUrl] = useState(browser?.url ?? "https://example.com");
+  const urlCheckpointDataSet = useMemo(
+    () => ({
+      updateBrowserId: browserId,
+      updateBrowserUrlPristine: draftUrl === browser?.url ? "true" : "false",
+    }),
+    [browserId, browser?.url, draftUrl],
+  );
   const workspaceAttachmentScopeKey = useMemo(
     () => buildBrowserAttachmentScopeKey({ cwd, serverId, workspaceId }),
     [cwd, serverId, workspaceId],
@@ -1459,6 +1466,7 @@ export function BrowserPane({
         <View style={styles.urlBarWrap}>
           <TextInput
             accessibilityLabel={t("workspace.browser.controls.browserUrl")}
+            dataSet={urlCheckpointDataSet}
             autoCapitalize="none"
             autoCorrect={false}
             onChangeText={setDraftUrl}

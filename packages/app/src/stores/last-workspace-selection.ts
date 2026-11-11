@@ -40,6 +40,26 @@ export function createLastWorkspaceSelectionStore(storage: LastWorkspaceSelectio
   let hydrationPromise: Promise<void> | null = null;
   let revision = 0;
   const listeners = new Set<() => void>();
+  let pendingWrite: Promise<void> | null = null;
+  let writeFailure: unknown = null;
+  function enqueueWrite(write: () => Promise<void>): void {
+    const run = async () => {
+      try {
+        await write();
+        writeFailure = null;
+      } catch (error) {
+        writeFailure = error;
+      }
+    };
+    const operation = (pendingWrite ? pendingWrite.then(run) : run()).finally(() => {
+      if (pendingWrite === operation) pendingWrite = null;
+    });
+    pendingWrite = operation;
+  }
+  async function flushStrict(): Promise<void> {
+    for (let operation = pendingWrite; operation; operation = pendingWrite) await operation;
+    if (writeFailure !== null) throw writeFailure;
+  }
 
   function notifyListeners() {
     for (const listener of listeners) {
@@ -62,7 +82,7 @@ export function createLastWorkspaceSelectionStore(storage: LastWorkspaceSelectio
     revision += 1;
     notifyListeners();
     // workspaceId is opaque; do not parse this persisted selection back into a path.
-    void storage.write(JSON.stringify(normalized)).catch(() => {});
+    enqueueWrite(() => storage.write(JSON.stringify(normalized)));
   }
 
   function hydrate(): Promise<void> {
@@ -76,7 +96,7 @@ export function createLastWorkspaceSelectionStore(storage: LastWorkspaceSelectio
         if (revision === hydrationRevision) {
           selection = parseStoredWorkspaceSelection(stored);
           if (stored !== null && selection === null) {
-            void storage.clear().catch(() => {});
+            enqueueWrite(() => storage.clear());
           }
         }
         return undefined;
@@ -95,6 +115,7 @@ export function createLastWorkspaceSelectionStore(storage: LastWorkspaceSelectio
 
   return {
     getSelection: () => selection,
+    flushStrict,
     hydrate,
     isHydrated: () => hydrated,
     remember,

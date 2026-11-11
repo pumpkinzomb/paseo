@@ -1,3 +1,4 @@
+import { useUpdateTransientBlocker } from "@/desktop/dev-update/transient-state";
 import { Modal as NativeModal, type ModalProps as NativeModalProps } from "react-native";
 import { useDismissibleOverlay } from "@/components/ui/overlay-dismissal";
 
@@ -18,6 +19,7 @@ function noClose() {}
 
 export function Modal(props: ModalProps) {
   const { visible = true, onRequestClose } = props;
+  useUpdateTransientBlocker("modal-open", visible);
   useDismissibleOverlay(visible && onRequestClose !== undefined, onRequestClose ?? noClose);
   return <NativeModal supportedOrientations={orientations} {...props} />;
 }

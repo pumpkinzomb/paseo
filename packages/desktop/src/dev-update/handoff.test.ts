@@ -12,7 +12,13 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function fixture(options: { isPackaged?: boolean; generation?: string } = {}) {
+function fixture(
+  options: {
+    isPackaged?: boolean;
+    generation?: string;
+    openUpdate?: { handle: () => Promise<Record<string, unknown>>; abort: () => void };
+  } = {},
+) {
   const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "paseo-handoff-")));
   directories.push(directory);
   fs.chmodSync(directory, 0o700);
@@ -172,6 +178,7 @@ describe("supervisor desktop UI handoff", () => {
       schemaVersion: 1,
       generation: "generation-1",
       state: "ready",
+      features: { automaticOpenWindow: false },
     });
     f.handoff.start();
     f.handoff.dispose();
@@ -231,4 +238,12 @@ describe("supervisor desktop UI handoff", () => {
     expect(update).not.toHaveBeenCalled();
     expect(exit).not.toHaveBeenCalled();
   });
+});
+
+it("advertises open-window automatic update only with its native coordinator", () => {
+  const f = fixture({ openUpdate: { handle: async () => ({}), abort: () => {} } });
+  f.handoff.markStarted();
+  expect(
+    JSON.parse(fs.readFileSync(path.join(f.directory, "started.json"), "utf8")).features,
+  ).toEqual({ automaticOpenWindow: true });
 });

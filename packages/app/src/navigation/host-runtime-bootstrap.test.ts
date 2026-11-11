@@ -168,6 +168,7 @@ describe("startup blocking policy", () => {
 describe("resolveStartupRoute", () => {
   const baseIndexInput = {
     route: { kind: "index" as const, pathname: "/" },
+    restoreDesktopWorkspace: false,
     startupBlocker: { kind: "none" as const },
     hostRegistryStatus: "ready" as const,
     hosts: [],
@@ -175,6 +176,7 @@ describe("resolveStartupRoute", () => {
     workspaceSelection: null,
     workspaceSelectionStatus: "unknown" as const,
     isWorkspaceSelectionLoaded: true,
+    hasHydratedWorkspaceSelectionHost: false,
     hasGivenUpWaitingForHost: false,
     isWaitingForSetup: false,
   };
@@ -184,6 +186,65 @@ describe("resolveStartupRoute", () => {
     hostRegistryStatus: "ready" as const,
     hosts: [],
   };
+
+  const desktopRestoreInput = {
+    ...baseIndexInput,
+    restoreDesktopWorkspace: true,
+    hosts: [{ serverId: "server-saved" }, { serverId: "server-other" }],
+    anyOnlineHostServerId: "server-other",
+    workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-saved" },
+    workspaceSelectionStatus: "exists" as const,
+    hasHydratedWorkspaceSelectionHost: true,
+  };
+
+  it("restores a desktop's saved workspace directly instead of opening the default assistant", () => {
+    expect(resolveStartupRoute(desktopRestoreInput)).toEqual({
+      kind: "redirect",
+      href: "/h/server-saved/workspace/workspace-saved",
+    });
+  });
+
+  it.each(["unknown", "exists", "missing"] as const)(
+    "waits for the saved desktop host's workspace directory despite cached status %s",
+    (workspaceSelectionStatus) => {
+      expect(
+        resolveStartupRoute({
+          ...desktopRestoreInput,
+          workspaceSelectionStatus,
+          hasHydratedWorkspaceSelectionHost: false,
+          hasGivenUpWaitingForHost: true,
+        }),
+      ).toEqual({ kind: "splash" });
+    },
+  );
+
+  it("waits for persisted desktop selection before choosing a workspace", () => {
+    expect(
+      resolveStartupRoute({ ...desktopRestoreInput, isWorkspaceSelectionLoaded: false }),
+    ).toEqual({ kind: "splash" });
+  });
+
+  it("falls back only after the desktop workspace directory proves the saved workspace is missing", () => {
+    expect(
+      resolveStartupRoute({ ...desktopRestoreInput, workspaceSelectionStatus: "missing" }),
+    ).toEqual({ kind: "redirect", href: "/h/server-other" });
+  });
+
+  it.each([
+    "/h/server-other/agent/agent-explicit",
+    "/open-project",
+    "/h/server-other/workspace/workspace-explicit",
+  ])("does not override an explicit desktop launch route %s", (pathname) => {
+    expect(
+      resolveStartupRoute({ ...desktopRestoreInput, route: { kind: "index", pathname } }),
+    ).toEqual({ kind: "render" });
+  });
+
+  it("keeps unsupervised desktop, native and ordinary browser startup on the saved host boundary", () => {
+    expect(resolveStartupRoute({ ...desktopRestoreInput, restoreDesktopWorkspace: false })).toEqual(
+      { kind: "redirect", href: "/h/server-saved" },
+    );
+  });
 
   it("renders non-index routes instead of making an index startup decision", () => {
     expect(

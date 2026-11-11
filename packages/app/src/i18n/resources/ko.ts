@@ -1726,6 +1726,12 @@ export const ko: TranslationResources = {
     details: "세부",
   },
   startup: {
+    workspaceRestore: {
+      title: "작업 공간을 복원하지 못했어요",
+      description:
+        "저장된 호스트에 연결할 수 없거나 작업 공간 목록을 불러오지 못했어요. 저장된 작업 공간은 변경하지 않았어요. 다시 연결하거나 호스트 설정을 확인하거나 직접 프로젝트를 선택해 주세요.",
+      hostSettings: "호스트 설정",
+    },
     errorTitle: "문제가 발생했습니다",
     errorDescription:
       "로컬 서버를 시작하지 못했습니다. 이 문제가 계속되면 아래 로그를 포함하여 GitHub에 문제를 보고해 주세요.",

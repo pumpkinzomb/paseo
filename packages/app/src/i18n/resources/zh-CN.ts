@@ -1581,6 +1581,12 @@ export const zhCN: TranslationResources = {
     details: "详情",
   },
   startup: {
+    workspaceRestore: {
+      title: "无法恢复工作区",
+      description:
+        "已保存的主机不可用，或无法加载其工作区列表。已保存的工作区选择未更改。请重试连接、检查主机设置，或自行选择项目。",
+      hostSettings: "主机设置",
+    },
     errorTitle: "出现问题",
     errorDescription: "本地服务器启动失败。如果持续发生，请在 GitHub 报告问题并附上下方日志。",
     logs: {

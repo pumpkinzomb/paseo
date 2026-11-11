@@ -1,4 +1,4 @@
-import { ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 import type { BrowserKeyboardPolicy, BrowserShortcutPrefix } from "./policy.js";
 
 const POLICY_CHANNEL = "paseo:browser-keyboard-policy";
@@ -97,3 +97,84 @@ ipcRenderer.on(POLICY_CHANNEL, (_event, value: BrowserKeyboardPolicyPayload) => 
 });
 
 ipcRenderer.send(POLICY_REQUEST_CHANNEL);
+
+// Runs in every frame via the existing sandboxed guest preload. No page data is sent.
+const reportUpdateState = (kind: "ready" | "opaque") =>
+  ipcRenderer.send("paseo:dev-update:guest", kind);
+for (const eventName of [
+  "input",
+  "change",
+  "keydown",
+  "pointerdown",
+  "drop",
+  "paste",
+  "submit",
+  "play",
+] as const) {
+  window.addEventListener(eventName, () => reportUpdateState("opaque"), true);
+}
+window.addEventListener(
+  "DOMContentLoaded",
+  () => {
+    // Unknown forms, canvas, media and embedded surfaces cannot promise heap restoration.
+    if (
+      document.querySelector(
+        "form,input,textarea,select,[contenteditable],canvas,video,audio,object,embed",
+      )
+    )
+      reportUpdateState("opaque");
+    reportUpdateState("ready");
+  },
+  { once: true },
+);
+
+// Stale/blocked frame event loops (including modal dialogs) cannot acknowledge a checkpoint.
+setInterval(() => reportUpdateState("ready"), 1000);
+const updateSurfaceObserver = new MutationObserver(() => {
+  if (
+    document.querySelector(
+      "form,input,textarea,select,[contenteditable],canvas,video,audio,object,embed",
+    )
+  )
+    reportUpdateState("opaque");
+});
+updateSurfaceObserver.observe(document, { childList: true, subtree: true, attributes: true });
+
+// Capture/dialog use creates non-restorable state even when no visible form exists.
+// The page can only mark itself opaque through this event, never clear the native guard.
+window.addEventListener("paseo-update-opaque", () => reportUpdateState("opaque"));
+try {
+  contextBridge.executeInMainWorld({
+    func: () => {
+      const mark = () => window.dispatchEvent(new Event("paseo-update-opaque"));
+      for (const name of ["alert", "confirm", "prompt"] as const) {
+        const original = window[name];
+        Object.defineProperty(window, name, {
+          configurable: true,
+          writable: true,
+          value: function (...args: unknown[]) {
+            mark();
+            return Reflect.apply(original, window, args);
+          },
+        });
+      }
+      const media = navigator.mediaDevices;
+      if (media)
+        for (const name of ["getUserMedia", "getDisplayMedia"] as const) {
+          const original = media[name];
+          if (typeof original !== "function") continue;
+          Object.defineProperty(media, name, {
+            configurable: true,
+            writable: true,
+            value: function (...args: unknown[]) {
+              mark();
+              return Reflect.apply(original, media, args);
+            },
+          });
+        }
+    },
+  });
+} catch {
+  // Failed instrumentation is unknown, not proof that a guest is safe.
+  reportUpdateState("opaque");
+}

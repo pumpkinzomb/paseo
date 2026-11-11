@@ -96,6 +96,11 @@ export function flushDraftPersistStorage(): Promise<void> {
   return draftPersistStorage?.flush() ?? Promise.resolve();
 }
 
+export async function flushDraftPersistStorageStrict(): Promise<void> {
+  if (!draftPersistStorage) throw new Error("Draft persistence unavailable");
+  await draftPersistStorage.flushStrict();
+}
+
 function createDraftRecord(input: {
   draft: DraftInput;
   lifecycle: DraftLifecycleState;

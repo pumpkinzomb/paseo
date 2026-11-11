@@ -1,3 +1,6 @@
+import { updateActivity } from "./dev-update/activity.js";
+import { createOpenWindowUpdate } from "./dev-update/open-window.js";
+import { installBrowserUpdateGuard, observeBrowserForUpdate } from "./dev-update/browser-guard.js";
 import { protectConsoleStreams } from "./diagnostics/console-streams.js";
 protectConsoleStreams();
 
@@ -113,7 +116,10 @@ import {
 } from "@getpaseo/protocol/agent-deep-link";
 import { AgentNavigationInbox, parseAgentDeepLinkFromArgv } from "./agent-navigation.js";
 
+const openWindowUpdate = createOpenWindowUpdate();
+installBrowserUpdateGuard();
 const devUpdateHandoff = createDevUpdateHandoff({
+  openUpdate: openWindowUpdate,
   isPackaged: app.isPackaged,
   directory: process.env.PASEO_DEV_UPDATE_CONTROL_DIR,
   generation: process.env.PASEO_DEV_UPDATE_GENERATION,
@@ -197,7 +203,10 @@ function readActiveBrowserInput(
     return null;
   }
   const browserId = typeof record.browserId === "string" ? record.browserId.trim() : null;
-  return { workspaceId: record.workspaceId.trim(), browserId: browserId || null };
+  return {
+    workspaceId: record.workspaceId.trim(),
+    browserId: browserId || null,
+  };
 }
 
 const browserKeyboard = new BrowserKeyboard(getPaseoBrowserWebviewRegistry());
@@ -449,11 +458,13 @@ ipcMain.handle("paseo:browser:unregister-workspace-browser", async (event, brows
       : getLegacyPaseoBrowserProfileSession(session, normalizedBrowserId);
     if (legacyProfile) {
       try {
-        await clearPaseoBrowserProfile({
-          profileSessions: [legacyProfile],
-          listGuests: () => [],
-          logReloadError: () => {},
-        });
+        await updateActivity.run("browser-profile-change", () =>
+          clearPaseoBrowserProfile({
+            profileSessions: [legacyProfile],
+            listGuests: () => [],
+            logReloadError: () => {},
+          }),
+        );
       } catch (error) {
         log.warn("[browser-profile] failed to clear legacy tab profile", {
           browserId: normalizedBrowserId,
@@ -467,7 +478,10 @@ ipcMain.handle("paseo:browser:unregister-workspace-browser", async (event, brows
 ipcMain.handle("paseo:browser:set-workspace-active-browser", (event, rawInput: unknown) => {
   const input = readActiveBrowserInput(rawInput);
   if (input) {
-    setWorkspaceActivePaseoBrowserId({ ...input, hostWebContentsId: event.sender.id });
+    setWorkspaceActivePaseoBrowserId({
+      ...input,
+      hostWebContentsId: event.sender.id,
+    });
   }
 });
 
@@ -484,6 +498,7 @@ ipcMain.handle("paseo:browser:focus", (event, browserId: unknown): boolean => {
 });
 
 ipcMain.handle("paseo:browser:open-devtools", (event, browserId: unknown) => {
+  updateActivity.activity("browser-devtools");
   if (typeof browserId !== "string" || browserId.trim().length === 0) {
     const result = {
       ok: false,
@@ -530,17 +545,22 @@ ipcMain.handle("paseo:browser:clear-profile", async (_event, rawLegacyBrowserIds
     readLegacyPaseoBrowserIds(rawLegacyBrowserIds),
   );
   const profileSession = profileSessions[0];
-  await clearPaseoBrowserProfile({
-    profileSessions,
-    listGuests: () =>
-      listPaseoBrowserProfileGuests({
-        profileSession,
-        webContents: webContents.getAllWebContents(),
-      }),
-    logReloadError: (webContentsId, error) => {
-      log.warn("[browser-profile] failed to reload guest", { webContentsId, error });
-    },
-  });
+  await updateActivity.run("browser-profile-change", () =>
+    clearPaseoBrowserProfile({
+      profileSessions,
+      listGuests: () =>
+        listPaseoBrowserProfileGuests({
+          profileSession,
+          webContents: webContents.getAllWebContents(),
+        }),
+      logReloadError: (webContentsId, error) => {
+        log.warn("[browser-profile] failed to reload guest", {
+          webContentsId,
+          error,
+        });
+      },
+    }),
+  );
 });
 
 const browserCapture = createBrowserCaptureService<Electron.NativeImage>({
@@ -563,11 +583,17 @@ const browserCapture = createBrowserCaptureService<Electron.NativeImage>({
 });
 
 ipcMain.handle("paseo:browser:capture-element", (event, browserId: unknown, rect: unknown) =>
-  browserCapture.capture({ browserId, hostWebContentsId: event.sender.id, rect }),
+  updateActivity.run("browser-capture", () =>
+    browserCapture.capture({
+      browserId,
+      hostWebContentsId: event.sender.id,
+      rect,
+    }),
+  ),
 );
 
 ipcMain.handle("paseo:browser:copy-element", (_event, payload: unknown) =>
-  browserCapture.copy(payload),
+  updateActivity.run("browser-copy", () => browserCapture.copy(payload)),
 );
 
 protocol.registerSchemesAsPrivileged([
@@ -731,7 +757,10 @@ async function createWindowImpl(
       webviewTag: true,
     },
   });
-  applyDesktopWindowChromeMode({ win: mainWindow, mode: DESKTOP_WINDOW_CHROME_MODE });
+  applyDesktopWindowChromeMode({
+    win: mainWindow,
+    mode: DESKTOP_WINDOW_CHROME_MODE,
+  });
 
   if (restoreWindowState) {
     mainWindow.webContents.once("did-finish-load", () => {
@@ -762,6 +791,7 @@ async function createWindowImpl(
   }
 
   setupDarwinCompositorWatchdog(mainWindow);
+  openWindowUpdate.observeHost(mainWindow.webContents);
   setupWindowResizeEvents(mainWindow);
   if (windowStateStore) {
     setupWindowStatePersistence(mainWindow, windowStateStore);
@@ -791,6 +821,7 @@ async function createWindowImpl(
   });
   mainWindow.webContents.on("did-attach-webview", (_event, contents) => {
     preparePaseoBrowserWebContents(contents);
+    observeBrowserForUpdate(contents);
     contents.once("destroyed", () => {
       pendingBrowserWindowOpenRequests.delete(contents.id);
     });
@@ -923,7 +954,11 @@ function setupSingleInstanceLock(): boolean {
     // window rather than focusing the existing one. Wait for bootstrap (not just
     // app.whenReady) so the protocol + IPC handlers exist before the window loads.
     void bootstrapComplete
-      .then(() => desktopWindowOwner.openAdditional({ pendingProjectPath: openProjectPath }))
+      .then(() =>
+        desktopWindowOwner.openAdditional({
+          pendingProjectPath: openProjectPath,
+        }),
+      )
       .catch((error) => {
         log.error("[window] failed to create window from second-instance", error);
       });
@@ -1095,7 +1130,9 @@ const quitLifecycle = createQuitLifecycle({
 
 // electron-updater forwards this event through Electron's built-in autoUpdater.
 electronAutoUpdater.on("before-quit-for-update", () => {
-  log.info("[auto-updater] before-quit-for-update", { currentVersion: app.getVersion() });
+  log.info("[auto-updater] before-quit-for-update", {
+    currentVersion: app.getVersion(),
+  });
   quitLifecycle.handleBeforeQuitForUpdate();
 });
 app.on("before-quit", () => devUpdateHandoff.dispose());
