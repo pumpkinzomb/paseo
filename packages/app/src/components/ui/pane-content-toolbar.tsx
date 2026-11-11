@@ -111,11 +111,7 @@ export function ToolbarButton({
   const tooltip = (
     <TooltipContent side={tooltipSide} align="center" offset={8}>
       <View style={styles.tooltipRow}>
-        {isTextTooltip ? (
-          <Text style={styles.tooltipText}>{tooltipContent}</Text>
-        ) : (
-          tooltipContent
-        )}
+        {isTextTooltip ? <Text style={styles.tooltipText}>{tooltipContent}</Text> : tooltipContent}
         {shortcut ? <Shortcut chord={shortcut} /> : null}
       </View>
     </TooltipContent>

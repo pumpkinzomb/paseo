@@ -3,10 +3,8 @@
  * unrelated local STT/TTS setup first. An explicit provider opt-out still wins.
  */
 export function shouldUseNativeVoice(
-  agent:
-    | { provider: string; capabilities: { supportsNativeVoice?: boolean } }
-    | undefined,
-  peerAvailable: boolean
+  agent: { provider: string; capabilities: { supportsNativeVoice?: boolean } } | undefined,
+  peerAvailable: boolean,
 ): boolean {
   if (!peerAvailable || !agent) return false;
   return agent.capabilities.supportsNativeVoice ?? agent.provider === "codex";
