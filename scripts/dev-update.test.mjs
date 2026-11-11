@@ -709,3 +709,45 @@ export function registerDevUpdateTests() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) registerDevUpdateTests();
+
+test("Finder metadata alone does not invalidate a sealed release", async (t) => {
+  const f = await fixture(t);
+  const r = await release(f.releases, "finder");
+  const metadata = Buffer.alloc(32);
+  metadata.writeUInt32BE(1, 0);
+  metadata.write("Bud1", 4);
+  await fs.writeFile(path.join(r.root, ".DS_Store"), metadata);
+  await fs.writeFile(path.join(r.root, "packages/.DS_Store"), metadata);
+  await verifyRelease(f.releases, r.id, r.digest);
+  await fs.writeFile(path.join(r.root, "unknown"), "extra");
+  await assert.rejects(verifyRelease(f.releases, r.id, r.digest), /contents changed/);
+  await fs.unlink(path.join(r.root, "unknown"));
+  await fs.writeFile(path.join(r.root, "packages/app/src/view.ts"), "changed");
+  await assert.rejects(verifyRelease(f.releases, r.id, r.digest), /contents changed/);
+});
+test("Finder metadata exemption rejects malformed, executable, linked and oversized entries", async (t) => {
+  const f = await fixture(t);
+  const r = await release(f.releases, "finder-invalid");
+  const target = path.join(r.root, ".DS_Store");
+  const metadata = Buffer.alloc(32);
+  metadata.writeUInt32BE(1, 0);
+  metadata.write("Bud1", 4);
+  for (const content of [
+    Buffer.from("bad"),
+    Buffer.alloc(32),
+    Buffer.concat([metadata, Buffer.alloc(1024 * 1024)]),
+  ]) {
+    await fs.writeFile(target, content);
+    await assert.rejects(verifyRelease(f.releases, r.id, r.digest), /contents changed/);
+  }
+  await fs.writeFile(target, metadata);
+  await fs.chmod(target, 0o755);
+  await assert.rejects(verifyRelease(f.releases, r.id, r.digest), /contents changed/);
+  await fs.unlink(target);
+  await fs.symlink("packages/app/src/view.ts", target);
+  await assert.rejects(verifyRelease(f.releases, r.id, r.digest), /contents changed/);
+  await fs.unlink(target);
+  await fs.writeFile(target, metadata);
+  await fs.link(target, path.join(f.root, "metadata-hardlink"));
+  await assert.rejects(verifyRelease(f.releases, r.id, r.digest), /Shared hardlink/);
+});

@@ -113,6 +113,37 @@ export async function detachStagingHardlinks(root) {
   return detached;
 }
 
+// Finder view metadata only; malformed or executable names remain sealed payload.
+async function isFinderMetadata(file, info) {
+  if (
+    !info.isFile() ||
+    info.nlink !== 1 ||
+    info.mode & 0o111 ||
+    info.size < 32 ||
+    info.size > 1024 * 1024
+  )
+    return false;
+  const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const current = await handle.stat();
+    if (
+      current.dev !== info.dev ||
+      current.ino !== info.ino ||
+      current.nlink !== 1 ||
+      current.size !== info.size ||
+      current.mode & 0o111
+    )
+      return false;
+    const header = Buffer.alloc(8);
+    const { bytesRead } = await handle.read(header, 0, 8, 0);
+    return (
+      bytesRead === 8 && header.readUInt32BE(0) === 1 && header.toString("ascii", 4, 8) === "Bud1"
+    );
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function scanRelease(root) {
   const canonical = await fs.realpath(root);
   if (canonical !== path.resolve(root)) throw new Error("Release root must not be an alias");
@@ -123,6 +154,7 @@ export async function scanRelease(root) {
       if (mutable(relative)) continue;
       const file = path.join(directory, name);
       const info = await fs.lstat(file);
+      if (name === ".DS_Store" && (await isFinderMetadata(file, info))) continue;
       if (info.isSymbolicLink()) {
         const target = await fs.readlink(file);
         if (path.isAbsolute(target) || !inside(canonical, await fs.realpath(file)))
