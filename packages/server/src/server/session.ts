@@ -4920,7 +4920,13 @@ export class Session {
           )
             throw new Error("The group changed during deletion. Its workspace was not hidden.");
           // Metadata only. Never invoke worktree removal, terminal teardown, or provider archive.
-          await this.workspaceRegistry.archive(request.workspaceId, new Date().toISOString());
+          const deletedAt = new Date().toISOString();
+          await this.workspaceRegistry.update(request.workspaceId, (workspace) => ({
+            ...workspace,
+            archivedAt: deletedAt,
+            updatedAt: deletedAt,
+            metadata: { ...workspace.metadata, sessionRecordsDeletedAt: deletedAt },
+          }));
         }
         return agentIds;
       };
@@ -6826,7 +6832,8 @@ export class Session {
       (candidate) =>
         candidate.parentWorkspaceId === workspaceId &&
         candidate.archivedAt !== null &&
-        !candidate.background,
+        !candidate.background &&
+        typeof candidate.metadata.sessionRecordsDeletedAt !== "string",
     );
     if (children.length === 0) return {};
     const firstAgentIdByWorkspaceId = new Map<string, { id: string; createdAt: string }>();
