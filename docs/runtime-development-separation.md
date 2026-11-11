@@ -74,12 +74,22 @@ silently moved. An existing record with no native session needs a fresh creation
 so a protected cwd will be rejected in that case too.
 
 Other project paths remain allowed. The policy is opt-in; unrelated installations
-without this environment setting are unchanged. The stable launcher must also set the policy for its daemon; setting it only
-in the lab does not protect agents running in the stable application. Promotion
-must be a separate approved operation with idle checks, backup and hash-verified
-rollback, never an agent self-restart. Local cutover scripts are one-shot
-operations, not general deployment commands. No automatic promotion is
-implemented. This feature does not provide OS-level write/process restrictions.
+without this environment setting are unchanged. The stable launcher must also set
+the policy for its daemon; setting it only in the lab does not protect agents
+running in the stable application. Autonomous promotion remains a separate
+approved operation with complete work checks, backup and hash-verified rollback.
+Local cutover scripts are one-shot operations, not general deployment commands.
+No automatic promotion is implemented. This feature does not provide OS-level
+write/process restrictions.
+
+Explicit user operations, including restart, are evaluated against their scope
+and effects rather than refused by the autonomous-development default. Check
+running work and saved state, then use the supported operational path. Explain
+concrete interruptions and obtain only a missing decision or required approval.
+A restart request does not authorize unrelated deployment, discarded work or
+forced termination of unknown processes. Tool permissions and access denials
+still apply. This guidance does not install a restart supervisor or make an
+unfinished deployment path safe.
 
 ## Stable launcher
 

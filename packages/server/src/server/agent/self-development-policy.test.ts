@@ -51,6 +51,28 @@ describe("self-development workflow policy", () => {
       readSelfDevelopmentPolicy(JSON.stringify({ labRoot, protectedRoots: [labRoot] })),
     ).rejects.toThrow("overlaps");
   });
+  it("honors explicit operational requests separately from autonomous development", async () => {
+    const { policy } = await fixture();
+    const prompt = selfDevelopmentPrompt(policy);
+    expect(prompt).toContain("During autonomous development, do not");
+    expect(prompt).toContain("Follow the user's explicit instructions");
+    expect(prompt).toContain("actual running work and saved state");
+    expect(prompt).toContain("use the supported operational path");
+    expect(prompt).toContain("obtain only any missing decision or required approval");
+    expect(prompt).not.toContain("never deploy or restart yourself");
+  });
+  it("keeps restart scope, tool approvals and unknown-process protections", async () => {
+    const { policy } = await fixture();
+    const prompt = selfDevelopmentPrompt(policy);
+    expect(prompt).toContain(
+      "not unrelated changes, discarded work or forced termination of unknown processes",
+    );
+    expect(prompt).toContain(
+      "Tool permissions, actual access denials and required safety checks still apply",
+    );
+    expect(prompt).toContain("never bypass them or claim uncertain state is safe");
+    expect(prompt).toContain("complete work checks and verified rollback");
+  });
   it("instructs all providers about delegation, approval and limitations", async () => {
     const { policy, labRoot } = await fixture();
     const prompt = selfDevelopmentPrompt(policy);

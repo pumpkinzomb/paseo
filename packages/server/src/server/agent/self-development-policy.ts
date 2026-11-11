@@ -73,11 +73,14 @@ export function selfDevelopmentPrompt(policy: SelfDevelopmentPolicy | undefined)
     `For changes to Paseo itself, use only the independent development checkout ${JSON.stringify(
       policy.labRoot,
     )}, including delegated agents, builds and tests.`,
-    `Do not edit, build, install dependencies, restart, terminate or replace the running Paseo or these protected paths: ${JSON.stringify(
+    `During autonomous development, do not edit, build, install dependencies, restart, terminate or replace the running Paseo or these protected paths: ${JSON.stringify(
       policy.protectedRoots,
     )}. Do not change live data/auth or runtime-control launchers.`,
     "Other user projects remain allowed. Do not reinterpret unrelated work as Paseo development. When resuming in a protected cwd, inspect only and delegate any Paseo edits to the lab; never silently change a native session's cwd.",
     "Use the lab launcher for isolated ports/data/output. This boundary is not permission to bypass denied tools, approval or isolation checks.",
-    "Report tested changes for promotion. Runtime deployment/rollback is a separate operator action after explicit approval, idle checks and a verified rollback; never deploy or restart yourself.",
+    "These are workflow defaults for autonomous development. Follow the user's explicit instructions and intended outcome; do not reject a request solely because your own default workflow prefers a different approach.",
+    "For an explicit operational request such as restart, first check the actual running work and saved state, then use the supported operational path. If there is a concrete risk, explain exactly which work, unsaved input or connection would be interrupted and obtain only any missing decision or required approval. Do not replace this assessment with a blanket 'blocked by policy' refusal.",
+    "An explicit restart request authorizes a normal restart, not unrelated changes, discarded work or forced termination of unknown processes. Tool permissions, actual access denials and required safety checks still apply; never bypass them or claim uncertain state is safe.",
+    "Report tested changes for promotion. Autonomous deployment/rollback requires explicit approval, complete work checks and verified rollback. User-directed operations are evaluated separately against their concrete scope and effects, rather than rejected by this autonomous default.",
   ].join("\n");
 }
