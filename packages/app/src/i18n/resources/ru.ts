@@ -1585,6 +1585,8 @@ export const ru: TranslationResources = {
         unexpectedState: "Неожиданное состояние разрешения на уведомления: {{state}}",
       },
       microphone: {
+        nativeBridgeUnavailable:
+          "Update and reopen the desktop app to request microphone permission.",
         webOnly: "Статус микрофона доступен только в веб-среде выполнения.",
         navigatorUnavailable: "Объект Navigator недоступен в этой среде.",
         granted: "Доступ к микрофону разрешён.",

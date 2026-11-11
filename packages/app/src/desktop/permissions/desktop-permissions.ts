@@ -1,3 +1,4 @@
+import { ensureMicrophoneAccess } from "./microphone-access";
 import { type DesktopHostBridge, getDesktopHost } from "@/desktop/host";
 import { isNative, isWeb } from "@/constants/platform";
 import { i18n } from "@/i18n/i18next";
@@ -121,6 +122,47 @@ function mapNotificationPermissionString(permission: string): DesktopPermissionS
   });
 }
 
+async function getNativeMicrophoneStatus(
+  host: DesktopHostBridge | null,
+): Promise<DesktopPermissionStatus | null> {
+  if (host?.platform !== "darwin") return null;
+  if (!host.microphone)
+    return status({
+      state: "unknown",
+      detail: i18n.t("desktop.permissions.microphone.nativeBridgeUnavailable"),
+    });
+  try {
+    const state = await host.microphone.getStatus();
+    switch (state) {
+      case "granted":
+        return status({
+          state: "granted",
+          detail: i18n.t("desktop.permissions.microphone.granted"),
+        });
+      case "denied":
+      case "restricted":
+        return status({ state: "denied", detail: i18n.t("desktop.permissions.microphone.denied") });
+      case "not-determined":
+        return status({
+          state: "prompt",
+          detail: i18n.t("desktop.permissions.microphone.notGranted"),
+        });
+      default:
+        return status({
+          state: "unknown",
+          detail: i18n.t("desktop.permissions.microphone.unexpectedState", { state }),
+        });
+    }
+  } catch (error) {
+    return status({
+      state: "unknown",
+      detail: i18n.t("desktop.permissions.microphone.queryFailed", {
+        message: getErrorMessage(error),
+      }),
+    });
+  }
+}
+
 export function createDesktopPermissions(env: DesktopPermissionEnvironment): DesktopPermissions {
   function shouldShowDesktopPermissionSection(): boolean {
     return env.isWeb && env.getDesktopHost() !== null;
@@ -168,6 +210,8 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
       });
     }
 
+    const nativeStatus = await getNativeMicrophoneStatus(env.getDesktopHost());
+    if (nativeStatus) return nativeStatus;
     const webNavigator = env.getNavigator();
     if (!webNavigator) {
       return status({
@@ -282,6 +326,7 @@ export function createDesktopPermissions(env: DesktopPermissionEnvironment): Des
     }
 
     try {
+      await ensureMicrophoneAccess(env.getDesktopHost());
       const stream = await webNavigator.mediaDevices.getUserMedia({ audio: true });
       const tracks = stream && typeof stream.getTracks === "function" ? stream.getTracks() : [];
       tracks.forEach((track) => {

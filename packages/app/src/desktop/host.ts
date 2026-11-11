@@ -199,7 +199,13 @@ export interface DesktopDevUpdateBridge {
   activity(reason: string): void;
 }
 
+export interface DesktopMicrophoneBridge {
+  getStatus(): Promise<string>;
+  requestAccess(): Promise<string>;
+}
+
 export interface DesktopHostBridge {
+  microphone?: DesktopMicrophoneBridge;
   devUpdate?: DesktopDevUpdateBridge;
   platform?: string;
   windowChromeMode?: string;

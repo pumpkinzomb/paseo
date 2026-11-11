@@ -2,6 +2,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startNativeVoicePeer } from "./native-voice-peer.web";
 
+const permissions = vi.hoisted(() => ({ ensure: vi.fn() }));
+vi.mock("@/desktop/permissions/microphone-access", () => ({
+  ensureMicrophoneAccess: permissions.ensure,
+}));
+
 class FakePeer extends EventTarget {
   static instances: FakePeer[] = [];
   connectionState = "new";
@@ -40,6 +45,7 @@ function setup() {
   return { options, controller, track, media, getUserMedia };
 }
 beforeEach(() => {
+  permissions.ensure.mockReset().mockResolvedValue(undefined);
   FakePeer.instances = [];
   vi.stubGlobal("RTCPeerConnection", FakePeer);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
@@ -77,6 +83,7 @@ describe("native voice peer ownership", () => {
     );
     const startup = startNativeVoicePeer(options);
     const rejected = expect(startup).rejects.toThrow("cancelled");
+    await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
     controller.abort();
     resolveMedia(media);
     await rejected;
@@ -105,5 +112,13 @@ describe("native voice peer ownership", () => {
     resolveStop();
     await stopping;
     expect(stopped).toBe(true);
+  });
+  it("does not capture or negotiate when the OS permission request is denied", async () => {
+    const { options, getUserMedia } = setup();
+    permissions.ensure.mockRejectedValue(new Error("Microphone access denied"));
+    await expect(startNativeVoicePeer(options)).rejects.toThrow("Microphone access denied");
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(options.negotiate).not.toHaveBeenCalled();
+    expect(FakePeer.instances[0].close).toHaveBeenCalledOnce();
   });
 });

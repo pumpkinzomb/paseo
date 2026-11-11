@@ -1576,6 +1576,8 @@ export const ja: TranslationResources = {
         unexpectedState: "予期しない通知の権限状態: {{state}}",
       },
       microphone: {
+        nativeBridgeUnavailable:
+          "Update and reopen the desktop app to request microphone permission.",
         webOnly: "デスクトップマイクのステータスはWebランタイムでのみ利用できます。",
         navigatorUnavailable: "この環境ではNavigatorは利用できません。",
         granted: "マイクへのアクセスが許可されています。",

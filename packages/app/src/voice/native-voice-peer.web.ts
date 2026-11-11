@@ -1,3 +1,4 @@
+import { ensureMicrophoneAccess } from "@/desktop/permissions/microphone-access";
 import type { NativeVoicePeer, NativeVoicePeerOptions } from "./native-voice-peer";
 import { handleNativeVoiceEvent } from "./native-voice-events";
 export function nativeVoicePeerAvailable(): boolean {
@@ -67,6 +68,8 @@ export async function startNativeVoicePeer(
     handleNativeVoiceEvent(data, options);
   });
   try {
+    checkCancelled();
+    await ensureMicrophoneAccess();
     checkCancelled();
     media = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },

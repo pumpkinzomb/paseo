@@ -1,3 +1,4 @@
+import { ensureMicrophoneAccess } from "@/desktop/permissions/microphone-access";
 import { parsePcmSampleRate, resampleToPcm16 } from "./pcm";
 import { isElectronRuntime } from "@/desktop/host";
 import type {
@@ -244,6 +245,7 @@ export function createAudioEngine(
       }
 
       try {
+        await ensureMicrophoneAccess();
         const context = await ensureCaptureContext();
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {

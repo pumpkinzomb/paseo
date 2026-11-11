@@ -56,6 +56,10 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
     activity: (reason: string) => ipcRenderer.send("paseo:dev-update:activity", reason),
   },
   platform: process.platform,
+  microphone: {
+    getStatus: () => ipcRenderer.invoke("paseo:microphone:status") as Promise<string>,
+    requestAccess: () => ipcRenderer.invoke("paseo:microphone:request") as Promise<string>,
+  },
   windowChromeMode: readWindowChromeMode(),
   invoke: (command: string, args?: Record<string, unknown>) =>
     ipcRenderer.invoke("paseo:invoke", command, args),

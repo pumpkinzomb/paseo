@@ -1586,6 +1586,8 @@ export const ptBR: TranslationResources = {
         unexpectedState: "Estado inesperado de permissão de notificação: {{state}}",
       },
       microphone: {
+        nativeBridgeUnavailable:
+          "Update and reopen the desktop app to request microphone permission.",
         webOnly: "O status do microfone desktop só está disponível no runtime web.",
         navigatorUnavailable: "Navigator não está disponível neste ambiente.",
         granted: "O acesso ao microfone foi concedido.",

@@ -1595,6 +1595,8 @@ export const fr: TranslationResources = {
         unexpectedState: "État d’autorisation de notification inattendu : {{state}}",
       },
       microphone: {
+        nativeBridgeUnavailable:
+          "Update and reopen the desktop app to request microphone permission.",
         webOnly: "L’état du microphone n’est disponible que dans l’environnement web.",
         navigatorUnavailable: "L’objet navigator n’est pas disponible dans cet environnement.",
         granted: "L’accès au microphone est autorisé.",

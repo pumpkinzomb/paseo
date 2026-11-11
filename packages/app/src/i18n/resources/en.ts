@@ -1713,6 +1713,8 @@ export const en = {
         unexpectedState: "Unexpected notification permission state: {{state}}",
       },
       microphone: {
+        nativeBridgeUnavailable:
+          "Update and reopen the desktop app to request microphone permission.",
         webOnly: "Desktop microphone status is only available on web runtime.",
         navigatorUnavailable: "Navigator is unavailable in this environment.",
         granted: "Microphone access is granted.",

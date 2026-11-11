@@ -1599,6 +1599,8 @@ export const es: TranslationResources = {
         unexpectedState: "Estado de permiso de notificación inesperado:{{state}}",
       },
       microphone: {
+        nativeBridgeUnavailable:
+          "Update and reopen the desktop app to request microphone permission.",
         webOnly:
           "El estado del micrófono de escritorio solo está disponible en tiempo de ejecución web.",
         navigatorUnavailable: "Navigator no está disponible en este entorno.",

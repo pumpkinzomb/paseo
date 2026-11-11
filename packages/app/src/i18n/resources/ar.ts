@@ -1557,6 +1557,8 @@ export const ar: TranslationResources = {
         unexpectedState: "حالة إذن الإعلام غير المتوقعة:{{state}}",
       },
       microphone: {
+        nativeBridgeUnavailable:
+          "Update and reopen the desktop app to request microphone permission.",
         webOnly: "حالة ميكروفون سطح المكتب متاحة فقط في وقت تشغيل الويب.",
         navigatorUnavailable: "Navigator غير متوفر في هذه البيئة.",
         granted: "تم منح الوصول إلى الميكروفون.",

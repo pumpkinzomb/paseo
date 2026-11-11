@@ -206,3 +206,29 @@ describe("desktop-permissions", () => {
     }
   });
 });
+
+it("uses macOS app permission instead of a misleading granted browser permission", async () => {
+  const requestAccess = vi.fn();
+  const permissions = createDesktopPermissions(
+    fakeEnvironment({
+      desktopHost: {
+        platform: "darwin",
+        microphone: { getStatus: vi.fn().mockResolvedValue("denied"), requestAccess },
+      },
+      navigator: { permissions: { query: vi.fn().mockResolvedValue({ state: "granted" }) } },
+    }),
+  );
+  const snapshot = await permissions.getDesktopPermissionSnapshot();
+  expect(snapshot.microphone.state).toBe("denied");
+  expect(requestAccess).not.toHaveBeenCalled();
+});
+
+it("does not claim OS access is granted when an old macOS bridge only exposes browser permission", async () => {
+  const permissions = createDesktopPermissions(
+    fakeEnvironment({
+      desktopHost: { platform: "darwin" },
+      navigator: { permissions: { query: vi.fn().mockResolvedValue({ state: "granted" }) } },
+    }),
+  );
+  expect((await permissions.getDesktopPermissionSnapshot()).microphone.state).toBe("unknown");
+});

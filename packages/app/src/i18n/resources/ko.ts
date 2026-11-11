@@ -1698,6 +1698,8 @@ export const ko: TranslationResources = {
         unexpectedState: "예기치 않은 알림 권한 상태: {{state}}",
       },
       microphone: {
+        nativeBridgeUnavailable:
+          "마이크 권한을 요청하려면 데스크톱 앱 전체를 업데이트하고 다시 열어주세요.",
         webOnly: "데스크톱 마이크 상태는 웹 런타임에서만 사용할 수 있습니다.",
         navigatorUnavailable: "이 환경에서는 Navigator를 사용할 수 없습니다.",
         granted: "마이크 접근이 허용되었습니다.",

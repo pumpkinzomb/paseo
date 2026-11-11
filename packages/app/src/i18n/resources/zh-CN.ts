@@ -1543,6 +1543,8 @@ export const zhCN: TranslationResources = {
         unexpectedState: "意外的通知权限状态：{{state}}",
       },
       microphone: {
+        nativeBridgeUnavailable:
+          "Update and reopen the desktop app to request microphone permission.",
         webOnly: "桌面麦克风状态仅在 web runtime 中可用。",
         navigatorUnavailable: "此环境中 Navigator 不可用。",
         granted: "已授予麦克风访问权限。",
