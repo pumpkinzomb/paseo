@@ -15404,3 +15404,21 @@ test("explicit descendant deletion validates the full multi-workspace inventory"
   expect(await f.storage.get(sibling.id)).not.toBeNull();
   expect(f.client.archivedHandles).toEqual([]);
 });
+
+test("lead profile follows role on create and refresh without changing native workers", async () => {
+  const client = new TestAgentClient();
+  const manager = new AgentManager({ clients: { codex: client }, logger });
+  try {
+    const lead = await manager.createAgent({ provider: "codex", cwd: tmpdir() }, undefined, {
+      labels: { "paseo.role": "assistant" },
+    });
+    expect(client.createdConfigs.at(-1)?.instructionProfile).toBe("paseo-lead");
+    expect(lead.config.instructionProfile).toBeUndefined();
+    await manager.reloadAgentSession(lead.id);
+    expect(client.resumeOverrides.at(-1)?.instructionProfile).toBe("paseo-lead");
+    await manager.createAgent({ provider: "codex", cwd: tmpdir() }, undefined, {});
+    expect(client.createdConfigs.at(-1)?.instructionProfile).toBeUndefined();
+  } finally {
+    for (const agent of manager.listAgents()) await manager.closeAgent(agent.id);
+  }
+});

@@ -650,6 +650,39 @@ describe("ClaudeAgentClient binary resolution", () => {
     await session.close();
   });
 
+  test("isolates the Paseo lead instructions and MCP without changing native authentication", async () => {
+    const queryFactory = vi.fn(() => ({
+      close: vi.fn(),
+      return: vi.fn().mockResolvedValue(undefined),
+    }));
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+      runtimeSettings: { env: { CLAUDE_CONFIG_DIR: "/fixture/native-claude" } },
+    });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+      instructionProfile: "paseo-lead",
+      systemPrompt: "You are Sunny, the Paseo lead.",
+      daemonAppendSystemPrompt: "Keep host permissions.",
+      mcpServers: { paseo: { type: "http", url: "http://localhost:12345/mcp" } },
+    });
+    await (session as unknown as { ensureQuery(): Promise<unknown> }).ensureQuery();
+    const options = queryFactory.mock.calls[0]?.[0].options;
+    expect(options.systemPrompt).toBe("You are Sunny, the Paseo lead.\n\nKeep host permissions.");
+    expect(options.settingSources).toEqual([]);
+    expect(options.skills).toEqual([]);
+    expect(options.strictMcpConfig).toBe(true);
+    expect(options.env.CLAUDE_CONFIG_DIR).toBe("/fixture/native-claude");
+    expect(options.mcpServers).toEqual({
+      paseo: { type: "http", url: "http://localhost:12345/mcp" },
+    });
+    expect(options.canUseTool).toEqual(expect.any(Function));
+    await session.close();
+  });
+
   test("uses the replace-command override binary when claude is not on PATH", async () => {
     const customClaudePath = "/path/to/custom-claude";
     vi.spyOn(executableUtils, "findExecutable").mockImplementation(async (name: string) => {

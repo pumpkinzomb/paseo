@@ -2,6 +2,7 @@ import {
   ensureManagedDependenciesReady,
   needsManagedDependencyCheck,
 } from "../../utils/managed-dependencies-ready.js";
+import { applyLeadInstructionProfile } from "./lead-instruction-profile.js";
 import { UpdateAdmissionFence, UpdateBlocked } from "../update-quiescence.js";
 import {
   readSelfDevelopmentPolicy,
@@ -6441,16 +6442,19 @@ export class AgentManager {
     const paseoToolPolicy = this.paseoToolsEnabled
       ? this.resolvePaseoToolPolicy(storedConfig.provider)
       : { enabled: false };
-    const launchConfig = await this.applyDaemonAppendSystemPrompt(
-      withRuntimePaseoMcpServer({
-        config: storedConfig,
-        agentId,
-        mcpBaseUrl:
-          this.paseoToolsEnabled && isPaseoToolPolicyEnabled(paseoToolPolicy)
-            ? this.mcpBaseUrl
-            : null,
-        mcpAuthToken: this.mcpAuthToken,
-      }),
+    const launchConfig = applyLeadInstructionProfile(
+      await this.applyDaemonAppendSystemPrompt(
+        withRuntimePaseoMcpServer({
+          config: storedConfig,
+          agentId,
+          mcpBaseUrl:
+            this.paseoToolsEnabled && isPaseoToolPolicyEnabled(paseoToolPolicy)
+              ? this.mcpBaseUrl
+              : null,
+          mcpAuthToken: this.mcpAuthToken,
+        }),
+      ),
+      options.labels,
     );
     return { storedConfig, launchConfig, paseoToolPolicy };
   }

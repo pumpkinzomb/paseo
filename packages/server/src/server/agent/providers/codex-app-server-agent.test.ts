@@ -1,3 +1,4 @@
+import { codexLeadRuntimePaths } from "./codex/lead-runtime.js";
 import { describe, expect, test, vi } from "vitest";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
@@ -1040,6 +1041,127 @@ process.stdin.on("data", (chunk) => {
 }
 
 describe("Codex app-server provider", () => {
+  test("new lead uses fixed process/thread scope and marked resume keeps it", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "paseo-lead-adapter-"));
+    const paths = await codexLeadRuntimePaths(root);
+    const spawns: Array<{ options: { baseEnv?: unknown; cwd?: unknown } }> = [];
+    const servers = [createFakeCodexAppServer(), createFakeCodexAppServer()];
+    const provider = new CodexAppServerAgentClient(
+      createTestLogger(),
+      {
+        env: { HOME: "/native-home", CODEX_HOME: "/native-codex", XDG_CONFIG_HOME: "/native-xdg" },
+      },
+      {
+        leadRuntimePaseoHome: root,
+        appServerProcess: {
+          resolvePrefix: async () => ({ command: "codex", args: [] }),
+          spawn: (input) => {
+            spawns.push(input);
+            return servers[spawns.length - 1].child;
+          },
+        },
+      },
+    );
+    const internals = castInternals<{
+      goalsEnabledPromise: Promise<boolean>;
+      autoReviewEnabledPromise: Promise<boolean>;
+    }>(provider);
+    internals.goalsEnabledPromise = Promise.resolve(false);
+    internals.autoReviewEnabledPromise = Promise.resolve(false);
+    let session: AgentSession | undefined;
+    try {
+      session = await provider.createSession(
+        createConfig({
+          instructionProfile: "paseo-lead",
+          cwd: "/user/project",
+          systemPrompt: "Sunny",
+        }),
+      );
+      await session.startTurn("hello");
+      await servers[0].waitForTurnStart();
+      const saved = waitForNextEvent(session, "thread_started");
+      servers[0].startsTurn({ threadId: "thread-1" });
+      await saved;
+      const handle = session.describePersistence()!;
+      expect(handle.metadata).toMatchObject({
+        paseoLeadRuntime: { version: 1, ...paths, projectCwd: "/user/project" },
+        paseoLeadRuntimeStatus: "isolated",
+      });
+      expect(
+        servers[0].requests().find((request) => request.method === "thread/start")?.params,
+      ).toMatchObject({
+        cwd: paths.cwd,
+        baseInstructions: expect.stringContaining('"projectDirectory":"/user/project"'),
+      });
+      expect(session.usageSession?.()?.env).toMatchObject({
+        HOME: paths.home,
+        CODEX_HOME: paths.codexHome,
+      });
+      await session.close();
+      session = await provider.resumeSession(handle, {
+        instructionProfile: "paseo-lead",
+        cwd: "/user/project",
+      });
+      await expect(session.getRuntimeInfo()).resolves.toMatchObject({
+        extra: { paseoLeadRuntimeStatus: "isolated" },
+      });
+      for (const spawn of spawns) {
+        expect(spawn.options).toMatchObject({
+          cwd: paths.cwd,
+          baseEnv: {
+            HOME: paths.home,
+            CODEX_HOME: paths.codexHome,
+            XDG_CONFIG_HOME: path.join(paths.home, ".config"),
+          },
+        });
+      }
+      expect(spawns).toHaveLength(2);
+    } finally {
+      await session?.close();
+      for (const server of servers) server.assertNoErrors();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test.each([undefined, "paseo-lead"] as const)(
+    "applies %s identity only to lead start and resume",
+    async (instructionProfile) => {
+      const requests: Array<{ method: string; params: unknown }> = [];
+      const session = createSession({
+        instructionProfile,
+        systemPrompt: "Sunny identity",
+        thinkingOptionId: "medium",
+        daemonAppendSystemPrompt: "Paseo tools",
+      });
+      session.currentThreadId = null;
+      session.activeForegroundTurnId = null;
+      session.client = {
+        request: vi.fn(async (method: string, params: unknown) => {
+          requests.push({ method, params });
+          if (method === "thread/loaded/list") return { data: [] };
+          return { thread: { id: "identity-thread" } };
+        }),
+      };
+      await session.startTurn("hello");
+      await asInternals(session).ensureThreadLoaded();
+      for (const method of ["thread/start", "thread/resume"]) {
+        const request = requests.find((entry) => entry.method === method);
+        expect(request).toBeDefined();
+        expect(request?.params).toMatchObject({
+          developerInstructions: "Sunny identity\n\nPaseo tools",
+        });
+        if (instructionProfile) {
+          expect(request?.params).toHaveProperty(
+            "baseInstructions",
+            "Sunny identity\n\nPaseo tools",
+          );
+        } else {
+          expect(request?.params).not.toHaveProperty("baseInstructions");
+        }
+      }
+    },
+  );
+
   test("getAvailableModes includes auto-review when the Codex version supports it", async () => {
     const session = createSession({}, { autoReviewEnabled: true });
 
@@ -2511,35 +2633,48 @@ describe("Codex app-server provider", () => {
     appServer.assertNoErrors();
   });
 
-  test("rewinds the conversation to a freshly emitted Codex user message id", async () => {
-    const appServer = createFakeCodexAppServer();
-    const session = new CodexAppServerAgentSession(
-      createConfig({ cwd: "/workspace/project" }),
-      null,
-      createTestLogger(),
-      async () => appServer.child,
-    );
+  test.each([undefined, "paseo-lead"] as const)(
+    "rewinds the conversation preserving %s identity",
+    async (instructionProfile) => {
+      const appServer = createFakeCodexAppServer();
+      const session = new CodexAppServerAgentSession(
+        createConfig({
+          cwd: "/workspace/project",
+          instructionProfile,
+          systemPrompt: "Sunny identity",
+        }),
+        null,
+        createTestLogger(),
+        async () => appServer.child,
+      );
 
-    await session.startTurn("remember first");
-    emitCodexUserMessage(appServer, { id: "codex-first", text: "remember first" });
-    appServer.completeTurn();
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    await session.startTurn("remember second");
-    emitCodexUserMessage(appServer, { id: "codex-second", text: "remember second" });
-    appServer.completeTurn();
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    await new Promise<void>((resolve) => setImmediate(resolve));
+      await session.startTurn("remember first");
+      emitCodexUserMessage(appServer, { id: "codex-first", text: "remember first" });
+      appServer.completeTurn();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await session.startTurn("remember second");
+      emitCodexUserMessage(appServer, { id: "codex-second", text: "remember second" });
+      appServer.completeTurn();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => setImmediate(resolve));
 
-    await session.revertConversation({ messageId: "codex-first" });
+      await session.revertConversation({ messageId: "codex-first" });
 
-    expect(appServer.recordedRollbacks).toEqual([{ threadId: "forked-thread", numTurns: 2 }]);
-    await expect(session.getRuntimeInfo()).resolves.toMatchObject({
-      sessionId: "forked-thread",
-    });
-    appServer.assertNoErrors();
-    await session.close();
-  });
+      const fork = appServer.requests().find((request) => request.method === "thread/fork");
+      if (instructionProfile) {
+        expect(fork?.params).toHaveProperty("baseInstructions", "Sunny identity");
+      } else {
+        expect(fork?.params).not.toHaveProperty("baseInstructions");
+      }
+      expect(appServer.recordedRollbacks).toEqual([{ threadId: "forked-thread", numTurns: 2 }]);
+      await expect(session.getRuntimeInfo()).resolves.toMatchObject({
+        sessionId: "forked-thread",
+      });
+      appServer.assertNoErrors();
+      await session.close();
+    },
+  );
 
   test("rewinds a legacy conversation with a bounded fork on Codex without thread/rollback", async () => {
     const appServer = createFakeCodexAppServer({

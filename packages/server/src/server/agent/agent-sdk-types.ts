@@ -623,6 +623,8 @@ export interface AgentSessionConfig {
    * persisted into agent config so daemon setting changes apply cleanly.
    */
   daemonAppendSystemPrompt?: string;
+  /** Runtime-only host instruction profile; never persisted or accepted from the wire. */
+  instructionProfile?: "paseo-lead";
   modeId?: string;
   model?: string;
   thinkingOptionId?: string;

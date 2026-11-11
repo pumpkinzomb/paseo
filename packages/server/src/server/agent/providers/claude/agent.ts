@@ -3808,6 +3808,19 @@ class ClaudeAgentSession implements AgentSession {
       env: sdkEnv,
     };
 
+    // A Paseo lead has a host-owned identity and configuration surface, not the
+    // user's standalone Claude Code persona. Keep the native auth environment and
+    // managed permission enforcement, but do not load filesystem settings or MCP.
+    // Apply after provider options so a profile cannot undo this boundary.
+    if (this.config.instructionProfile === "paseo-lead") {
+      base.systemPrompt = appendedSystemPrompt;
+      base.settingSources = [];
+      // Omitting skills preserves CLI discovery defaults; an empty list explicitly
+      // excludes native skills from the model and Skill tool (not filesystem access).
+      base.skills = [];
+      base.strictMcpConfig = true;
+    }
+
     if (this.config.mcpServers) {
       base.mcpServers = this.normalizeMcpServers(this.config.mcpServers);
     }
