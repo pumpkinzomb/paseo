@@ -4,11 +4,9 @@ import { useRouter, type Href } from "expo-router";
 import { randomUUID } from "expo-crypto";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
-import { MessageCircle, Plus, SlidersHorizontal } from "lucide-react-native";
+import { Plus } from "lucide-react-native";
 import { Button } from "@/components/ui/button";
-import { buildHostRootRoute } from "@/utils/host-routes";
-import { AssistantModelPicker } from "./model-picker";
-import { buildAssistantModelRoute, type AssistantModelSelection } from "./model-selection";
+import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useHostFeature } from "@/runtime/host-features";
 
 export function DefaultAssistantToolbar({
@@ -21,50 +19,24 @@ export function DefaultAssistantToolbar({
   const { t } = useTranslation();
   const router = useRouter();
   const supported = useHostFeature(serverId, "defaultAssistant");
-  const supportsModelSelection = useHostFeature(serverId, "defaultAssistantModelSelection");
-  const [pickerOpen, setPickerOpen] = useState(false);
   const creatingRef = useRef(false);
   const [creating, setCreating] = useState(false);
   useEffect(() => {
     if (!active) {
       creatingRef.current = false;
       setCreating(false);
-      setPickerOpen(false);
     }
   }, [active]);
-  const resume = useCallback(
-    () => router.navigate(buildHostRootRoute(serverId)),
-    [router, serverId],
-  );
   const newConversation = useCallback(() => {
     if (creatingRef.current) return;
     creatingRef.current = true;
     setCreating(true);
     router.push(`/h/${encodeURIComponent(serverId)}/assistant?new=${randomUUID()}` as Href);
   }, [router, serverId]);
-  const openPicker = useCallback(() => setPickerOpen(true), []);
-  const closePicker = useCallback(() => setPickerOpen(false), []);
-  const selectModel = useCallback(
-    (selection: AssistantModelSelection) => {
-      if (creatingRef.current) return;
-      creatingRef.current = true;
-      setCreating(true);
-      setPickerOpen(false);
-      router.push(buildAssistantModelRoute(serverId, selection, randomUUID()) as Href);
-    },
-    [router, serverId],
-  );
   if (!supported) return null;
   return (
     <View style={styles.row} testID="default-assistant-toolbar">
-      <Button
-        variant="ghost"
-        leftIcon={MessageCircle}
-        onPress={resume}
-        testID="default-assistant-resume"
-      >
-        {t("defaultAssistant.title")}
-      </Button>
+      <TitlebarDragRegion />
       <Button
         variant="ghost"
         leftIcon={Plus}
@@ -74,28 +46,13 @@ export function DefaultAssistantToolbar({
       >
         {t("defaultAssistant.newConversation")}
       </Button>
-      {supportsModelSelection ? (
-        <Button
-          variant="ghost"
-          leftIcon={SlidersHorizontal}
-          onPress={openPicker}
-          disabled={creating}
-          testID="default-assistant-models"
-        >
-          {t("defaultAssistant.chooseModel")}
-        </Button>
-      ) : null}
-      <AssistantModelPicker
-        serverId={serverId}
-        visible={pickerOpen && active}
-        onClose={closePicker}
-        onSelect={selectModel}
-      />
     </View>
   );
 }
 const styles = StyleSheet.create((theme) => ({
   row: {
+    position: "relative",
+    flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: theme.spacing[2],

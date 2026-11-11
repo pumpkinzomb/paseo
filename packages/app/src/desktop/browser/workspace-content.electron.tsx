@@ -104,7 +104,7 @@ export function BrowserWorkspaceContent({
             />
           ))}
         </ScrollView>
-        <ToolbarButton label={t("browserDock.newPage")} onPress={newPage}>
+        <ToolbarButton style={styles.tabButton} label={t("browserDock.newPage")} onPress={newPage}>
           <PlusIcon size={15} uniProps={iconColor} />
         </ToolbarButton>
       </View>
@@ -158,7 +158,11 @@ function BrowserPageTab({
           {title}
         </Text>
       </PressHighlight>
-      <ToolbarButton compact label={t("browserDock.closePage", { title })} onPress={close}>
+      <ToolbarButton
+        style={styles.tabButton}
+        label={t("browserDock.closePage", { title })}
+        onPress={close}
+      >
         <CloseIcon size={12} uniProps={iconColor} />
       </ToolbarButton>
     </View>
@@ -178,12 +182,14 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
     paddingHorizontal: theme.spacing[1],
-    minHeight: 36,
+    height: 32,
+    flexShrink: 0,
   },
   tabList: { alignItems: "center", gap: theme.spacing[1] },
   tab: {
     flexDirection: "row",
     alignItems: "center",
+    height: 28,
     maxWidth: 200,
     borderRadius: theme.borderRadius.sm,
   },
@@ -191,9 +197,11 @@ const styles = StyleSheet.create((theme) => ({
   tabLabel: {
     flexShrink: 1,
     paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[2],
+    height: 28,
+    justifyContent: "center",
   },
-  tabText: { color: theme.colors.foreground, fontSize: 12 },
+  tabButton: { width: 24, height: 24 },
+  tabText: { color: theme.colors.foreground, fontSize: 12, lineHeight: 16 },
   body: { flex: 1, minHeight: 0 },
   error: { color: theme.colors.destructive, padding: theme.spacing[2], fontSize: 12 },
 }));
