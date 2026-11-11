@@ -143,7 +143,16 @@ export function runNativeClone(plan, { spawnProcess = spawn } = {}) {
     child.stdin.end(JSON.stringify(plan));
   });
 }
-export async function cloneDependencyEntries({ source, destination, entries, minFreeBytes }) {
+export async function cloneDependencyEntries(options) {
+  for (const name of Object.keys(options.entries)) {
+    if (!dependencyPath(name) || cachePath(name)) throw new Error("Non-dependency clone entry");
+  }
+  return cloneVerifiedReleaseEntries(options);
+}
+
+// Caller verifies the sealed manifest first. Clone every listed entry, including
+// caches needed for exact renderer-only comparisons, with no copy fallback.
+export async function cloneVerifiedReleaseEntries({ source, destination, entries, minFreeBytes }) {
   source = await fs.realpath(source);
   if (
     (await fs.realpath(destination)) !== path.resolve(destination) ||
@@ -159,7 +168,6 @@ export async function cloneDependencyEntries({ source, destination, entries, min
     links = [];
   for (const name of names) {
     safeRelative(name);
-    if (!dependencyPath(name) || cachePath(name)) throw new Error("Non-dependency clone entry");
     await ensureParents(destination, name);
     const target = path.join(destination, name);
     try {

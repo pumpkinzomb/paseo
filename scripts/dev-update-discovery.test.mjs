@@ -59,6 +59,13 @@ async function fixture(t) {
   await fs.cp(path.join(repository, "packages"), path.join(baseRoot, "packages"), {
     recursive: true,
   });
+  await fs.mkdir(path.join(baseRoot, "node_modules/electron/dist"), { recursive: true });
+  await fs.writeFile(
+    path.join(baseRoot, "node_modules/electron/dist/Electron"),
+    "electron fixture",
+  );
+  await fs.mkdir(path.join(baseRoot, "node_modules/.vite"), { recursive: true });
+  await fs.writeFile(path.join(baseRoot, "node_modules/.vite/results.json"), "{}");
   const manifest = {
     schemaVersion: 1,
     id: "base",
@@ -174,9 +181,32 @@ test("renderer independent overlay retains native bytes; checks and launch requi
     stageRendererRelease({ ...args, validateLaunch: undefined }),
     /launch validation/,
   );
+  let cloneAttempts = 0;
+  await assert.rejects(
+    stageRendererRelease({
+      ...args,
+      cloneRelease: async ({ entries }) => {
+        cloneAttempts++;
+        assert.ok(entries["node_modules/electron/dist/Electron"]);
+        assert.ok(entries["node_modules/.vite/results.json"]);
+        throw new Error("strict clone unavailable");
+      },
+    }),
+    /strict clone unavailable/,
+  );
+  assert.equal(cloneAttempts, 1);
+  assert.equal(checks, 0);
+  assert.equal(launches, 0);
+  assert.deepEqual(await fs.readdir(f.releases), ["base"]);
   const staged = await stageRendererRelease(args);
   const verified = await verifyRelease(f.releases, staged.id, staged.digest);
   assert.equal(isRendererOnly(f.current.manifest, verified.manifest), true);
+  const electron = "node_modules/electron/dist/Electron";
+  const donorStat = await fs.stat(path.join(f.current.root, electron));
+  const stagedStat = await fs.stat(path.join(verified.root, electron));
+  assert.notEqual(stagedStat.ino, donorStat.ino);
+  assert.equal(stagedStat.nlink, 1);
+  assert.equal(await fs.readFile(path.join(verified.root, electron), "utf8"), "electron fixture");
   assert.equal(
     await fs.readFile(path.join(f.current.root, "packages/app/src/view.ts"), "utf8"),
     "export const view = 1;\n",

@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
-import { constants } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
@@ -17,6 +16,8 @@ import {
   scanRelease,
   verifyRelease,
 } from "./dev-update-store.mjs";
+
+import { cloneVerifiedReleaseEntries } from "./dev-update-dependencies.mjs";
 
 const exec = promisify(execFile);
 export const INTENT_FILE = "dev-update-release.json";
@@ -335,6 +336,7 @@ export async function stageRendererRelease({
   runChecks = checkRenderer,
   validateLaunch,
   availableBytes,
+  cloneRelease = cloneVerifiedReleaseEntries,
 }) {
   if (candidate.state !== "eligible" || candidate.intent.mode !== "renderer")
     throw new Error("Renderer stage requires verified renderer intent");
@@ -365,11 +367,12 @@ export async function stageRendererRelease({
   }
   await checkStagingSpace({ base, cacheRoot, availableBytes, minFreeBytes });
   const staging = path.join(cacheRoot, `staging-${id}-${crypto.randomUUID()}`);
-  await fs.cp(base.root, staging, {
-    recursive: true,
-    dereference: false,
-    verbatimSymlinks: true,
-    mode: constants.COPYFILE_FICLONE,
+  await privateDirectory(staging);
+  await cloneRelease({
+    source: base.root,
+    destination: staging,
+    entries: base.manifest.entries,
+    minFreeBytes,
   });
   await overlayRenderer(repository, candidate, staging);
   await runChecks({ root: staging, changedPaths: candidate.changedPaths });
