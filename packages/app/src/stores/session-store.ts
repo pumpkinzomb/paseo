@@ -36,6 +36,7 @@ import type {
   AgentPersistenceHandle,
 } from "@getpaseo/protocol/agent-types";
 import type {
+  ArchivedSubSessionPayload,
   ServerInfoStatusPayload,
   ProjectPlacementPayload,
   ServerCapabilities,
@@ -114,6 +115,7 @@ export interface Agent {
 
 export interface WorkspaceDescriptor {
   parentWorkspaceId?: string;
+  archivedSubSessions?: ArchivedSubSessionPayload[];
   createdAt: Date | null;
   lastUserMessageAt: Date | null;
   id: string;
@@ -172,6 +174,9 @@ export function normalizeWorkspaceDescriptor(
     workspaceKind: payload.workspaceKind,
     background: payload.background ?? false,
     parentWorkspaceId: payload.parentWorkspaceId,
+    ...(payload.archivedSubSessions?.length
+      ? { archivedSubSessions: payload.archivedSubSessions }
+      : {}),
     name: payload.name,
     title: payload.title ?? null,
     pinnedAt: payload.pinnedAt ?? null,

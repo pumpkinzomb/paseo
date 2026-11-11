@@ -137,8 +137,10 @@ open. Detach clears the parent and every open-tab label. The surviving child the
 normal root agent immediately, and closing its still-open tab archives it.
 
 Agent-scoped workspace creation records the caller's workspace as `parentWorkspaceId`.
-This is informational ancestry for future workspace grouping. It does not change placement,
-visibility, status, or archive behavior. Archiving a parent workspace preserves its children's
+In the project sidebar, visible descendants nest under their visible root workspace, including
+cross-project workspaces. Finished descendants fold into Done; archived descendants retain a link
+to their agent timeline after worktree cleanup. Other grouping modes keep their normal flat lists.
+Ancestry does not change placement, status, or archive behavior. Archiving a parent workspace preserves its children's
 records and parentage. Unscoped creation and existing workspaces have no parent; ancestry is
 never inferred from directories, projects, or Git branches.
 

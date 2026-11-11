@@ -1384,6 +1384,11 @@ export const es: TranslationResources = {
         manual: "Manuales: {{count}}",
         pending: "Pendientes: {{count}}",
       },
+      subSessions: {
+        group: "Subsesiones de {{name}}",
+        done: "Completadas ({{count}})",
+        archivedAgent: "Archivado",
+      },
       actions: {
         menu: "AccionesWorkspace",
         newWorkspace: "Nuevo espacio de trabajo",

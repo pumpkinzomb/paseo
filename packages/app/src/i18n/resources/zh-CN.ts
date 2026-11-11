@@ -1338,6 +1338,11 @@ export const zhCN: TranslationResources = {
         manual: "手动: {{count}}",
         pending: "等待中: {{count}}",
       },
+      subSessions: {
+        group: "{{name}} 的子会话",
+        done: "已完成 ({{count}})",
+        archivedAgent: "已归档",
+      },
       actions: {
         menu: "Workspace 操作",
         newWorkspace: "新建 workspace",

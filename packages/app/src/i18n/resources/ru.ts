@@ -1369,6 +1369,11 @@ export const ru: TranslationResources = {
         manual: "Вручную: {{count}}",
         pending: "Ожидают: {{count}}",
       },
+      subSessions: {
+        group: "Подсессии {{name}}",
+        done: "Готово ({{count}})",
+        archivedAgent: "В архиве",
+      },
       actions: {
         menu: "Действия рабочего пространства",
         newWorkspace: "Новое рабочее пространство",

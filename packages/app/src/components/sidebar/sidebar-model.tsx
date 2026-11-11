@@ -1,5 +1,12 @@
 import { useTranslation } from "react-i18next";
-import React, { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from "react";
 import {
   useSidebarWorkspacesList,
   type SidebarProjectEntry,
@@ -17,6 +24,12 @@ import {
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import type { SidebarShortcutModel } from "@/utils/sidebar-shortcuts";
 import { buildSidebarProjection } from "./sidebar-projection";
+import {
+  areSubSessionRootKeysEqual,
+  nestSubSessions,
+  resolveSubSessionRootKeys,
+} from "./sidebar-sub-sessions";
+import { SidebarSubSessionsProvider } from "./sidebar-sub-sessions-context";
 import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
 import { filterWorkspacesByLabels, type SidebarWorkspaceGroup } from "./sidebar-labels";
 import { filterWorkspacesByProjects, resolveActiveProjectFilters } from "./sidebar-project-filter";
@@ -152,9 +165,19 @@ export function SidebarModelProvider({
     visibleWorkspaceKeys,
   ]);
   const pinnedKeys = usePinnedSidebarKeys(filteredProjects);
+  // Only project mode nests sub-sessions; the grouped modes are flat triage lists of every row.
+  const rootKeyByChildKey = useSubSessionRootKeys({
+    enabled: groupMode === "project",
+    workspaceEntriesByKey: filteredWorkspaceEntriesByKey,
+    pinnedWorkspaceKeys: pinnedKeys.pinnedWorkspaceKeys,
+  });
+  const subSessions = useMemo(
+    () => nestSubSessions({ projects: filteredProjects, rootKeyByChildKey }),
+    [filteredProjects, rootKeyByChildKey],
+  );
   const projectionInput = useMemo(
     () => ({
-      projects: filteredProjects,
+      projects: subSessions.projects,
       pinnedKeys,
       pinnedWorkspaceOrder,
       workspaceEntriesByKey: filteredWorkspaceEntriesByKey,
@@ -170,7 +193,7 @@ export function SidebarModelProvider({
       collapsedWorkspaceGroupKeys,
       groupMode,
       list.projectNamesByViewKey,
-      filteredProjects,
+      subSessions.projects,
       pinnedCollapsed,
       pinnedKeys,
       pinnedWorkspaceOrder,
@@ -182,7 +205,7 @@ export function SidebarModelProvider({
   const value = useMemo(
     () => ({
       ...list,
-      projects: filteredProjects,
+      projects: subSessions.projects,
       allProjects: list.projects,
       resolvedProjectFilters,
       hasProjectsBeforeFilter: list.projects.length > 0,
@@ -200,14 +223,43 @@ export function SidebarModelProvider({
       collapsedProjectKeys,
       groupMode,
       list,
-      filteredProjects,
+      subSessions.projects,
       projection,
       toggleProjectCollapsed,
       filteredWorkspaceEntriesByKey,
     ],
   );
 
-  return <SidebarModelContext.Provider value={value}>{children}</SidebarModelContext.Provider>;
+  return (
+    <SidebarModelContext.Provider value={value}>
+      <SidebarSubSessionsProvider childrenByParentKey={subSessions.childrenByParentKey}>
+        {children}
+      </SidebarSubSessionsProvider>
+    </SidebarModelContext.Provider>
+  );
+}
+
+const EMPTY_ROOT_KEYS = new Map<string, string>();
+
+/** Entries churn with every status change; the nesting only moves when parentage does. */
+function useSubSessionRootKeys(input: {
+  enabled: boolean;
+  workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
+  pinnedWorkspaceKeys: readonly string[];
+}): ReadonlyMap<string, string> {
+  const { enabled, workspaceEntriesByKey, pinnedWorkspaceKeys } = input;
+  const previousRef = useRef<ReadonlyMap<string, string>>(EMPTY_ROOT_KEYS);
+  return useMemo(() => {
+    const next = enabled
+      ? resolveSubSessionRootKeys({
+          entries: workspaceEntriesByKey.values(),
+          pinnedWorkspaceKeys: new Set(pinnedWorkspaceKeys),
+        })
+      : EMPTY_ROOT_KEYS;
+    if (areSubSessionRootKeysEqual(previousRef.current, next)) return previousRef.current;
+    previousRef.current = next;
+    return next;
+  }, [enabled, pinnedWorkspaceKeys, workspaceEntriesByKey]);
 }
 
 export function useSidebarModel(): SidebarModel {

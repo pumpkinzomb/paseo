@@ -1488,6 +1488,11 @@ export const en = {
         manual: "Manual: {{count}}",
         pending: "Pending: {{count}}",
       },
+      subSessions: {
+        group: "Sub-sessions of {{name}}",
+        done: "Done ({{count}})",
+        archivedAgent: "Archived",
+      },
       actions: {
         menu: "Workspace actions",
         newWorkspace: "New workspace",

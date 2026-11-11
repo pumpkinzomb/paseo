@@ -1348,6 +1348,11 @@ export const ar: TranslationResources = {
         manual: "يدوية: {{count}}",
         pending: "قيد الانتظار: {{count}}",
       },
+      subSessions: {
+        group: "الجلسات الفرعية لـ {{name}}",
+        done: "مكتملة ({{count}})",
+        archivedAgent: "مؤرشف",
+      },
       actions: {
         menu: "إجراءات Workspace",
         newWorkspace: "مساحة عمل جديدة",

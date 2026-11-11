@@ -100,6 +100,8 @@ import {
 import { useLongPressDragInteraction } from "@/components/sidebar/use-long-press-drag-interaction";
 import { SidebarSectionHeader } from "@/components/sidebar/sidebar-section-header";
 import { SidebarGroupToggleRow } from "@/components/sidebar/sidebar-group-toggle-row";
+import { SidebarSubSessionGroup } from "@/components/sidebar/sidebar-sub-session-group";
+import { useSidebarSubSessionChildren } from "@/components/sidebar/sidebar-sub-sessions-context";
 import { createWorkspaceVisibilityPolicy } from "@/components/sidebar/sidebar-group-visibility";
 import { useLimitedSidebarGroup } from "@/components/sidebar/use-limited-sidebar-group";
 import {
@@ -1609,6 +1611,8 @@ function WorkspaceRow({
   );
 }
 
+const EMPTY_SUB_SESSIONS: readonly SidebarWorkspacePlacement[] = [];
+
 function ProjectBlock({
   project,
   workspaceEntriesByKey,
@@ -1693,16 +1697,70 @@ function ProjectBlock({
 
   // Collapsed rows hide their workspace rows, so the project row carries the most urgent
   // status among them; expanded rows leave the signal to the child rows themselves.
-  const aggregateStatusBucket = useSidebarProjectStatusBucket({
-    workspaces: project.workspaces,
-    enabled: collapsed,
-  });
 
   const active = isProjectSelectedByRoute({
     selection: activeWorkspaceSelection,
     project,
     enabled: selectionEnabled,
   });
+
+  const subSessionChildren = useSidebarSubSessionChildren();
+  // Collapsed projects hide their nested sub-sessions too, so their status joins the aggregate.
+  const statusWorkspaces = useMemo(() => {
+    const nested = project.workspaces.flatMap(
+      (workspace) => subSessionChildren.get(workspace.workspaceKey) ?? [],
+    );
+    return nested.length > 0 ? [...project.workspaces, ...nested] : project.workspaces;
+  }, [project.workspaces, subSessionChildren]);
+  const aggregateStatusBucket = useSidebarProjectStatusBucket({
+    workspaces: statusWorkspaces,
+    enabled: collapsed,
+  });
+
+  const renderRow = useCallback(
+    (
+      placement: SidebarWorkspacePlacement,
+      nested = true,
+      input?: {
+        drag?: () => void;
+        isDragging?: boolean;
+        dragHandleProps?: DraggableListDragHandleProps;
+      },
+    ) => (
+      <MemoWorkspaceRowItem
+        key={placement.workspaceKey}
+        workspace={placement}
+        workspaceEntry={workspaceEntriesByKey.get(placement.workspaceKey) ?? null}
+        hostBadge={hostBadgeByServerId.get(placement.serverId) ?? null}
+        shortcutNumber={
+          nested ? null : (shortcutIndexByWorkspaceKey.get(placement.workspaceKey) ?? null)
+        }
+        showShortcutBadge={showShortcutBadges}
+        canCopyBranchName={placement.projectKind === "git"}
+        canPin={supportsPinningByServerId.get(placement.serverId) === true}
+        onToggleWorkspacePin={onToggleWorkspacePin}
+        isCreating={creatingWorkspaceIds.has(placement.workspaceId)}
+        selectionEnabled={selectionEnabled}
+        activeWorkspaceSelection={activeWorkspaceSelection}
+        onWorkspacePress={onWorkspacePress}
+        drag={nested ? undefined : input?.drag}
+        isDragging={nested ? false : input?.isDragging}
+        dragHandleProps={nested ? undefined : input?.dragHandleProps}
+      />
+    ),
+    [
+      workspaceEntriesByKey,
+      hostBadgeByServerId,
+      shortcutIndexByWorkspaceKey,
+      showShortcutBadges,
+      supportsPinningByServerId,
+      onToggleWorkspacePin,
+      creatingWorkspaceIds,
+      selectionEnabled,
+      activeWorkspaceSelection,
+      onWorkspacePress,
+    ],
+  );
 
   const renderWorkspaceRow = useCallback(
     (
@@ -1713,40 +1771,26 @@ function ProjectBlock({
         dragHandleProps?: DraggableListDragHandleProps;
       },
     ) => {
+      const parentEntry = workspaceEntriesByKey.get(item.workspaceKey);
+      const nestedSubSessions = subSessionChildren.get(item.workspaceKey);
+      const archivedSubSessions = parentEntry?.archivedSubSessions;
+      if (!nestedSubSessions && !archivedSubSessions?.length) return renderRow(item, false, input);
       return (
-        <MemoWorkspaceRowItem
-          key={item.workspaceKey}
-          workspace={item}
-          workspaceEntry={workspaceEntriesByKey.get(item.workspaceKey) ?? null}
-          hostBadge={hostBadgeByServerId.get(item.serverId) ?? null}
-          shortcutNumber={shortcutIndexByWorkspaceKey.get(item.workspaceKey) ?? null}
-          showShortcutBadge={showShortcutBadges}
-          canCopyBranchName={project.projectKind === "git"}
-          canPin={supportsPinningByServerId.get(item.serverId) === true}
-          onToggleWorkspacePin={onToggleWorkspacePin}
-          isCreating={creatingWorkspaceIds.has(item.workspaceId)}
-          selectionEnabled={selectionEnabled}
-          activeWorkspaceSelection={activeWorkspaceSelection}
-          onWorkspacePress={onWorkspacePress}
-          drag={input?.drag}
-          isDragging={input?.isDragging}
-          dragHandleProps={input?.dragHandleProps}
-        />
+        <View key={item.workspaceKey}>
+          {renderRow(item, false, input)}
+          <SidebarSubSessionGroup
+            serverId={item.serverId}
+            parentKey={item.workspaceKey}
+            parentName={parentEntry?.name ?? item.name}
+            subSessions={nestedSubSessions ?? EMPTY_SUB_SESSIONS}
+            archivedSubSessions={archivedSubSessions}
+            workspaceEntriesByKey={workspaceEntriesByKey}
+            renderRow={renderRow}
+          />
+        </View>
       );
     },
-    [
-      project.projectKind,
-      onToggleWorkspacePin,
-      supportsPinningByServerId,
-      activeWorkspaceSelection,
-      creatingWorkspaceIds,
-      hostBadgeByServerId,
-      onWorkspacePress,
-      selectionEnabled,
-      shortcutIndexByWorkspaceKey,
-      showShortcutBadges,
-      workspaceEntriesByKey,
-    ],
+    [renderRow, subSessionChildren, workspaceEntriesByKey],
   );
 
   const renderWorkspace = useCallback(

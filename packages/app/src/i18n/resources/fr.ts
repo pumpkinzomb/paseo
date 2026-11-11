@@ -1378,6 +1378,11 @@ export const fr: TranslationResources = {
         manual: "Manuelles : {{count}}",
         pending: "En attente : {{count}}",
       },
+      subSessions: {
+        group: "Sous-sessions de {{name}}",
+        done: "Terminées ({{count}})",
+        archivedAgent: "Archivé",
+      },
       actions: {
         menu: "Actions de l’espace de travail",
         newWorkspace: "Nouvel espace de travail",

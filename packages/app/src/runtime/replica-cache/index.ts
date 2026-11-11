@@ -304,6 +304,16 @@ const WorkspaceGitRuntimeSchema = z
 
 const StoredWorkspaceSchema = z.strictObject({
   parentWorkspaceId: z.string().optional(),
+  archivedSubSessions: z
+    .array(
+      z.strictObject({
+        workspaceId: z.string(),
+        name: z.string(),
+        archivedAt: z.string(),
+        agentId: z.string().nullable(),
+      }),
+    )
+    .optional(),
   // Require both keys: a cursor without these values would preserve the wrong sort on reconnect.
   createdAt: IsoDateSchema.nullable(),
   lastUserMessageAt: IsoDateSchema.nullable(),
@@ -730,6 +740,7 @@ function restoreWorkspace(stored: StoredWorkspace): WorkspaceDescriptor {
 function serializeWorkspace(workspace: WorkspaceDescriptor): StoredWorkspace {
   return {
     parentWorkspaceId: workspace.parentWorkspaceId,
+    archivedSubSessions: workspace.archivedSubSessions,
     createdAt: workspace.createdAt?.toISOString() ?? null,
     lastUserMessageAt: workspace.lastUserMessageAt?.toISOString() ?? null,
     id: workspace.id,

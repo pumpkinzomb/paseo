@@ -1365,6 +1365,11 @@ export const ja: TranslationResources = {
         manual: "手動: {{count}}",
         pending: "保留中: {{count}}",
       },
+      subSessions: {
+        group: "{{name}} のサブセッション",
+        done: "完了 ({{count}})",
+        archivedAgent: "アーカイブ済み",
+      },
       actions: {
         menu: "ワークスペースアクション",
         newWorkspace: "新しいワークスペース",

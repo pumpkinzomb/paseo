@@ -22,17 +22,20 @@ export function SidebarGroupToggleRow({
   expanded,
   onPress,
   indented = false,
+  label: labelOverride,
   testID,
 }: {
   expanded: boolean;
   onPress: () => void;
   indented?: boolean;
+  /** Names what the toggle reveals; defaults to "Show more" / "Show less". */
+  label?: string;
   testID: string;
 }) {
   const { t } = useTranslation();
-  const label = t(
-    expanded ? "sidebar.workspace.actions.showLess" : "sidebar.workspace.actions.showMore",
-  );
+  const label =
+    labelOverride ??
+    t(expanded ? "sidebar.workspace.actions.showLess" : "sidebar.workspace.actions.showMore");
   const rowStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.row,

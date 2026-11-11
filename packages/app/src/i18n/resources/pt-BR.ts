@@ -1374,6 +1374,11 @@ export const ptBR: TranslationResources = {
         manual: "Manuais: {{count}}",
         pending: "Pendentes: {{count}}",
       },
+      subSessions: {
+        group: "Subsessões de {{name}}",
+        done: "Concluídas ({{count}})",
+        archivedAgent: "Arquivado",
+      },
       actions: {
         menu: "Ações do workspace",
         newWorkspace: "Novo workspace",

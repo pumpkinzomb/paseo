@@ -1488,6 +1488,11 @@ export const ko: TranslationResources = {
         manual: "수동: {{count}}개",
         pending: "대기 중: {{count}}개",
       },
+      subSessions: {
+        group: "{{name}}의 하위 세션",
+        done: "완료 ({{count}})",
+        archivedAgent: "보관됨",
+      },
       actions: {
         menu: "워크스페이스 작업",
         newWorkspace: "새 워크스페이스",
