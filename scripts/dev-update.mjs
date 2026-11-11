@@ -27,6 +27,7 @@ import {
   assertRuntimeArtifacts,
   captureBootstrapDaemon,
 } from "./dev-update-runtime.mjs";
+import { configuredDiscovery, runDiscoveryWatch } from "./dev-update-watch.mjs";
 const exec = promisify(execFile);
 const directory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -115,7 +116,7 @@ export async function stageRelease({ source, releases, id, statePreserving }) {
     ["npm", ["run", "typecheck"]],
     ["npm", ["run", "lint"]],
     ["npm", ["run", "format:check"]],
-    ["node", ["--test", "scripts/dev-update.test.mjs"]],
+    ["node", ["--test", "scripts/daemon-launch-contract.test.mjs"]],
     [
       "npm",
       [
@@ -153,6 +154,51 @@ export async function stageRelease({ source, releases, id, statePreserving }) {
   const digest = manifestDigest(manifest);
   await verifyRelease(releases, id, digest);
   return { id, digest, sourceRevision: revision, root: target };
+}
+
+async function discoveryCommand(action, control) {
+  if (action === "check-updates") {
+    const watcher = await configuredDiscovery(control);
+    if (!watcher) throw new Error("Update discovery is not enabled");
+    try {
+      console.log(JSON.stringify(await watcher.pollOnce(), null, 2));
+    } finally {
+      await watcher.stop();
+    }
+  } else if (action === "watch-updates") {
+    const controller = new AbortController();
+    process.once("SIGINT", () => controller.abort());
+    process.once("SIGTERM", () => controller.abort());
+    // Discovery timers are unref'ed for embedded use; this process owns a persistent watch.
+    const keepAlive = setInterval(() => {}, 60_000);
+    try {
+      await runDiscoveryWatch(control, { signal: controller.signal });
+    } finally {
+      clearInterval(keepAlive);
+    }
+  } else if (action === "start-update-watch") {
+    const configured = await configuredDiscovery(control);
+    if (!configured) throw new Error("Update discovery is not enabled");
+    await configured.stop();
+    if (await readOptionalJson(path.join(control, "discovery-watcher.lock")))
+      throw new Error("Discovery watcher lock exists; reconcile it before starting another");
+    const log = await fs.open(path.join(control, "discovery-watcher.log"), "a", 0o600);
+    const child = spawn(
+      process.execPath,
+      [path.join(directory, "dev-update.mjs"), "watch-updates", "--control", control],
+      { detached: true, stdio: ["ignore", log.fd, log.fd] },
+    );
+    await new Promise((resolve, reject) => {
+      child.once("spawn", resolve);
+      child.once("error", reject);
+    });
+    child.unref();
+    await log.close();
+    console.log(
+      `Discovery watcher launched (PID ${child.pid}); verify status for the first check result.`,
+    );
+  } else return false;
+  return true;
 }
 
 async function main() {
@@ -203,6 +249,10 @@ async function main() {
       "dev-update.mjs",
       "dev-update-store.mjs",
       "dev-update-runtime.mjs",
+      "dev-update-watch.mjs",
+      "dev-update-discovery.mjs",
+      "dev-update-full-stage.mjs",
+      "dev-update-validation.mjs",
       "isolated-lab.mjs",
     ])
       await fs.copyFile(
@@ -223,6 +273,7 @@ async function main() {
   }
   const control = path.resolve(required("control"));
   await privateDirectory(control);
+  if (await discoveryCommand(action, control)) return;
   if (action === "queue") {
     const config = await readJson(path.join(control, "config.json"));
     const id = required("release"),
@@ -239,6 +290,8 @@ async function main() {
           selection: await readJson(path.join(control, "state.json")),
           status: await readOptionalJson(path.join(control, "status.json")),
           supervisor: await readOptionalJson(path.join(control, "supervisor.lock")),
+          discovery: await readOptionalJson(path.join(control, "discovery.json")),
+          discoveryWatcher: await readOptionalJson(path.join(control, "discovery-watcher.lock")),
           note: "Recorded state only. A lock is not proof that a supervisor is still alive.",
         },
         null,
@@ -266,7 +319,7 @@ async function main() {
     );
   } else
     throw new Error(
-      "Use stage, init, start, queue or status. See docs/runtime-development-separation.md.",
+      "Use stage, init, start, queue, check-updates, start-update-watch or status. See docs/runtime-development-separation.md.",
     );
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))

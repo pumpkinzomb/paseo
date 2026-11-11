@@ -484,6 +484,7 @@ export async function launchRuntime(config, root, control, { daemonHandoff = nul
     })),
     isExited: () => desktop.closedAlready && metro.closedAlready,
     stopMetro: () => stopOwned(metro, "Metro"),
+    requestQuit: () => stopOwned(desktop, "Desktop"),
     async requestHandoff(requestId) {
       const file = path.join(generationDirectory, "request.json");
       const existing = await readOptionalJson(file);

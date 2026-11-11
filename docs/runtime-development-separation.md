@@ -124,8 +124,8 @@ The supported behavior is conservative:
   blocks full replacement. Active agents, terminals and background work are not
   interrupted to make an update happen.
 - This is not transparent hot replacement while windows/work remain active.
-  Updates are explicitly queued local releases, not automatic Git polling or an
-  untrusted model-callable deployment endpoint.
+  Local releases can be queued explicitly or by the opt-in discovery watcher below.
+  There is no model-callable deployment endpoint.
 
 ### Stage and validate
 
@@ -207,6 +207,43 @@ refuses an existing daemon or occupied Metro port, rather than guessing ownershi
 or killing it. Repoint the user's launcher separately after startup verification.
 `start` launches a detached supervisor, so an updating agent can finish its turn
 without owning the restart process. A launch PID is not a success confirmation.
+
+### Opt-in update discovery
+
+The separate watcher adds source detection and validation, without changing the
+existing safe quit/relaunch policy. It does not close a window or stop a daemon.
+Create private `control/update-discovery.json` after reviewing the source channel:
+
+```json
+{
+  "enabled": true,
+  "remoteUrl": "https://github.com/OWNER/paseo.git",
+  "ref": "refs/heads/main",
+  "sourceRepository": "/absolute/development-checkout",
+  "cacheRoot": "/absolute/private-update-cache",
+  "pollIntervalMs": 300000
+}
+```
+
+The cache must be outside source, release, control and user-state directories.
+Use a controller containing the discovery modules; installing a source change in
+an app release does not replace an older independently installed controller.
+
+```
+node /absolute/controller/dev-update.mjs check-updates --control /absolute/control
+node /absolute/controller/dev-update.mjs start-update-watch --control /absolute/control
+```
+
+`check-updates` performs one check. `start-update-watch` starts an independent
+background process; verify `status` for its first result, not merely its launch
+PID. It polls the pinned fork's main branch and only queues fast-forward releases
+with a reviewed content-bound preservation declaration after validation. See
+[the release declaration workflow](dev-update-discovery.md). Arbitrary main
+commits, diverged history, missing declarations and failed validation stay unapplied.
+
+Queued changes use the same normal-close/quit behavior below. The watcher does
+not install an OS login service, force an open app to exit, or implement full-daemon
+hot replacement. Its lock is not automatically cleared after an uncertain exit.
 
 ### Queue and inspect
 
