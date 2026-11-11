@@ -461,7 +461,11 @@ Active exact roots are idempotent using lexical platform-equivalence semantics. 
 remote-shaped and path-shaped IDs remain readable, including duplicate roots; reconciliation never
 merges them, transfers names, archives them, or moves workspace foreign keys. An explicit
 workspace `projectId` is authoritative when it names an active project, regardless of cwd
-containment. Archived-only exact-root records are not resurrected by explicit add/open; a fresh
+containment. A workspace opened or created at a linked Git worktree without a `projectId` joins
+the active project registered at its main repository's matching root, the same project a
+Paseo-created worktree joins. Git reports that root by realpath, so the match is realpath-aware.
+Without such a project it falls back to an exact-root project at the worktree. Project add/open
+still allocates for the exact selected root. Archived-only exact-root records are not resurrected by explicit add/open; a fresh
 opaque project is allocated instead. Agent restore is separate and restores the agent's existing
 workspace together with its owning project.
 

@@ -239,6 +239,67 @@ test("existing branch changes remain visible after archive and restore", async (
   expect(after.files.map((file) => file.path)).toEqual(["feature.txt"]);
 }, 180000);
 
+test("archiving a branch-off worktree removes its checkout but keeps its branch and commits", async () => {
+  const daemon = await createTestPaseoDaemon();
+  const { repoDir, tempRoot } = createGitRepoWithBranch();
+  const client = new DaemonClient({
+    url: `ws://127.0.0.1:${daemon.port}/ws`,
+    appVersion: "0.11.2",
+  });
+  onTestFinished(async () => {
+    await client.close().catch(() => undefined);
+    await daemon.close();
+    await rm(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  });
+  await client.connect();
+  const created = await client.createWorkspace({
+    source: {
+      kind: "worktree",
+      cwd: repoDir,
+      action: "branch-off",
+      branchName: "feature/sub-session",
+      baseBranch: "main",
+    },
+  });
+  expect(created.error).toBeNull();
+  const workspace = created.workspace!;
+  const cwd = workspace.workspaceDirectory;
+  commitFile(cwd, "sub-session.txt", "sub-session work\n");
+  const head = runGit(cwd, "rev-parse", "HEAD");
+
+  expect((await client.archiveWorkspace(workspace.id)).error).toBeNull();
+
+  expect(existsSync(cwd)).toBe(false);
+  expect(runGit(repoDir, "rev-parse", "refs/heads/feature/sub-session")).toBe(head);
+}, 180000);
+
+test("adopting a linked worktree as a directory workspace joins its main repo's project", async () => {
+  const daemon = await createTestPaseoDaemon();
+  const { repoDir, tempRoot } = createGitRepoWithBranch();
+  const client = new DaemonClient({
+    url: `ws://127.0.0.1:${daemon.port}/ws`,
+    appVersion: "0.11.2",
+  });
+  onTestFinished(async () => {
+    await client.close().catch(() => undefined);
+    await daemon.close();
+    await rm(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  });
+  const linkedDir = path.join(tempRoot, "linked-checkout");
+  runGit(repoDir, "worktree", "add", linkedDir, "feature/existing-branch");
+  await client.connect();
+  const main = await client.createWorkspace({ source: { kind: "directory", path: repoDir } });
+  expect(main.error).toBeNull();
+
+  const adopted = await client.createWorkspace({
+    source: { kind: "directory", path: linkedDir },
+  });
+
+  expect(adopted.error).toBeNull();
+  expect(adopted.workspace?.projectId).toBe(main.workspace?.projectId);
+  expect(adopted.workspace?.workspaceDirectory).toBe(linkedDir);
+}, 180000);
+
 test("workspace.create keeps a branch-off name separate from its worktree slug", async () => {
   const daemon = await createTestPaseoDaemon();
   const { repoDir, tempRoot } = createGitRepoWithBranch();

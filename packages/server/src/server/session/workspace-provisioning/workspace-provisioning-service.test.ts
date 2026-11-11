@@ -50,6 +50,7 @@ async function isDirectory(target: string): Promise<boolean> {
 let tmpDir: string;
 let gitRoots: Set<string>;
 let gitBranches: Map<string, string | null>;
+let linkedWorktreeMainRoots: Map<string, string>;
 let checkoutFailure: Error | null;
 let restoredMergedChangeRequestUrl: string | null;
 let workspaceRegistry: FileBackedWorkspaceRegistry;
@@ -95,7 +96,7 @@ function gitService() {
         remoteUrl: null,
         worktreeRoot,
         isPaseoOwnedWorktree: false,
-        mainRepoRoot: null,
+        mainRepoRoot: worktreeRoot ? (linkedWorktreeMainRoots.get(worktreeRoot) ?? null) : null,
       };
     },
   });
@@ -105,6 +106,7 @@ beforeEach(async () => {
   tmpDir = mkdtempSync(path.join(os.tmpdir(), "workspace-provisioning-"));
   gitRoots = new Set();
   gitBranches = new Map();
+  linkedWorktreeMainRoots = new Map();
   checkoutFailure = null;
   restoredMergedChangeRequestUrl = null;
   workspaceRegistry = new FileBackedWorkspaceRegistry(
@@ -723,6 +725,51 @@ test("directory creation persists the live branch and a trimmed title", async ()
   gitRoots.add(repo);
   const workspace = await provisioning.createWorkspaceForDirectory(repo, "  Focused work  ");
   expect(workspace).toMatchObject({ branch: "main", title: "Focused work" });
+});
+
+test("adopting a linked worktree joins the project registered for its main repo", async () => {
+  const repo = path.join(tmpDir, "repo");
+  const linked = path.join(tmpDir, "worktrees", "feature");
+  gitRoots.add(repo);
+  gitRoots.add(linked);
+  linkedWorktreeMainRoots.set(linked, repo);
+  const mainWorkspace = await provisioning.createWorkspaceForDirectory(repo);
+
+  const adopted = await provisioning.createWorkspaceForDirectory(linked);
+
+  expect(adopted.projectId).toBe(mainWorkspace.projectId);
+  expect(adopted.cwd).toBe(linked);
+  expect(await projectRegistry.list()).toHaveLength(1);
+});
+
+test("adopting a subdirectory of a linked worktree joins the main repo's matching subproject", async () => {
+  const repo = path.join(tmpDir, "repo");
+  const linked = path.join(tmpDir, "worktrees", "feature");
+  gitRoots.add(repo);
+  gitRoots.add(linked);
+  linkedWorktreeMainRoots.set(linked, repo);
+  const subproject = await provisioning.createWorkspaceForDirectory(
+    path.join(repo, "packages", "app"),
+  );
+  await provisioning.createWorkspaceForDirectory(repo);
+
+  const adopted = await provisioning.createWorkspaceForDirectory(
+    path.join(linked, "packages", "app"),
+  );
+
+  expect(adopted.projectId).toBe(subproject.projectId);
+});
+
+test("adopting a linked worktree whose main repo is unregistered keeps its own project", async () => {
+  const repo = path.join(tmpDir, "repo");
+  const linked = path.join(tmpDir, "worktrees", "feature");
+  gitRoots.add(linked);
+  linkedWorktreeMainRoots.set(linked, repo);
+
+  const adopted = await provisioning.createWorkspaceForDirectory(linked);
+
+  const project = await projectRegistry.get(adopted.projectId);
+  expect(project?.rootPath).toBe(linked);
 });
 
 test("createWorkspaceForDirectory honors an explicit active project without cwd containment", async () => {

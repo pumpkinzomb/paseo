@@ -19,7 +19,11 @@ import {
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
 import type { CreatePaseoWorktreeWorkflowResult } from "../../worktree-session.js";
 import { deriveProjectKey } from "../../project-key.js";
-import { areEquivalentPaths, createRealpathAwarePathMatcher } from "../../../utils/path.js";
+import {
+  areEquivalentPaths,
+  createRealpathAwarePathMatcher,
+  getRealpathAwareRelativePath,
+} from "../../../utils/path.js";
 import type { UntrustedWorkspaceSource } from "../../workspace-automation-gate.js";
 import { readPaseoWorktreeMetadata } from "../../../utils/worktree-metadata.js";
 
@@ -223,6 +227,42 @@ export function createWorkspaceProvisioningService(deps: {
     });
   }
 
+  /**
+   * A workspace adopted at a linked Git worktree belongs to the project already registered
+   * for its main repository, the same project a Paseo-created worktree of that repository
+   * joins. Without a registered main-repo project it falls back to a project at its own root.
+   */
+  async function findOrCreateProjectForWorkspaceDirectory(
+    rootPath: string,
+    checkout: ProjectCheckoutLitePayload,
+  ): Promise<PersistedProjectRecord> {
+    const mainRepoProject = await findActiveMainRepoProject(rootPath, checkout);
+    if (mainRepoProject) return refreshProjectKind(mainRepoProject);
+    return findOrCreateProjectForDirectory(rootPath);
+  }
+
+  async function findActiveMainRepoProject(
+    rootPath: string,
+    checkout: ProjectCheckoutLitePayload,
+  ): Promise<PersistedProjectRecord | null> {
+    if (!checkout.isGit || !checkout.mainRepoRoot) return null;
+    if (createRealpathAwarePathMatcher(checkout.mainRepoRoot)(checkout.worktreeRoot)) return null;
+    const selectedPath = getRealpathAwareRelativePath(checkout.worktreeRoot, rootPath);
+    if (selectedPath === null) return null;
+    // Git reports the main repository by its real path; registered roots keep their spelling.
+    const isMainRepoProjectRoot = createRealpathAwarePathMatcher(
+      resolve(checkout.mainRepoRoot, selectedPath),
+    );
+    const [project] = (await projectRegistry.list())
+      .filter((candidate) => !candidate.archivedAt && isMainRepoProjectRoot(candidate.rootPath))
+      .sort(
+        (left, right) =>
+          Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
+          left.projectId.localeCompare(right.projectId),
+      );
+    return project ?? null;
+  }
+
   async function requireActiveProject(projectId: string): Promise<PersistedProjectRecord> {
     const project = await projectRegistry.get(projectId);
     if (!project) throw new WorkspaceProvisioningError("unknown_project", projectId);
@@ -264,7 +304,7 @@ export function createWorkspaceProvisioningService(deps: {
     const project = projectId
       ? await refreshProjectKind(await requireActiveProject(projectId), normalizedCwd, checkout)
       : // COMPAT(workspaceCreateMissingProjectId): added in v0.1.107, remove after 2027-01-15.
-        await findOrCreateProjectForDirectory(normalizedCwd);
+        await findOrCreateProjectForWorkspaceDirectory(normalizedCwd, checkout);
     const create = async () => {
       const baseMetadata =
         checkout.isGit && checkout.isPaseoOwnedWorktree
