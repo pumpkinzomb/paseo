@@ -15117,18 +15117,21 @@ test("turns keep distinct identities across an idle runtime collection and resum
   }
 });
 
-async function conversationLifecycleFixture() {
+async function conversationLifecycleFixture(
+  workspaceIsActive?: (workspaceId: string) => Promise<boolean>,
+) {
   const dir = mkdtempSync(join(tmpdir(), "assistant-lifecycle-"));
   const storage = new AgentStorage(join(dir, "agents"), logger);
   const client = new NativeArchiveRecordingClient();
   const manager = new AgentManager({
     clients: { codex: client },
     registry: storage,
+    workspaceIsActive,
     logger,
   });
-  const create = async () => {
+  const create = async (workspaceId?: string) => {
     const agent = await manager.createAgent({ provider: "codex", cwd: dir }, undefined, {
-      workspaceId: undefined,
+      workspaceId,
     });
     await manager.setLabels(agent.id, { "paseo.role": "assistant" });
     await manager.flush();
@@ -15291,4 +15294,97 @@ test("self-development policy blocks protected creation and guides allowed agent
   expect(client.createdConfigs[0]?.daemonAppendSystemPrompt).toContain(lab);
   expect(client.createdConfigs[0]?.daemonAppendSystemPrompt).toContain("not an OS sandbox");
   expect(client.createdConfigs[0]?.cwd).toBe(lab);
+});
+
+test("group deletion includes mixed manager/worker children, preserving another workspace", async () => {
+  const f = await conversationLifecycleFixture();
+  const a = await f.create("group");
+  const child = await f.create("group");
+  const other = await f.create("other");
+  await f.manager.setLabels(child.id, { "paseo.role": "worker", [PARENT_AGENT_ID_LABEL]: a.id });
+  await f.manager.mutateAssistantConversationRecords([a.id, child.id], "delete", null, "group");
+  expect(await f.storage.get(a.id)).toBeNull();
+  expect(await f.storage.get(child.id)).toBeNull();
+  expect(await f.storage.get(other.id)).not.toBeNull();
+  expect(f.client.archivedHandles).toEqual([]);
+});
+test("group deletion rejects a stale workspace inventory before closing any member", async () => {
+  const f = await conversationLifecycleFixture();
+  const a = await f.create("group");
+  const b = await f.create("group");
+  await expect(
+    f.manager.mutateAssistantConversationRecords([a.id], "delete", null, "group"),
+  ).rejects.toThrow("changed");
+  expect(f.manager.getAgent(a.id)?.session).not.toBeNull();
+  expect(await f.storage.get(a.id)).not.toBeNull();
+  expect(await f.storage.get(b.id)).not.toBeNull();
+});
+test("group deletion does not cascade into a child in another workspace", async () => {
+  const f = await conversationLifecycleFixture();
+  const a = await f.create("group");
+  const child = await f.create("other");
+  await f.manager.setLabels(child.id, { [PARENT_AGENT_ID_LABEL]: a.id });
+  await expect(
+    f.manager.mutateAssistantConversationRecords([a.id], "delete", null, "group"),
+  ).rejects.toThrow("subagents");
+  expect(await f.storage.get(a.id)).not.toBeNull();
+  expect(await f.storage.get(child.id)).not.toBeNull();
+});
+
+test("group deletion gates create and restore into its workspace without blocking another workspace", async () => {
+  const f = await conversationLifecycleFixture();
+  const archived = await f.create("other");
+  await f.manager.mutateAssistantConversationRecords([archived.id], "archive");
+  await f.manager.withWorkspaceSessionDeletion("group", async () => {
+    await expect(f.create("group")).rejects.toThrow("being deleted");
+    await expect(
+      f.manager.unarchiveSnapshot(archived.id, { workspaceId: "group" }),
+    ).rejects.toThrow("being deleted");
+    expect((await f.create("other")).workspaceId).toBe("other");
+  });
+  expect((await f.storage.get(archived.id))?.workspaceId).toBe("other");
+  expect((await f.create("group")).workspaceId).toBe("group");
+});
+test("group deletion rechecks provider background work immediately before closing", async () => {
+  const f = await conversationLifecycleFixture();
+  const a = await f.create("group");
+  let checks = 0;
+  a.session!.canStopRuntime = async () => ++checks === 1;
+  await expect(
+    f.manager.mutateAssistantConversationRecords([a.id], "delete", null, "group"),
+  ).rejects.toThrow("background work");
+  expect(await f.storage.get(a.id)).not.toBeNull();
+  expect(f.manager.getAgent(a.id)?.session).not.toBeNull();
+});
+
+test("group deletion leaves an already registering session alone", async () => {
+  const f = await conversationLifecycleFixture();
+  const entered = deferred<void>();
+  const release = deferred<void>();
+  const original = f.client.createSession.bind(f.client);
+  vi.spyOn(f.client, "createSession").mockImplementationOnce(async (...args) => {
+    entered.resolve();
+    await release.promise;
+    return original(...args);
+  });
+  const creating = f.create("group");
+  await entered.promise;
+  await expect(f.manager.withWorkspaceSessionDeletion("group", async () => {})).rejects.toThrow(
+    "still registering",
+  );
+  release.resolve();
+  const agent = await creating;
+  expect(await f.storage.get(agent.id)).not.toBeNull();
+});
+
+test("group deletion rejects late creation after the deletion gate has already been released", async () => {
+  let active = true;
+  const f = await conversationLifecycleFixture(async () => active);
+  await f.manager.withWorkspaceSessionDeletion("group", async () => {
+    active = false;
+  });
+  await expect(f.create("group")).rejects.toThrow("removed or archived");
+  expect(f.manager.listAgents()).toEqual([]);
+  active = true;
+  expect((await f.create("group")).workspaceId).toBe("group");
 });

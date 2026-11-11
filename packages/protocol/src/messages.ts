@@ -2979,6 +2979,34 @@ export const AssistantConversationLifecycleResponseSchema = z.object({
   }),
 });
 
+export const WorkspaceSessionsDeleteInspectRequestSchema = z.object({
+  type: z.literal("workspace.sessions.delete.inspect.request"),
+  requestId: z.string(),
+  workspaceId: z.string().regex(/^wks_[a-f0-9]{16}$/),
+});
+export const WorkspaceSessionsDeleteRequestSchema = z.object({
+  type: z.literal("workspace.sessions.delete.request"),
+  requestId: z.string(),
+  workspaceId: z.string().regex(/^wks_[a-f0-9]{16}$/),
+  expectedAgentIds: z.array(z.string().uuid()),
+});
+export const WorkspaceSessionsDeleteInspectResponseSchema = z.object({
+  type: z.literal("workspace.sessions.delete.inspect.response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentIds: z.array(z.string()),
+    error: z.string().nullable(),
+  }),
+});
+export const WorkspaceSessionsDeleteResponseSchema = z.object({
+  type: z.literal("workspace.sessions.delete.response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentIds: z.array(z.string()),
+    error: z.string().nullable(),
+  }),
+});
+
 export const AgentRecordDeleteRequestSchema = z.object({
   type: z.literal("agent.record.delete.request"),
   requestId: z.string(),
@@ -3772,6 +3800,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   AssistantConversationGetRequestSchema,
   AssistantConversationLifecycleRequestSchema,
   AgentRecordDeleteRequestSchema,
+  WorkspaceSessionsDeleteInspectRequestSchema,
+  WorkspaceSessionsDeleteRequestSchema,
   AgentCreateRequestSchema,
   CreationSubscribeRequestSchema,
   WorkspaceClearAttentionRequestSchema,
@@ -4205,6 +4235,7 @@ export const ServerInfoStatusPayloadSchema = z
         defaultAssistantConversations: z.boolean().optional(),
         assistantConversationLifecycle: z.boolean().optional(),
         agentRecordDeletion: z.boolean().optional(),
+        workspaceSessionDeletion: z.boolean().optional(),
         localProviderSessions: z.boolean().optional(),
         diffSubscription: z.boolean().optional(),
         binaryChunkingV1: z.boolean().optional(),
@@ -7648,6 +7679,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AssistantConversationGetResponseSchema,
   AssistantConversationLifecycleResponseSchema,
   AgentRecordDeleteResponseSchema,
+  WorkspaceSessionsDeleteInspectResponseSchema,
+  WorkspaceSessionsDeleteResponseSchema,
   AgentCreateResponseSchema,
   WorkspaceCreationUpdateSchema,
   AgentCreationUpdateSchema,

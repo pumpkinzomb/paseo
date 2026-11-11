@@ -5562,6 +5562,24 @@ export class DaemonClient {
     });
   }
 
+  async inspectWorkspaceSessionDeletion(workspaceId: string) {
+    if (!this.lastServerInfoMessage?.features?.workspaceSessionDeletion)
+      throw new Error("Update this host to delete grouped sessions.");
+    return this.sendCorrelatedSessionRequest({
+      message: { type: "workspace.sessions.delete.inspect.request", workspaceId },
+      responseType: "workspace.sessions.delete.inspect.response",
+    });
+  }
+
+  async deleteWorkspaceSessions(workspaceId: string, expectedAgentIds: string[]) {
+    if (!this.lastServerInfoMessage?.features?.workspaceSessionDeletion)
+      throw new Error("Update this host to delete grouped sessions.");
+    return this.sendCorrelatedSessionRequest({
+      message: { type: "workspace.sessions.delete.request", workspaceId, expectedAgentIds },
+      responseType: "workspace.sessions.delete.response",
+    });
+  }
+
   async deleteAgentRecord(agentId: string) {
     if (!this.lastServerInfoMessage?.features?.agentRecordDeletion)
       throw new Error("Update this host to delete individual sessions.");

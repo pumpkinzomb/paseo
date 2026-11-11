@@ -1,12 +1,16 @@
 export const en = {
   workspaceSessionDeletion: {
-    menu: "Delete session…",
-    choose: "Choose a session in this workspace. No project files will be deleted.",
-    empty: "No sessions in this workspace.",
-    loading: "Loading sessions…",
+    uncertain:
+      "The deletion result could not be confirmed. Reload and check the group before trying again.",
+    partial:
+      "Some session records were deleted, but group cleanup did not finish. The view was refreshed. Do not repeat Delete without checking the remaining sessions.",
+    menu: "Delete",
+    title: "Delete this session group?",
+    confirm:
+      "Permanently delete all {{count}} Paseo session records and timelines in this group, including model segments and child sessions, and remove this group from the sidebar? This cannot be undone in Paseo. Other groups, original provider sessions, project/worktree files and attachments are preserved. Active work is never stopped; finish it before deleting.",
+    busy: "This group still has active work, pending approval, or a child session outside the group. Finish the work or detach the child first. Nothing was deleted.",
+    done: "Session group deleted from Paseo.",
     moved: "This session moved to another workspace. Reopen its menu.",
-    scope:
-      "Assistant conversations delete all connected model segments; provider originals are kept.",
   },
   localSessions: {
     title: "Local sessions",

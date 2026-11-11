@@ -233,6 +233,60 @@ export class DefaultAssistantSelection {
     });
   }
 
+  /** The sidebar row owns an exact workspace, not a project or a provider session. */
+  deleteWorkspaceSessions(input: {
+    workspaceId: string;
+    expectedAgentIds?: readonly string[];
+    list: () => Promise<readonly { id: string; workspaceId?: string }[]>;
+    validate: (ids: string[]) => Promise<void>;
+    apply: (ids: string[]) => Promise<void>;
+  }): Promise<string[]> {
+    return this.enqueue(async () => {
+      const state = await this.read();
+      const records = await input.list();
+      const ids = records
+        .filter((record) => record.workspaceId === input.workspaceId)
+        .map((record) => record.id)
+        .sort();
+      const selected = new Set(ids);
+      const existingIds = new Set(records.map((record) => record.id));
+      const conversations = Object.values(state.conversations).filter((conversation) =>
+        conversation.segments.some(
+          (segment) =>
+            selected.has(segment.agentId) ||
+            (segment.workspaceId === input.workspaceId && !existingIds.has(segment.agentId)),
+        ),
+      );
+      // Never split a logical conversation or silently expand into another sidebar row.
+      for (const conversation of conversations) {
+        if (
+          conversation.segments.some((segment) =>
+            records.some((record) => record.id === segment.agentId && !selected.has(record.id)),
+          )
+        )
+          throw new Error(
+            "A linked conversation belongs to another workspace. Delete that conversation from its own menu first.",
+          );
+      }
+      if (
+        input.expectedAgentIds !== undefined &&
+        JSON.stringify([...new Set(input.expectedAgentIds)].sort()) !== JSON.stringify(ids)
+      )
+        throw new Error("The sessions in this group changed. Reopen Delete and review them again.");
+      await input.validate(ids);
+      if (input.expectedAgentIds === undefined) return ids;
+      await input.apply(ids);
+      for (const conversation of conversations) {
+        delete state.conversations[conversation.logicalId];
+        for (const segment of conversation.segments)
+          delete state.agentConversationIds[segment.agentId];
+      }
+      if (state.currentAgentId && selected.has(state.currentAgentId)) state.currentAgentId = null;
+      await writeJsonFileAtomic(this.file, state);
+      return ids;
+    });
+  }
+
   private isArchived(state: z.infer<typeof SelectionSchema>, agentId: string): boolean {
     return Boolean(state.conversations[state.agentConversationIds[agentId] ?? ""]?.archivedAt);
   }

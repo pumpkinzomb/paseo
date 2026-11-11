@@ -1,7 +1,4 @@
-import {
-  useWorkspaceSessionDeletePages,
-  WORKSPACE_SESSION_DELETE_PAGE_ID,
-} from "./workspace-session-delete-page";
+import { WorkspaceSessionDeleteItem } from "./workspace-session-delete-item";
 import { useMemo, type ComponentProps, type PropsWithChildren, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { PressableStateCallbackType } from "react-native";
@@ -272,12 +269,12 @@ function SidebarWorkspaceMenuItems({
         testID={`sidebar-workspace-menu-open-folder-${workspaceKey}`}
       />
       {serverId && workspaceId ? (
-        <DropdownMenuSubTrigger
-          id={WORKSPACE_SESSION_DELETE_PAGE_ID}
-          testID={`sidebar-workspace-menu-delete-session-${workspaceKey}`}
-        >
-          {t("workspaceSessionDeletion.menu")}
-        </DropdownMenuSubTrigger>
+        <WorkspaceSessionDeleteItem
+          serverId={serverId}
+          workspaceId={workspaceId}
+          workspaceKey={workspaceKey}
+          surface={surface}
+        />
       ) : null}
       {onArchive ? (
         <WorkspaceMenuItem
@@ -324,8 +321,7 @@ export function SidebarWorkspaceMenu({
     [serverId, workspaceId, workspaceLabels],
   );
   const labelPages = useWorkspaceLabelMenuPages(workspaceTarget);
-  const sessionPages = useWorkspaceSessionDeletePages(workspaceTarget);
-  const pages = useMemo(() => [...labelPages, ...sessionPages], [labelPages, sessionPages]);
+  const pages = labelPages;
   return (
     <DropdownMenu compactMode="sheet" open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
@@ -440,8 +436,7 @@ export function SidebarWorkspaceContextMenu({
     [workspace],
   );
   const labelPages = useWorkspaceLabelMenuPages(workspaceTarget);
-  const sessionPages = useWorkspaceSessionDeletePages(workspaceTarget);
-  const pages = useMemo(() => [...labelPages, ...sessionPages], [labelPages, sessionPages]);
+  const pages = labelPages;
 
   return (
     <ContextMenu open={contextMenuOpen} onOpenChange={onContextMenuOpenChange}>

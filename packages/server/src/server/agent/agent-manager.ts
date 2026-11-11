@@ -390,6 +390,7 @@ export interface AgentManagerOptions {
   providerDefinitions?: ProviderEnabledMap;
   idFactory?: () => string;
   registry?: AgentStorage;
+  workspaceIsActive?: (workspaceId: string) => Promise<boolean>;
   onAgentAttention?: AgentAttentionCallback;
   onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
   timelineStore?: InMemoryAgentTimelineStore;
@@ -871,6 +872,7 @@ export class AgentManager {
   private readonly previousStatuses = new Map<string, AgentLifecycleStatus>();
   private readonly backgroundTasks = new Set<Promise<void>>();
   private readonly agentRegistrationTasks = new Set<Promise<void>>();
+  private readonly deletingSessionWorkspaces = new Set<string>();
   private readonly inFlightAgentCloses = new Map<string, Promise<void>>();
   private readonly historySessions = new WeakSet<AgentSession>();
   private readonly reloadedSessionCloses = new WeakMap<AgentSession, Promise<void>>();
@@ -900,8 +902,10 @@ export class AgentManager {
   private readonly rescueTimeouts: Required<AgentManagerRescueTimeouts>;
   private readonly beforeSteerUnavailableFallback?: AgentManagerOptions["beforeSteerUnavailableFallback"];
   private acceptingAgentRegistrations = true;
+  private readonly workspaceIsActive?: AgentManagerOptions["workspaceIsActive"];
 
   constructor(options: AgentManagerOptions) {
+    this.workspaceIsActive = options.workspaceIsActive;
     this.pluginLifecycle = options.pluginLifecycle;
     this.pluginAgentTools = options.pluginAgentTools;
     this.timelineStore = options.timelineStore ?? new InMemoryAgentTimelineStore();
@@ -1558,6 +1562,7 @@ export class AgentManager {
     options: CreateAgentOptions,
   ): Promise<ManagedAgent> {
     this.assertAcceptingAgentRegistrations();
+    await this.assertWorkspaceAvailableForRegistration(options.workspaceId);
     config = this.withConvertedOptions(config);
     if (this.pluginLifecycle && !config.internal) {
       const sent = exposeFeatureValuesToHook(config);
@@ -1726,6 +1731,7 @@ export class AgentManager {
 
     const launchEnv = record?.launchEnv;
     const workspaceId = resolveResumeWorkspaceId({ options, record });
+    await this.assertWorkspaceAvailableForRegistration(workspaceId);
     const { storedConfig, launchConfig, paseoToolPolicy } = await this.prepareSessionConfig(
       mergedConfig,
       resolvedAgentId,
@@ -1801,6 +1807,7 @@ export class AgentManager {
     labels?: Record<string, string>;
   }): Promise<ManagedAgent> {
     this.assertAcceptingAgentRegistrations();
+    await this.assertWorkspaceAvailableForRegistration(input.workspaceId);
     const resolvedAgentId = validateAgentId(this.idFactory(), "importProviderSession");
     this.requireEnabledProvider(input.provider);
 
@@ -2943,8 +2950,8 @@ export class AgentManager {
     agentId: string,
     updates?: { workspaceId?: string; labels?: AgentLabelPatch },
   ): Promise<boolean> {
-    return this.runLifecycleMutation(agentId, () =>
-      this.unarchiveSnapshotUnlocked(agentId, updates),
+    return this.trackAgentRegistrationOperation(
+      this.runLifecycleMutation(agentId, () => this.unarchiveSnapshotUnlocked(agentId, updates)),
     );
   }
 
@@ -2958,6 +2965,7 @@ export class AgentManager {
       return false;
     }
 
+    await this.assertWorkspaceAvailableForRegistration(updates?.workspaceId ?? record.workspaceId);
     // Close and native restore share the lifecycle lane with persisted resume.
     // No new history or interactive runtime can acquire the writer between them.
     if (this.agents.has(agentId)) await this.closeAgentRuntime(agentId);
@@ -4064,10 +4072,42 @@ export class AgentManager {
     }
   }
 
-  private async validateAssistantConversationMutation(
+  private assertWorkspaceNotDeleting(workspaceId: string | undefined): void {
+    if (workspaceId && this.deletingSessionWorkspaces.has(workspaceId))
+      throw new Error("This session group is being deleted. Wait before opening another session.");
+  }
+
+  private async assertWorkspaceAvailableForRegistration(
+    workspaceId: string | undefined,
+  ): Promise<void> {
+    this.assertWorkspaceNotDeleting(workspaceId);
+    if (workspaceId && this.workspaceIsActive && !(await this.workspaceIsActive(workspaceId)))
+      throw new Error("This session group was removed or archived. Choose an active workspace.");
+    this.assertWorkspaceNotDeleting(workspaceId);
+  }
+
+  async withWorkspaceSessionDeletion<T>(
+    workspaceId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    this.assertWorkspaceNotDeleting(workspaceId);
+    // An already admitted registration owns its runtime. Do not stop it or race its publication.
+    if (this.agentRegistrationTasks.size > 0)
+      throw new Error(
+        "Sessions are still registering. Finish opening them before deleting this group.",
+      );
+    this.deletingSessionWorkspaces.add(workspaceId);
+    try {
+      return await operation();
+    } finally {
+      this.deletingSessionWorkspaces.delete(workspaceId);
+    }
+  }
+
+  async validateAssistantConversationMutation(
     ids: string[],
     action: "archive" | "restore" | "delete",
-    assistantOnly: boolean,
+    assistantOnly: boolean | null,
   ): Promise<void> {
     const registry = this.requireRegistry();
     const records = await registry.listAll();
@@ -4091,7 +4131,7 @@ export class AgentManager {
       const record = await registry.get(id);
       if (record && assistantOnly && record.labels?.["paseo.role"] !== "assistant")
         throw new Error("Only assistant conversations can use this action.");
-      if (record && !assistantOnly && record.labels?.["paseo.role"] === "assistant")
+      if (record && assistantOnly === false && record.labels?.["paseo.role"] === "assistant")
         throw new Error("Use assistant conversation deletion to preserve linked segments.");
       const agent = this.agents.get(id);
       if (
@@ -4110,7 +4150,8 @@ export class AgentManager {
   async mutateAssistantConversationRecords(
     agentIds: string[],
     action: "archive" | "restore" | "delete",
-    assistantOnly = true,
+    assistantOnly: boolean | null = true,
+    expectedWorkspaceId?: string,
   ): Promise<void> {
     const ids = [
       ...new Set(agentIds.map((id) => validateAgentId(id, "conversation lifecycle"))),
@@ -4125,14 +4166,47 @@ export class AgentManager {
     const locked = async (index: number): Promise<void> => {
       if (index < ids.length)
         return this.runLifecycleMutation(ids[index]!, () => locked(index + 1));
+      const validateWorkspace = async () => {
+        if (!expectedWorkspaceId) return;
+        if (
+          Array.from(this.agents.values()).some(
+            (agent) => agent.internal && agent.workspaceId === expectedWorkspaceId,
+          )
+        )
+          throw new Error(
+            "This session group still owns background work. Finish it before deleting.",
+          );
+        const current = (await registry.listAll())
+          .filter((record) => record.workspaceId === expectedWorkspaceId)
+          .map((record) => record.id)
+          .sort();
+        if (JSON.stringify(current) !== JSON.stringify(ids))
+          throw new Error(
+            "The sessions in this group changed. Reopen Delete and review them again.",
+          );
+      };
+      await validateWorkspace();
       await this.validateAssistantConversationMutation(ids, action, assistantOnly);
       // Close every runtime before the first destructive write. Close failure is propagated.
       for (const id of ids) {
         const agent = this.agents.get(id);
-        if (agent && !(await this.closeAgentRuntime(id, () => this.runtimeHasNoPendingWork(agent))))
+        if (!agent) continue;
+        // Work can begin on a later member while an earlier runtime is closing.
+        if (
+          this.backgroundWork.list(id).length > 0 ||
+          (agent.session.canStopRuntime && !(await agent.session.canStopRuntime()))
+        )
+          throw new Error("Conversation still owns background work. Finish it before deleting.");
+        if (
+          !(await this.closeAgentRuntime(
+            id,
+            () => this.runtimeHasNoPendingWork(agent) && this.backgroundWork.list(id).length === 0,
+          ))
+        )
           throw new Error("Conversation became busy. Please retry after it finishes.");
       }
       await this.flush();
+      await validateWorkspace();
       for (const id of ids) {
         const record = await registry.get(id);
         if (action === "delete") {
@@ -4447,6 +4521,7 @@ export class AgentManager {
     let registered = false;
     try {
       this.assertAcceptingAgentRegistrations();
+      await this.assertWorkspaceAvailableForRegistration(options.workspaceId);
       const config = this.withOpenedOptions({ config: openedConfig, session });
       const resolvedAgentId = validateAgentId(agentId, "registerSession");
       if (this.agents.has(resolvedAgentId)) {
@@ -4488,6 +4563,7 @@ export class AgentManager {
         }
       }
 
+      await this.assertWorkspaceAvailableForRegistration(options.workspaceId);
       this.assertAcceptingAgentRegistrations();
       this.agents.set(resolvedAgentId, managed);
       registered = true;

@@ -1017,6 +1017,10 @@ export async function createPaseoDaemon(
     clients: initialAgentManagerState.clients,
     providerDefinitions: initialAgentManagerState.providerDefinitions,
     registry: agentStorage,
+    workspaceIsActive: async (workspaceId) => {
+      const workspace = await workspaceRegistry.get(workspaceId);
+      return Boolean(workspace && !workspace.archivedAt);
+    },
     appendSystemPrompt: config.appendSystemPrompt,
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);

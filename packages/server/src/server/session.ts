@@ -3213,6 +3213,9 @@ export class Session {
         return this.handleCreationSubscription(msg, source);
       case "workspace.create.request":
         return this.handleWorkspaceCreation(msg, source);
+      case "workspace.sessions.delete.inspect.request":
+      case "workspace.sessions.delete.request":
+        return this.handleWorkspaceSessionsDelete(msg, source);
       case "agent.record.delete.request":
         return this.handleAgentRecordDelete(msg, source);
       case "assistant.conversation.lifecycle.request":
@@ -4765,6 +4768,84 @@ export class Session {
   private async findAssistantConversationAgent(agentId: string) {
     const agent = await this.getAgentPayloadById(agentId);
     return agent?.labels["paseo.role"] === "assistant" ? { agent } : null;
+  }
+
+  private async handleWorkspaceSessionsDelete(
+    request: Extract<
+      SessionInboundMessage,
+      { type: "workspace.sessions.delete.request" | "workspace.sessions.delete.inspect.request" }
+    >,
+    source?: object,
+  ): Promise<void> {
+    const deleting = request.type === "workspace.sessions.delete.request";
+    const type = deleting
+      ? "workspace.sessions.delete.response"
+      : "workspace.sessions.delete.inspect.response";
+    let attemptedIds: string[] = [];
+    try {
+      const execute = async () => {
+        if (!(await this.workspaceRegistry.get(request.workspaceId)))
+          throw new Error("This group no longer exists.");
+        const agentIds = await defaultAssistantSelection(
+          this.agentManager,
+          this.paseoHome,
+        ).deleteWorkspaceSessions({
+          workspaceId: request.workspaceId,
+          expectedAgentIds:
+            request.type === "workspace.sessions.delete.request"
+              ? request.expectedAgentIds
+              : undefined,
+          list: () => this.agentStorage.listAll(),
+          validate: (ids) =>
+            this.agentManager.validateAssistantConversationMutation(ids, "delete", null),
+          apply: async (ids) => {
+            attemptedIds = ids;
+            await this.agentManager.mutateAssistantConversationRecords(
+              ids,
+              "delete",
+              null,
+              request.workspaceId,
+            );
+          },
+        });
+        if (deleting) {
+          if (
+            (await this.agentStorage.listAll()).some(
+              (record) => record.workspaceId === request.workspaceId,
+            )
+          )
+            throw new Error("The group changed during deletion. Its workspace was not hidden.");
+          // Metadata only. Never invoke worktree removal, terminal teardown, or provider archive.
+          await this.workspaceRegistry.archive(request.workspaceId, new Date().toISOString());
+        }
+        return agentIds;
+      };
+      const agentIds = deleting
+        ? await this.agentManager.withWorkspaceSessionDeletion(request.workspaceId, execute)
+        : await execute();
+      this.emitForSource(
+        { type, payload: { requestId: request.requestId, agentIds, error: null } },
+        source,
+      );
+    } catch (error) {
+      let agentIds: string[] = [];
+      let verificationFailed = false;
+      try {
+        const remaining = new Set((await this.agentStorage.listAll()).map((record) => record.id));
+        agentIds = attemptedIds.filter((id) => !remaining.has(id));
+      } catch {
+        verificationFailed = true;
+      }
+      let message = error instanceof Error ? error.message : String(error);
+      if (verificationFailed && attemptedIds.length > 0)
+        message = `Deletion result could not be confirmed. Refresh the view before trying again. ${message}`;
+      else if (agentIds.length > 0)
+        message = `Deletion was partially completed. Refresh the view and do not repeat the action. ${message}`;
+      this.emitForSource(
+        { type, payload: { requestId: request.requestId, agentIds, error: message } },
+        source,
+      );
+    }
   }
 
   private async handleAgentRecordDelete(
