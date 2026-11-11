@@ -61,11 +61,21 @@ unknown safety, permissions, lifecycle/event tails and changing runtime membersh
 block. Provider events invalidate the epoch without dropping their events. Expiry
 and abort release the fence; a normal daemon shutdown explicitly revokes its lease.
 
-Active plugin runtimes/events, connected-host routes, pending browser commands,
+Unknown/external plugin runtimes, active plugin events, connected-host routes, pending browser commands,
 queued/dispatching messages, finish watches/tasks and schedule work are explicit
 blockers. Retained session operations, including file uploads and voice/dictation,
 also block until their completion or cancellation cleanup has settled, not merely
-until the initial JSON request returns. This first version does not try to pause opaque plugins or routed hosts.
+until the initial JSON request returns. This first version does not try to pause opaque plugins or routed hosts. Only the
+explicit reviewed bundled provider/usage/worktree registrations launched through
+`startBuiltinPlugin` may remain idle with the retained daemon. Matching an ID alone
+is insufficient; registration changes, pending invocations, subscriptions and
+provider connections veto. New plugin requests/events/catalog changes interrupt
+the renderer lease before proceeding. No plugin is stopped by this exception.
+The reviewed set is Antigravity, fx, Hoplite and Muse provider adapters; Claude,
+Codex, Copilot, Cursor, Grok, Kimi, MiniMax, OpenCode Go and Z.ai usage sources;
+and the worktree-include hook. Muse retains its accompanying usage registration.
+Local catalog/list/provider-snapshot reads do not revoke the lease; usage fetches
+and arbitrary plugin invocations are not reclassified as metadata reads.
 The native side independently checkpoints drafts and guards browser/input activity.
 This lease alone does not prove browser or renderer state preservation.
 

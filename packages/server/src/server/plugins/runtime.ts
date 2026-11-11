@@ -278,8 +278,59 @@ function send(child: PluginChild, message: PluginProcessRequest): Promise<void> 
   });
 }
 
+// Reviewed bundled registrations retained with the daemon during renderer-only updates.
+// New IDs or contribution shapes require review; an external plugin cannot opt in by ID.
+const RETAINED_USAGE_BUILTINS = new Set([
+  "claude",
+  "codex",
+  "copilot",
+  "cursor",
+  "grok",
+  "kimi",
+  "minimax",
+  "opencode-go",
+  "zai",
+]);
+const RETAINED_PROVIDER_BUILTINS = new Set(["antigravity", "fx", "hoplite", "muse"]);
+function hasSingleRegistration(registrations: readonly { id: string }[], id: string): boolean {
+  return registrations.length === 1 && registrations[0]?.id === id;
+}
+function hasReviewedRendererRegistration(plugin: LoadedPlugin): boolean {
+  if (plugin.methods.size || plugin.subscriptionMethods.size) return false;
+  if (plugin.id === "worktree-include")
+    return (
+      plugin.providers.length === 0 &&
+      plugin.usageSources.length === 0 &&
+      plugin.hooks.length === 1 &&
+      plugin.hooks[0] === "worktree.create.after"
+    );
+  if (plugin.hooks.length) return false;
+  const usage = plugin.id.replace(/-usage-source$/, "");
+  if (plugin.id === `${usage}-usage-source` && RETAINED_USAGE_BUILTINS.has(usage))
+    return (
+      plugin.providers.length === 0 &&
+      plugin.usageSources.length === 1 &&
+      plugin.usageSources[0]?.id === usage
+    );
+  const provider = plugin.id.replace(/-provider$/, "");
+  if (plugin.id !== `${provider}-provider` || !RETAINED_PROVIDER_BUILTINS.has(provider))
+    return false;
+  return (
+    hasSingleRegistration(plugin.providers, provider) &&
+    (provider === "muse"
+      ? hasSingleRegistration(plugin.usageSources, "muse")
+      : plugin.usageSources.length === 0)
+  );
+}
+
 export class PluginRuntime {
   private readonly plugins = new Map<string, LoadedPlugin>();
+  private readonly retainedBuiltins = new WeakSet<LoadedPlugin>();
+  private onUpdateActivity: (() => void) | undefined;
+
+  setUpdateActivityListener(listener: () => void): void {
+    this.onUpdateActivity = listener;
+  }
   private readonly pendingEvents = new Set<Promise<void>>();
   private readonly logTails = new Map<string, PluginLogTail>();
   private readonly logger: pino.Logger;
@@ -340,6 +391,7 @@ export class PluginRuntime {
       await this.stopPlugin(loaded);
       throw new Error(`Plugin start cancelled: ${pluginId}`);
     }
+    this.onUpdateActivity?.();
     this.plugins.set(pluginId, loaded);
     this.notifySessionOpenChange(loaded);
     this.appendLog(pluginId, "stdout", "[paseo] Plugin ready");
@@ -360,6 +412,8 @@ export class PluginRuntime {
       bundle: "",
       clientBundle: bundles.clientBundle ?? "",
     });
+    this.retainedBuiltins.add(loaded);
+    this.onUpdateActivity?.();
     this.plugins.set(input.id, loaded);
     this.notifySessionOpenChange(loaded);
     this.appendLog(input.id, "stdout", "[paseo] Plugin ready");
@@ -370,6 +424,7 @@ export class PluginRuntime {
   }
 
   async stopPluginById(pluginId: string): Promise<boolean> {
+    this.onUpdateActivity?.();
     const loaded = this.plugins.get(pluginId);
     if (!loaded) return false;
     this.plugins.delete(pluginId);
@@ -592,9 +647,14 @@ export class PluginRuntime {
   }
 
   getUpdateBlockers(): string[] {
-    return this.plugins.size || this.pendingEvents.size
-      ? ["plugin runtimes or lifecycle events active"]
-      : [];
+    const blockers = this.pendingEvents.size ? ["plugin lifecycle events active"] : [];
+    for (const plugin of this.plugins.values()) {
+      if (!this.retainedBuiltins.has(plugin) || !hasReviewedRendererRegistration(plugin))
+        blockers.push(`plugin renderer safety unknown: ${plugin.id}`);
+      if (plugin.pending.size || plugin.subscriptions.size || plugin.providerConnections.size)
+        blockers.push(`plugin work active: ${plugin.id}`);
+    }
+    return blockers;
   }
 
   async drainEvents(): Promise<void> {
@@ -772,6 +832,7 @@ export class PluginRuntime {
     message: Extract<PluginProcessRequest, { requestId: string }>,
     signal?: AbortSignal,
   ): Promise<unknown> {
+    this.onUpdateActivity?.();
     const child = loaded.child;
     const pluginId = loaded.id;
     if (!child) throw new Error(`Plugin ${pluginId} has no server entry`);
@@ -1067,6 +1128,7 @@ export class PluginRuntime {
   }
 
   private handleChildMessage(loaded: LoadedPlugin, message: PluginProcessMessage): void {
+    this.onUpdateActivity?.();
     if (message.type === "hooks.changed") {
       const hadSessionOpen = loaded.hooks.includes("agent.open.before");
       loaded.hooks = message.hooks;
@@ -1490,6 +1552,7 @@ export class PluginRuntime {
   }
 
   private notify(pluginId: string, error?: string): void {
+    this.onUpdateActivity?.();
     for (const listener of this.listeners) listener(pluginId, error);
   }
 }

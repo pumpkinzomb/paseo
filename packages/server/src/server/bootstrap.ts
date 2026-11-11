@@ -695,6 +695,7 @@ export async function createPaseoDaemon(
     builtinPlugins: resolveBuiltinPluginLoader(dependencies),
     settingsDirectory: path.join(config.paseoHome, "plugin-settings"),
   });
+  pluginRuntime.setUpdateActivityListener(() => updateAdmission.interrupt());
 
   const serverId = getOrCreateServerId(config.paseoHome, { logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.paseoHome, logger);

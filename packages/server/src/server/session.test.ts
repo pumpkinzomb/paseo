@@ -6469,3 +6469,25 @@ test("renderer update preserves binary terminal input but permits restoration re
   expect(release).not.toBeNull();
   release?.();
 });
+
+test("renderer plugin metadata reads do not revoke the retained daemon lease", async () => {
+  const updateAdmission = new UpdateAdmissionFence();
+  const session = createSessionForTest({ agentManager: { updateAdmission } });
+  const dispatch = vi
+    .spyOn(
+      session as unknown as {
+        dispatchInboundMessage(message: SessionInboundMessage, source?: object): Promise<void>;
+      },
+      "dispatchInboundMessage",
+    )
+    .mockResolvedValue(undefined);
+  updateAdmission.close();
+  const epoch = updateAdmission.epoch;
+  await session.handleMessage({ type: "plugin.catalog.get.request", requestId: "catalog" });
+  await session.handleMessage({ type: "plugin.list.request", requestId: "list" });
+  await session.handleMessage({ type: "get_providers_snapshot_request", requestId: "providers" });
+  expect(dispatch).toHaveBeenCalledTimes(3);
+  expect(updateAdmission.epoch).toBe(epoch);
+  expect(updateAdmission.enter()).toBeNull();
+  updateAdmission.open();
+});

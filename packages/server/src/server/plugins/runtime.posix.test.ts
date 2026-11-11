@@ -1,3 +1,4 @@
+import { UpdateAdmissionFence } from "../update-quiescence.js";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { fork } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -2156,4 +2157,101 @@ export default function contribute() {
   } finally {
     await runtime.stopAll();
   }
+});
+
+describe("renderer retention of reviewed builtins", () => {
+  const directory = fileURLToPath(
+    new URL("../../../../../plugins/codex-usage-source", import.meta.url),
+  );
+  it("accepts a trusted idle builtin but blocks every authoritative active-work category", async () => {
+    const runtime = createTestRuntime({}, pino({ level: "silent" }), "0.15.4");
+    await runtime.startBuiltinPlugin({ id: "codex-usage-source", directory });
+    const internals = runtime as unknown as {
+      plugins: Map<
+        string,
+        {
+          pending: Map<string, unknown>;
+          subscriptions: Map<string, unknown>;
+          providerConnections: Map<string, unknown>;
+        }
+      >;
+      pendingEvents: Set<Promise<void>>;
+    };
+    const loaded = internals.plugins.get("codex-usage-source")!;
+    try {
+      expect(runtime.getUpdateBlockers()).toEqual([]);
+      for (const pending of [loaded.pending, loaded.subscriptions, loaded.providerConnections]) {
+        pending.set("fixture", {});
+        expect(runtime.getUpdateBlockers()).toContain("plugin work active: codex-usage-source");
+        pending.clear();
+      }
+      internals.pendingEvents.add(Promise.resolve());
+      expect(runtime.getUpdateBlockers()).toContain("plugin lifecycle events active");
+      internals.pendingEvents.clear();
+      expect(runtime.getUpdateBlockers()).toEqual([]);
+    } finally {
+      loaded.pending.clear();
+      loaded.subscriptions.clear();
+      loaded.providerConnections.clear();
+      internals.pendingEvents.clear();
+      await runtime.stopAll();
+    }
+  });
+  it("revokes the renderer fence on new activity and rejects changed registrations", async () => {
+    const runtime = createTestRuntime({}, pino({ level: "silent" }), "0.15.4");
+    await runtime.startBuiltinPlugin({ id: "codex-usage-source", directory });
+    const fence = new UpdateAdmissionFence();
+    runtime.setUpdateActivityListener(() => fence.interrupt());
+    const internals = runtime as unknown as {
+      plugins: Map<string, unknown>;
+      handleChildMessage(plugin: unknown, message: unknown): void;
+    };
+    try {
+      fence.close();
+      const epoch = fence.epoch;
+      internals.handleChildMessage(internals.plugins.get("codex-usage-source"), {
+        type: "hooks.changed",
+        hooks: ["agent.open.before"],
+      });
+      expect(fence.epoch).toBeGreaterThan(epoch);
+      const release = fence.enter();
+      expect(release).not.toBeNull();
+      release?.();
+      expect(runtime.getUpdateBlockers()).toContain(
+        "plugin renderer safety unknown: codex-usage-source",
+      );
+    } finally {
+      await runtime.stopAll();
+    }
+  });
+  it("keeps an external plugin with identical builtin ID and registrations blocked", async () => {
+    const trusted = createTestRuntime({}, pino({ level: "silent" }), "0.15.4");
+    await trusted.startBuiltinPlugin({ id: "codex-usage-source", directory });
+    const metadata = trusted.getUsageSourceRegistrations("codex-usage-source");
+    const child = createReloadChild("codex-usage-source", []);
+    const originalSend = child.send.bind(child);
+    child.send = (message, callback) => {
+      if (message.type !== "initialize") return originalSend(message, callback);
+      callback?.(null);
+      queueMicrotask(() =>
+        child.emitMessage({ type: "ready", methods: [], providers: [], usageSources: metadata }),
+      );
+      return true;
+    };
+    const external = createTestRuntime(
+      { spawnChild: () => child },
+      pino({ level: "silent" }),
+      "0.15.4",
+    );
+    try {
+      await external.startPlugin("codex-usage-source", directory);
+      expect(external.getUpdateBlockers()).toContain(
+        "plugin renderer safety unknown: codex-usage-source",
+      );
+      expect(trusted.getUpdateBlockers()).toEqual([]);
+    } finally {
+      await external.stopAll();
+      await trusted.stopAll();
+    }
+  });
 });

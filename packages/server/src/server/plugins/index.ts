@@ -46,6 +46,7 @@ interface PluginRuntimePort {
   emit?: PluginLifecycle["emit"];
   drainEvents?: PluginRuntime["drainEvents"];
   getUpdateBlockers?: PluginRuntime["getUpdateBlockers"];
+  setUpdateActivityListener?: PluginRuntime["setUpdateActivityListener"];
   before?: PluginLifecycle["before"];
   wait?: PluginLifecycle["wait"];
   catalog: PluginRuntime["catalog"];
@@ -176,8 +177,15 @@ export class PluginService {
     await this.runtime.wait?.(name, payload);
   };
 
+  setUpdateActivityListener(listener: () => void): void {
+    this.runtime.setUpdateActivityListener?.(listener);
+  }
+
   getUpdateBlockers(): string[] {
-    return this.runtime.getUpdateBlockers?.() ?? ["plugin update safety unknown"];
+    return [
+      ...(this.runtime.getUpdateBlockers?.() ?? ["plugin update safety unknown"]),
+      ...(this.pendingOperations.size ? ["plugin lifecycle operation pending"] : []),
+    ];
   }
 
   async drainEvents(): Promise<void> {
