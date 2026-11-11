@@ -2,7 +2,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { usePaneContext } from "@/panels/pane-context";
-import { ArchivedSubSessionDialog } from "./archived-sub-session-dialog";
+import { ArchivedSubSessionHistory } from "./archived-sub-session-dialog";
 
 const history = vi.hoisted(() => vi.fn());
 vi.mock("@/default-assistant/conversation", () => ({ useViewedAssistantSegment: history }));
@@ -16,8 +16,13 @@ vi.mock("@/panels/agent-panel", () => ({
     );
   },
 }));
-vi.mock("@/components/ui/modal", () => ({
-  Modal: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+vi.mock("@/components/headers/menu-header", () => ({
+  MenuHeader: ({ title, rightContent }: { title: string; rightContent: React.ReactNode }) => (
+    <header>
+      {title}
+      {rightContent}
+    </header>
+  ),
 }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: () => "Close" }) }));
 beforeEach(() => {
@@ -29,7 +34,7 @@ afterEach(cleanup);
 it("subscribes directly to archived agent history without requiring its deleted workspace route", () => {
   const close = vi.fn();
   render(
-    <ArchivedSubSessionDialog
+    <ArchivedSubSessionHistory
       serverId="host"
       workspaceId="removed-worktree"
       agentId="child"

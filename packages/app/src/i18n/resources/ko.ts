@@ -3,6 +3,11 @@ import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
   workspaceSessionDeletion: {
+    completedMenu: "완료된 세션 삭제",
+    completedTitle: "완료된 하위 세션을 모두 삭제할까요?",
+    completedConfirm:
+      "완료된 하위 세션 묶음 {{groups}}개(Paseo 기록과 타임라인 {{count}}개)를 자손까지 영구 삭제할까요? 상위·다른 세션·공급자 원본·프로젝트/worktree 파일·첨부 파일은 보존합니다. 되돌릴 수 없습니다. 중간에 묶음이 변경되거나 작업을 시작하면 삭제를 멈추며 이미 삭제한 묶음은 복구되지 않습니다.",
+
     uncertain:
       "삭제 결과를 확인하지 못했습니다. 다시 삭제하기 전에 화면을 새로고침하고 묶음 상태를 확인해 주세요.",
     partial:

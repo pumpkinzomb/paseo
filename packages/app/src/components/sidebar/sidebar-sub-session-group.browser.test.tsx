@@ -8,7 +8,13 @@ import type {
 } from "@/hooks/use-sidebar-workspaces-list";
 import { SidebarSubSessionGroup } from "./sidebar-sub-session-group";
 
-const actions = vi.hoisted(() => ({ remove: vi.fn(), navigate: vi.fn(), scopes: vi.fn() }));
+const actions = vi.hoisted(() => ({
+  remove: vi.fn(),
+  navigate: vi.fn(),
+  scopes: vi.fn(),
+  bulk: vi.fn(),
+  bulkScopes: vi.fn(),
+}));
 vi.mock("@/hooks/use-delete-workspace-sessions", () => ({
   useDeleteWorkspaceSessions: (serverId: string, workspaceId: string) => {
     actions.scopes(serverId, workspaceId);
@@ -18,14 +24,15 @@ vi.mock("@/hooks/use-delete-workspace-sessions", () => ({
 vi.mock("@/stores/navigation-active-workspace-store", () => ({
   navigateToWorkspace: actions.navigate,
 }));
-vi.mock("./archived-sub-session-dialog", () => ({
-  ArchivedSubSessionDialog: ({ agentId, onClose }: { agentId: string; onClose: () => void }) => (
-    <div data-testid="history-dialog" data-agent-id={agentId}>
-      <button type="button" onClick={onClose}>
-        Close history
-      </button>
-    </div>
-  ),
+vi.mock("expo-router", () => ({
+  usePathname: () => "/h/host/workspace/parent",
+  useRouter: () => ({ push: actions.navigate }),
+}));
+vi.mock("@/hooks/use-delete-completed-sub-sessions", () => ({
+  useDeleteCompletedSubSessions: (serverId: string, parent: string, ids: string[]) => {
+    actions.bulkScopes(serverId, parent, ids);
+    return { remove: actions.bulk, pending: false };
+  },
 }));
 
 vi.mock("@/components/sidebar/sidebar-workspace-row-content", () => ({
@@ -38,6 +45,8 @@ beforeEach(() => {
   actions.remove.mockClear();
   actions.navigate.mockClear();
   actions.scopes.mockClear();
+  actions.bulk.mockClear();
+  actions.bulkScopes.mockClear();
 });
 
 const mounted: Array<{ root: Root; container: HTMLDivElement }> = [];
@@ -167,7 +176,7 @@ describe("SidebarSubSessionGroup", () => {
     const archivedRow = container.querySelector<HTMLElement>(
       '[data-testid="sidebar-archived-sub-session-host:cleaned-up"]',
     );
-    expect(archivedRow?.textContent).toBe("Cleaned-up review보관됨");
+    expect(archivedRow?.textContent).toBe("Cleaned-up review");
     act(() => toggle?.click());
 
     expect(container.querySelector('[data-testid="row-finished-worker"]')).toBeNull();
@@ -220,16 +229,20 @@ describe("SidebarSubSessionGroup", () => {
       "[data-testid=sidebar-archived-sub-session-host\\:cleaned]",
     );
     act(() => row?.click());
-    expect(
-      container.querySelector("[data-testid=history-dialog]")?.getAttribute("data-agent-id"),
-    ).toBe("worker");
-    expect(actions.navigate).not.toHaveBeenCalled();
-    act(() =>
-      container.querySelector<HTMLButtonElement>("[data-testid=history-dialog] button")?.click(),
-    );
+    expect(actions.navigate).toHaveBeenCalledWith({
+      pathname: "/h/[serverId]/history/[agentId]",
+      params: {
+        serverId: "host",
+        agentId: "worker",
+        workspaceId: "cleaned",
+        parentWorkspaceId: "parent",
+        name: "Completed child",
+      },
+    });
     expect(container.querySelector("[data-testid=history-dialog]")).toBeNull();
+    // Normal host routing keeps the global sidebar instead of mounting an overlay.
     act(() => row?.click());
-    expect(container.querySelector("[data-testid=history-dialog]")).not.toBeNull();
+    expect(actions.navigate).toHaveBeenCalledTimes(2);
     // Deletion is a separate sibling button, never nested inside the open-history button.
     expect(container.querySelector("button button")).toBeNull();
     expect(actions.remove).not.toHaveBeenCalled();
@@ -265,6 +278,33 @@ describe("SidebarSubSessionGroup", () => {
     expect(actions.remove).toHaveBeenCalledWith("host", "child");
     expect(actions.navigate).not.toHaveBeenCalled();
     expect(container.querySelector('[data-testid="history-dialog"]')).toBeNull();
+    expect(container.querySelector("button button")).toBeNull();
+  });
+
+  it("offers one icon action for completed children only, without expanding or opening a child", async () => {
+    const container = await mountGroup(
+      "en",
+      [entry("running", "needs_input"), entry("finished", "done")],
+      [
+        {
+          workspaceId: "archived",
+          name: "Archived",
+          archivedAt: "2026-11-11T00:00:00Z",
+          agentId: "child",
+        },
+      ],
+    );
+    const remove = container.querySelector<HTMLButtonElement>(
+      '[data-testid="sidebar-sub-sessions-delete-done-host:parent"]',
+    );
+    expect(remove?.textContent).toBe("");
+    expect(actions.bulkScopes).toHaveBeenCalledWith("host", "parent", ["finished", "archived"]);
+    act(() => remove?.click());
+    expect(actions.bulk).toHaveBeenCalledTimes(1);
+    expect(actions.navigate).not.toHaveBeenCalled();
+    expect(
+      container.querySelector('[data-testid="sidebar-sub-sessions-done-host:parent"]'),
+    ).toBeNull();
     expect(container.querySelector("button button")).toBeNull();
   });
 

@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Text, View, type PressableStateCallbackType } from "react-native";
 import { useTranslation } from "react-i18next";
 import { PressHighlight } from "@/components/ui/press-highlight";
-import { Archive } from "lucide-react-native";
+import { Archive, Trash2 } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { isWeb } from "@/constants/platform";
 import { DensityIcon } from "@/components/ui/density-icon";
@@ -12,9 +12,11 @@ import type {
 } from "@/hooks/use-sidebar-workspaces-list";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import { density, densityIconBox } from "@/styles/density";
-import { ArchivedSubSessionDialog } from "./archived-sub-session-dialog";
+import { usePathname, useRouter } from "expo-router";
+import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
+import { useDeleteCompletedSubSessions } from "@/hooks/use-delete-completed-sub-sessions";
 import { useDeleteWorkspaceSessions } from "@/hooks/use-delete-workspace-sessions";
-import { Button } from "@/components/ui/button";
+import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import { SidebarGroupToggleRow } from "./sidebar-group-toggle-row";
 import { groupSubSessionsByActivity } from "./sidebar-sub-sessions";
 
@@ -47,27 +49,80 @@ export function SidebarSubSessionGroup({
   const { t } = useTranslation();
   const [doneExpanded, setDoneExpanded] = useState(false);
   const { active, done } = useMemo(
-    () => groupSubSessionsByActivity({ children: subSessions, workspaceEntriesByKey }),
+    () =>
+      groupSubSessionsByActivity({
+        children: subSessions,
+        workspaceEntriesByKey,
+      }),
     [subSessions, workspaceEntriesByKey],
   );
   const toggleDone = useCallback(() => setDoneExpanded((expanded) => !expanded), []);
   const doneCount = done.length + archivedSubSessions.length;
 
+  const completedIds = useMemo(
+    () => [
+      ...new Set([
+        ...done.map((item) => item.workspaceId),
+        ...archivedSubSessions.map((item) => item.workspaceId),
+      ]),
+    ],
+    [done, archivedSubSessions],
+  );
+  const parentWorkspaceId = parentKey.slice(serverId.length + 1);
+  const pathname = usePathname();
+  const returnFromDeletedHistory = useCallback(
+    (removed: readonly string[]) => {
+      const shown = archivedSubSessions.find(
+        (item) =>
+          item.agentId &&
+          pathname ===
+            `/h/${encodeURIComponent(serverId)}/history/${encodeURIComponent(item.agentId)}`,
+      );
+      if (shown && removed.includes(shown.workspaceId))
+        navigateToWorkspace({ serverId, workspaceId: parentWorkspaceId });
+    },
+    [archivedSubSessions, pathname, parentWorkspaceId, serverId],
+  );
+  const bulkDeletion = useDeleteCompletedSubSessions(
+    serverId,
+    parentWorkspaceId,
+    completedIds,
+    returnFromDeletedHistory,
+  );
+
   return (
     <View
       role="group"
-      accessibilityLabel={t("sidebar.workspace.subSessions.group", { name: parentName })}
+      accessibilityLabel={t("sidebar.workspace.subSessions.group", {
+        name: parentName,
+      })}
       style={styles.group}
       testID={`sidebar-sub-sessions-${parentKey}`}
     >
       {active.map((placement) => renderRow(placement))}
       {doneCount > 0 ? (
-        <SidebarGroupToggleRow
-          expanded={doneExpanded}
-          onPress={toggleDone}
-          label={t("sidebar.workspace.subSessions.done", { count: doneCount })}
-          testID={`sidebar-sub-sessions-done-toggle-${parentKey}`}
-        />
+        <View style={styles.archivedRowContainer}>
+          <View style={styles.toggleSlot}>
+            <SidebarGroupToggleRow
+              expanded={doneExpanded}
+              onPress={toggleDone}
+              label={t("sidebar.workspace.subSessions.done", {
+                count: doneCount,
+              })}
+              testID={`sidebar-sub-sessions-done-toggle-${parentKey}`}
+            />
+          </View>
+          {bulkDeletion.remove ? (
+            <ToolbarButton
+              label={t("workspaceSessionDeletion.completedMenu")}
+              onPress={bulkDeletion.remove}
+              disabled={bulkDeletion.pending}
+              testID={`sidebar-sub-sessions-delete-done-${parentKey}`}
+            >
+              <DensityIcon icon={Trash2} size="sm" color="foregroundMuted" />
+            </ToolbarButton>
+          ) : null}
+        </View>
       ) : null}
       {doneExpanded ? (
         <View testID={`sidebar-sub-sessions-done-${parentKey}`}>
@@ -77,6 +132,7 @@ export function SidebarSubSessionGroup({
               key={subSession.workspaceId}
               serverId={serverId}
               subSession={subSession}
+              parentWorkspaceId={parentWorkspaceId}
             />
           ))}
         </View>
@@ -87,26 +143,44 @@ export function SidebarSubSessionGroup({
 
 /**
  * A sub-session whose workspace was archived. Its agent's timeline survives the cleanup, so the
- * row opens that agent the way the Sessions list opens an archived agent; a workspace with no
- * agent opens on its own route, which offers recovery.
+ * row opens read-only history inside the regular host shell, preserving the sidebar.
  */
 function ArchivedSubSessionRow({
   serverId,
   subSession,
+  parentWorkspaceId,
 }: {
   serverId: string;
   subSession: ArchivedSubSession;
+  parentWorkspaceId: string;
 }) {
   const { t } = useTranslation();
-  const [reviewing, setReviewing] = useState(false);
-  const closeReview = useCallback(() => setReviewing(false), []);
-  const deletion = useDeleteWorkspaceSessions(serverId, subSession.workspaceId, closeReview);
+  const router = useRouter();
+  const pathname = usePathname();
+  const onDeleted = useCallback(() => {
+    if (
+      pathname ===
+      `/h/${encodeURIComponent(serverId)}/history/${encodeURIComponent(subSession.agentId ?? "")}`
+    ) {
+      navigateToWorkspace({ serverId, workspaceId: parentWorkspaceId });
+    }
+  }, [pathname, serverId, parentWorkspaceId, subSession.agentId]);
+  const deletion = useDeleteWorkspaceSessions(serverId, subSession.workspaceId, onDeleted);
   const handlePress = useCallback(() => {
     if (subSession.agentId) {
-      setReviewing(true);
+      router.push({
+        pathname: "/h/[serverId]/history/[agentId]",
+        params: {
+          serverId,
+          agentId: subSession.agentId,
+          workspaceId: subSession.workspaceId,
+          parentWorkspaceId,
+          name: subSession.name,
+        },
+      });
       return;
     }
-  }, [subSession.agentId]);
+  }, [router, serverId, subSession, parentWorkspaceId]);
   const rowStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.archivedRow,
@@ -134,30 +208,18 @@ function ArchivedSubSessionRow({
           <Text style={styles.name} numberOfLines={1}>
             {subSession.name}
           </Text>
-          <Text style={styles.archivedLabel} numberOfLines={1}>
-            {archivedLabel}
-          </Text>
         </PressHighlight>
         {deletion.remove ? (
-          <Button
-            variant="ghost"
+          <ToolbarButton
+            label={t("workspaceSessionDeletion.menu")}
             onPress={deletion.remove}
             disabled={deletion.pending}
             testID={`sidebar-archived-sub-session-delete-${serverId}:${subSession.workspaceId}`}
           >
-            {t("workspaceSessionDeletion.menu")}
-          </Button>
+            <DensityIcon icon={Trash2} size="sm" color="foregroundMuted" />
+          </ToolbarButton>
         ) : null}
       </View>
-      {reviewing && subSession.agentId ? (
-        <ArchivedSubSessionDialog
-          serverId={serverId}
-          workspaceId={subSession.workspaceId}
-          agentId={subSession.agentId}
-          name={subSession.name}
-          onClose={closeReview}
-        />
-      ) : null}
     </View>
   );
 }
@@ -169,6 +231,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingLeft: theme.spacing[4],
   },
   // Kept in step with the workspace row's geometry, like the Done toggle above it.
+  toggleSlot: { flex: 1 },
   archivedRowContainer: { flexDirection: "row", alignItems: "center" },
   archivedRow: {
     flex: 1,
@@ -201,11 +264,5 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     minWidth: 0,
     flexShrink: 1,
-  },
-  archivedLabel: {
-    marginLeft: "auto",
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    flexShrink: 0,
   },
 }));

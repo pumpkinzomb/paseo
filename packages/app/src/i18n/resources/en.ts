@@ -1,5 +1,10 @@
 export const en = {
   workspaceSessionDeletion: {
+    completedMenu: "Delete completed sessions",
+    completedTitle: "Delete all completed sub-sessions?",
+    completedConfirm:
+      "Permanently delete {{groups}} completed sub-session groups ({{count}} Paseo records and timelines), including their descendants? The parent and other sessions, provider originals, project/worktree files and attachments are preserved. This cannot be undone. If a group changes or becomes busy, deletion stops; already deleted groups cannot be restored.",
+
     uncertain:
       "The deletion result could not be confirmed. Reload and check the group before trying again.",
     partial:

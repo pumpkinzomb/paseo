@@ -1,9 +1,11 @@
 import { useMemo } from "react";
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
-import { Modal } from "@/components/ui/modal";
-import { Button } from "@/components/ui/button";
+import { MenuHeader } from "@/components/headers/menu-header";
+import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
+import { DensityIcon } from "@/components/ui/density-icon";
+import { X } from "lucide-react-native";
 import { useViewedAssistantSegment } from "@/default-assistant/conversation";
 import { AgentConversationPanel } from "@/panels/agent-panel";
 import { PaneProvider, PaneFocusProvider, type PaneContextValue } from "@/panels/pane-context";
@@ -12,7 +14,7 @@ const noop = () => {};
 
 /** History belongs to the agent, not to the disposable checkout. Never restore a
  * worktree or offer interactive controls just to review a completed child conversation. */
-export function ArchivedSubSessionDialog({
+export function ArchivedSubSessionHistory({
   serverId,
   workspaceId,
   agentId,
@@ -26,7 +28,7 @@ export function ArchivedSubSessionDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  // A modal has no workspace tab to register timeline demand. Subscribe explicitly
+  // History has no workspace tab to register timeline demand. Subscribe explicitly
   // to stored agent history; this never restores its disposed worktree.
   useViewedAssistantSegment(serverId, `archived-history:${agentId}`, agentId);
   const pane = useMemo<PaneContextValue>(
@@ -55,34 +57,26 @@ export function ArchivedSubSessionDialog({
     }),
     [],
   );
+  const closeButton = useMemo(
+    () => (
+      <ToolbarButton label={t("common.actions.close")} onPress={onClose}>
+        <DensityIcon icon={X} size="md" color="foregroundMuted" />
+      </ToolbarButton>
+    ),
+    [t, onClose],
+  );
   return (
-    <Modal visible onRequestClose={onClose} animationType="fade">
-      <View style={styles.container} testID="archived-sub-session-history">
-        <View style={styles.header}>
-          <Text style={styles.title} numberOfLines={1}>
-            {name}
-          </Text>
-          <Button variant="secondary" onPress={onClose}>
-            {t("common.actions.close")}
-          </Button>
-        </View>
-        <PaneProvider value={pane}>
-          <PaneFocusProvider value={focus}>
-            <AgentConversationPanel />
-          </PaneFocusProvider>
-        </PaneProvider>
-      </View>
-    </Modal>
+    <View style={styles.container} testID="archived-sub-session-history">
+      <MenuHeader title={name} rightContent={closeButton} />
+      <PaneProvider value={pane}>
+        <PaneFocusProvider value={focus}>
+          <AgentConversationPanel />
+        </PaneFocusProvider>
+      </PaneProvider>
+    </View>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
   container: { flex: 1, backgroundColor: theme.colors.surface0 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: theme.spacing[4],
-    gap: theme.spacing[3],
-  },
-  title: { flex: 1, color: theme.colors.foreground, fontSize: theme.fontSize.base },
 }));
