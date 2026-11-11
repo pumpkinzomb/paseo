@@ -46,6 +46,10 @@ export function resolvePlan(root, manifest) {
   };
 }
 export function assertLocalPaths(plan) {
+  if (fs.existsSync(path.join(plan.root, ".dependencies-pruned.json")))
+    throw new Error(
+      "Disposable dependencies were reclaimed; restore the recorded verified copy before launching this lab",
+    );
   for (const rel of [
     ".lab",
     ".lab/paseo-home",
