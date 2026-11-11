@@ -236,24 +236,28 @@ function ProviderRow({
   );
   const rowStyle = useCallback(
     ({ pressed, hovered }: PressableStateCallbackType & { hovered?: boolean }) => [
-      settingsStyles.row,
-      !isFirst && settingsStyles.rowBorder,
-      styles.row,
+      styles.detailsButton,
       hovered && styles.rowHovered,
       pressed && styles.rowPressed,
     ],
+    [],
+  );
+  const containerStyle = useMemo(
+    () => [settingsStyles.row, !isFirst && settingsStyles.rowBorder, styles.row],
     [isFirst],
   );
 
   return (
-    <Pressable
-      style={rowStyle}
-      onPress={handlePress}
-      accessibilityRole="button"
-      accessibilityLabel={t("settings.providers.providerDetails", { name: def.label })}
-    >
-      {({ hovered }: PressableStateCallbackType & { hovered?: boolean }) => (
-        <>
+    <View style={containerStyle}>
+      <Pressable
+        style={rowStyle}
+        onPress={handlePress}
+        accessibilityRole="button"
+        accessibilityLabel={t("settings.providers.providerDetails", {
+          name: def.label,
+        })}
+      >
+        {({ hovered }: PressableStateCallbackType & { hovered?: boolean }) => (
           <View style={styles.rowContent}>
             <ChevronRight
               size={theme.iconSize.sm}
@@ -275,31 +279,32 @@ function ProviderRow({
               ) : null}
             </View>
           </View>
-          {/* The menu leads the switch, so every switch sits on the row's right edge without
-              rows that have no menu reserving room for one. */}
-          <View style={styles.trailingControls}>
-            {canRemove ? (
-              <ProviderActionsMenu
-                providerId={def.id}
-                providerLabel={def.label}
-                isRemoving={isRemoving}
-                iconSize={theme.iconSize.sm}
-                foregroundColor={theme.colors.foreground}
-                foregroundMutedColor={theme.colors.foregroundMuted}
-                dangerColor={theme.colors.statusDanger}
-                onRemove={onRemove}
-              />
-            ) : null}
-            <Switch
-              value={enabled}
-              onValueChange={handleToggleValueChange}
-              disabled={isToggling || isRemoving}
-              accessibilityLabel={t("settings.providers.enableProvider", { name: def.label })}
-            />
-          </View>
-        </>
-      )}
-    </Pressable>
+        )}
+      </Pressable>
+      {/* Controls are siblings of the details button, never buttons inside a button. */}
+      <View style={styles.trailingControls}>
+        {canRemove ? (
+          <ProviderActionsMenu
+            providerId={def.id}
+            providerLabel={def.label}
+            isRemoving={isRemoving}
+            iconSize={theme.iconSize.sm}
+            foregroundColor={theme.colors.foreground}
+            foregroundMutedColor={theme.colors.foregroundMuted}
+            dangerColor={theme.colors.statusDanger}
+            onRemove={onRemove}
+          />
+        ) : null}
+        <Switch
+          value={enabled}
+          onValueChange={handleToggleValueChange}
+          disabled={isToggling || isRemoving}
+          accessibilityLabel={t("settings.providers.enableProvider", {
+            name: def.label,
+          })}
+        />
+      </View>
+    </View>
   );
 }
 
@@ -537,6 +542,15 @@ const styles = StyleSheet.create((theme) => ({
   row: {
     gap: theme.spacing[3],
     minHeight: 56,
+    paddingVertical: 0,
+    paddingLeft: 0,
+  },
+  detailsButton: {
+    flex: 1,
+    minWidth: 0,
+    alignSelf: "stretch",
+    justifyContent: "center",
+    padding: theme.spacing[4],
   },
   rowHovered: {
     backgroundColor: theme.colors.surface2,

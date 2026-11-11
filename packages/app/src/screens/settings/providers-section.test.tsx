@@ -72,7 +72,7 @@ vi.mock("react-native", () => ({
     testID?: string;
   }) =>
     React.createElement(
-      "div",
+      accessibilityRole === "button" ? "button" : "div",
       {
         role: accessibilityRole,
         "aria-label": accessibilityLabel,
@@ -149,7 +149,8 @@ vi.mock("@/components/ui/switch", () => ({
     accessibilityLabel?: string;
     testID?: string;
   }) =>
-    React.createElement("div", {
+    React.createElement("button", {
+      type: "button",
       role: "switch",
       "aria-checked": value ? "true" : "false",
       "aria-disabled": disabled ? "true" : undefined,
@@ -278,7 +279,7 @@ vi.mock("@/runtime/host-runtime", () => ({
 }));
 
 vi.mock("@/runtime/host-features", () => ({
-  useHostFeature: () => false,
+  useHostFeature: () => true,
 }));
 
 vi.mock("@/utils/confirm-dialog", () => ({
@@ -291,7 +292,11 @@ function unexpectedToast(): never {
   throw new Error("Provider row interactions should not display a toast");
 }
 
-const toastApi = { show: unexpectedToast, copied: unexpectedToast, error: unexpectedToast };
+const toastApi = {
+  show: unexpectedToast,
+  copied: unexpectedToast,
+  error: unexpectedToast,
+};
 
 const claudeEntry: ProviderSnapshotEntry = {
   provider: "claude",
@@ -394,6 +399,15 @@ describe("ProvidersSection", () => {
     return row;
   }
 
+  it("keeps provider details, switch, and remove menu as separate buttons", () => {
+    snapshotState.entries = [{ ...claudeEntry, source: "custom" }];
+    configState.config = makeConfig({ claude: { enabled: true, extends: "claude" } });
+    render();
+    expect(container?.querySelector('[aria-label="Claude actions"]')).not.toBeNull();
+    expect(container?.querySelector("button button")).toBeNull();
+    expect(findRow("Claude provider details").querySelector('[role="switch"]')).toBeNull();
+  });
+
   it("renders the disabled provider with its server-provided label in snapshot order", () => {
     snapshotState.entries = [claudeEntry, disabledCodexEntry];
     configState.config = makeConfig({ codex: { enabled: false } });
@@ -423,7 +437,7 @@ describe("ProvidersSection", () => {
     render();
 
     const row = findRow("Claude provider details");
-    const nodes = descendants(row);
+    const nodes = descendants(row.parentElement!);
     const chevron = indexOfMatches(nodes, '[data-icon="ChevronRight"]');
     const icon = indexOfMatches(nodes, '[data-icon="provider-claude"]');
     const label = indexOfText(nodes, "Claude");
@@ -466,7 +480,7 @@ describe("ProvidersSection", () => {
     render();
 
     const row = findRow("Claude provider details");
-    const switchEl = row.querySelector<HTMLElement>('[role="switch"]');
+    const switchEl = row.parentElement!.querySelector<HTMLElement>('[role="switch"]');
     expect(switchEl).not.toBeNull();
     expect(switchEl?.getAttribute("aria-checked")).toBe("true");
 
@@ -474,6 +488,8 @@ describe("ProvidersSection", () => {
       switchEl?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
     });
 
+    expect(openProviderSettingsMock).not.toHaveBeenCalled();
+    expect(container?.querySelector("button button")).toBeNull();
     expect(patchConfigMock).toHaveBeenCalledTimes(1);
     expect(patchConfigMock).toHaveBeenCalledWith({
       providers: { claude: { enabled: false } },
