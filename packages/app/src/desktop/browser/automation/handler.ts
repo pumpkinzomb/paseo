@@ -1,3 +1,4 @@
+import { mountResidentBrowserPageRestore } from "../restore-resident-pages";
 import { revealWorkspaceBrowser } from "../workspace-navigation";
 import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
@@ -78,6 +79,9 @@ export function mountBrowserAutomationDaemonClientHandler(
     hostKind: "desktop app",
     supportedCommands: [...BROWSER_AUTOMATION_COMMAND_NAMES],
   });
+  const unmountRestore = options?.serverId
+    ? mountResidentBrowserPageRestore(options.serverId)
+    : () => {};
   const unmount = mountBrowserAutomationHandler({
     client: {
       on: (_type, handler) =>
@@ -93,6 +97,7 @@ export function mountBrowserAutomationDaemonClientHandler(
     ...(options?.serverId ? { serverId: options.serverId } : {}),
   });
   return () => {
+    unmountRestore();
     unmount();
     void observation
       .release()
