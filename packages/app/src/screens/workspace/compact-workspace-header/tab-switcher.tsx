@@ -50,7 +50,7 @@ function getFallbackTabOptionLabel(
   if (tab.target.kind === "terminal") {
     return labels.terminal;
   }
-  if (tab.target.kind === "browser") {
+  if (tab.target.kind === "browser" || tab.target.kind === "browser_workspace") {
     return labels.browser;
   }
   if (tab.target.kind === "file") {
@@ -100,7 +100,7 @@ function getFallbackTabOptionDescription(
   if (tab.target.kind === "terminal") {
     return labels.terminal;
   }
-  if (tab.target.kind === "browser") {
+  if (tab.target.kind === "browser" || tab.target.kind === "browser_workspace") {
     return labels.browser;
   }
   if (tab.target.kind === "provider_subagent") {

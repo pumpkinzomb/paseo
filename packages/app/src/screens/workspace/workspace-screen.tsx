@@ -1,3 +1,4 @@
+import { openWorkspaceBrowserPage } from "@/desktop/browser/workspace-navigation";
 import { DefaultAssistantToolbar } from "@/default-assistant/toolbar";
 import {
   AdaptiveWorkspaceChrome,
@@ -141,7 +142,7 @@ import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useWorkspaceArchiveUndoRunning } from "@/workspace/archive-undo";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { removeResidentBrowserWebview } from "@/desktop/browser/resident-webviews";
-import { createWorkspaceBrowser, useBrowserStore } from "@/desktop/browser/store";
+import { useBrowserStore } from "@/desktop/browser/store";
 import { getDesktopHost } from "@/desktop/host";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
@@ -1853,18 +1854,13 @@ function WorkspaceScreenContent({
   );
 
   const handleCreateBrowserTab = useCallback(
-    (input?: { paneId?: string }) => {
+    (_input?: { paneId?: string }) => {
       if (!persistenceKey || !getIsElectron()) {
         return;
       }
-      const { browserId } = createWorkspaceBrowser();
-      openWorkspaceTabFocused(
-        persistenceKey,
-        { kind: "browser", browserId },
-        paneLocalPlacement(input?.paneId),
-      );
+      openWorkspaceBrowserPage(persistenceKey);
     },
-    [openWorkspaceTabFocused, persistenceKey],
+    [persistenceKey],
   );
 
   const handleCreateNewTab = useCallback(
@@ -1907,8 +1903,9 @@ function WorkspaceScreenContent({
         });
         return;
       }
-      const { browserId } = createWorkspaceBrowser();
-      openTarget({ kind: "browser", browserId });
+      openWorkspaceBrowserPage(persistenceKey);
+      if (destination.kind === "replace")
+        useWorkspaceLayoutStore.getState().closeTab(persistenceKey, destination.tabId);
     },
     [createTerminal, createWorkspaceTab, persistenceKey, replaceWorkspaceTabTarget],
   );
@@ -1918,17 +1915,13 @@ function WorkspaceScreenContent({
       if (!persistenceKey || !getIsElectron()) {
         return;
       }
-      const { browserId } = createWorkspaceBrowser({ initialUrl: url });
-      openWorkspaceTabFocused(
-        persistenceKey,
-        { kind: "browser", browserId },
-        FOCUSED_PANE_PLACEMENT,
-      );
+      openWorkspaceBrowserPage(persistenceKey, url);
     },
-    [openWorkspaceTabFocused, persistenceKey],
+    [persistenceKey],
   );
 
   useDesktopBrowserNewTabRequests({
+    workspaceKey: persistenceKey,
     enabled: Boolean(persistenceKey),
     workspaceLayout,
     openUrl: handleOpenUrlInBrowserTab,

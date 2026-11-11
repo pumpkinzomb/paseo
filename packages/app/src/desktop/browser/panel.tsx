@@ -1,3 +1,4 @@
+import { WorkspaceBrowserPanel } from "./workspace-panel";
 import { useMemo } from "react";
 import { Image } from "react-native";
 import { Globe } from "lucide-react-native";
@@ -74,4 +75,14 @@ function BrowserPanel() {
 export const browserPanelRegistration = definePanel("browser", {
   component: BrowserPanel,
   useDescriptor: useBrowserPanelDescriptor,
+});
+
+export const browserWorkspacePanelRegistration = definePanel("browser_workspace", {
+  component: WorkspaceBrowserPanel,
+  presentation: {
+    label: (t) => t("browserDock.title"),
+    subtitle: () => "",
+    tooltip: (t) => t("browserDock.title"),
+    icon: Globe,
+  },
 });

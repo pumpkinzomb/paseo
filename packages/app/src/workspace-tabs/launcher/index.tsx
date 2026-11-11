@@ -178,7 +178,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         Icon: Globe,
         shortcutActionId: "workspace-tab-target-browser",
         disabled: false,
-        panelKind: "browser",
+        panelKind: host === "explorer" ? "browser_workspace" : "browser",
         hidden: !launcher.showBrowser,
         launch: launchSelection(BUILT_IN_SELECTIONS.browser),
       },

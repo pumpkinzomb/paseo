@@ -4,6 +4,10 @@ import { create } from "zustand";
 import { persist, type StateStorage } from "zustand/middleware";
 import type { z } from "zod";
 import { WorkspaceLayoutPersistedStateSchema } from "./workspace-layout-storage";
+import {
+  createBrowserWorkspaceLayoutStorage,
+  WORKSPACE_LAYOUT_STORAGE_KEY,
+} from "./workspace-layout-persistence";
 import type { JsonValue } from "@getpaseo/protocol/agent-types";
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/workspace-tabs/model";
 import {
@@ -180,7 +184,12 @@ interface WorkspaceLayoutStore {
   closeTab: (workspaceKey: string, tabId: string) => void;
   getTabDestination: (workspaceKey: string, tabId: string) => WorkspaceTabDestination | null;
   focusTab: (workspaceKey: string, tabId: string) => void;
-  selectTabInPane: (workspaceKey: string, paneId: string, tabId: string) => void;
+  selectTabInPane: (
+    workspaceKey: string,
+    paneId: string,
+    tabId: string,
+    options?: { requestFocus: boolean },
+  ) => void;
   replaceTab: (
     workspaceKey: string,
     tabId: string,
@@ -1529,7 +1538,7 @@ export function createWorkspaceLayoutStore(
             };
           });
         },
-        selectTabInPane: (workspaceKey, paneId, tabId) => {
+        selectTabInPane: (workspaceKey, paneId, tabId, options) => {
           const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
           const normalizedPaneId = trimNonEmpty(paneId);
           const normalizedTabId = trimNonEmpty(tabId);
@@ -1546,9 +1555,15 @@ export function createWorkspaceLayoutStore(
             const pane = findPaneById(layout.root, normalizedPaneId);
             return pane?.tabIds.includes(normalizedTabId)
               ? {
-                  focusRequest: { workspaceKey: normalizedWorkspaceKey, tabId: normalizedTabId },
-                  // Choosing a tab dismisses the sheets that cover it.
-                  ...dismissSheets(state, normalizedWorkspaceKey),
+                  ...(options?.requestFocus === false
+                    ? {}
+                    : {
+                        focusRequest: {
+                          workspaceKey: normalizedWorkspaceKey,
+                          tabId: normalizedTabId,
+                        },
+                        ...dismissSheets(state, normalizedWorkspaceKey),
+                      }),
                   layoutByWorkspace: {
                     ...state.layoutByWorkspace,
                     [normalizedWorkspaceKey]: nextLayout ?? layout,
@@ -2307,11 +2322,15 @@ export function createWorkspaceLayoutStore(
         },
       }),
       {
-        name: "workspace-layout-state",
+        name: WORKSPACE_LAYOUT_STORAGE_KEY,
         version: WORKSPACE_LAYOUT_PERSIST_VERSION,
-        storage: createValidatedPersistStorage(storage, WorkspaceLayoutPersistedStateSchema, {
-          skipUnchanged: true,
-        }),
+        storage: createValidatedPersistStorage(
+          createBrowserWorkspaceLayoutStorage(storage),
+          WorkspaceLayoutPersistedStateSchema,
+          {
+            skipUnchanged: true,
+          },
+        ),
         migrate: (persistedState, version) =>
           migrateWorkspaceLayoutPersistedState(persistedState, version, ids),
         partialize: createPersistedStateProjection(),

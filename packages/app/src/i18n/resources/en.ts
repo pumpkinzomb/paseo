@@ -210,6 +210,13 @@ export const en = {
       settingOff: "Off",
     },
   },
+  browserDock: {
+    title: "Browser",
+    open: "Open browser",
+    hide: "Hide browser",
+    newPage: "New browser tab",
+    closePage: "Close {{title}}",
+  },
   composer: {
     placeholders: {
       desktop: "Message the agent, tag @files, or use /commands and /skills",

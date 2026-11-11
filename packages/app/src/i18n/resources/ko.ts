@@ -211,6 +211,13 @@ export const ko: TranslationResources = {
       settingOff: "꺼짐",
     },
   },
+  browserDock: {
+    title: "브라우저",
+    open: "브라우저 열기",
+    hide: "브라우저 숨기기",
+    newPage: "새 브라우저 탭",
+    closePage: "{{title}} 닫기",
+  },
   composer: {
     placeholders: {
       desktop: "에이전트에게 메시지를 보내거나 @files 태그, /commands, /skills를 사용하세요",

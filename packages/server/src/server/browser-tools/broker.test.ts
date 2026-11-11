@@ -451,13 +451,29 @@ describe("BrowserToolsBroker", () => {
   test.each([
     {
       name: "scroll",
-      command: { command: "scroll", args: { browserId: BROWSER_ID, deltaX: 0, deltaY: 400 } },
-      result: { command: "scroll", browserId: BROWSER_ID, deltaX: 0, deltaY: 400 },
+      command: {
+        command: "scroll",
+        args: { browserId: BROWSER_ID, deltaX: 0, deltaY: 400 },
+      },
+      result: {
+        command: "scroll",
+        browserId: BROWSER_ID,
+        deltaX: 0,
+        deltaY: 400,
+      },
     },
     {
       name: "resize",
-      command: { command: "resize", args: { browserId: BROWSER_ID, width: 1024, height: 768 } },
-      result: { command: "resize", browserId: BROWSER_ID, width: 1024, height: 768 },
+      command: {
+        command: "resize",
+        args: { browserId: BROWSER_ID, width: 1024, height: 768 },
+      },
+      result: {
+        command: "resize",
+        browserId: BROWSER_ID,
+        width: 1024,
+        height: 768,
+      },
     },
     {
       name: "close_tab",
@@ -479,7 +495,9 @@ describe("BrowserToolsBroker", () => {
     broker.registerClient(other);
     broker.registerClient(owner);
 
-    const newTabPromise = broker.execute({ command: { command: "new_tab", args: {} } });
+    const newTabPromise = broker.execute({
+      command: { command: "new_tab", args: {} },
+    });
     owner.resolveLatestWith(broker, {
       requestId: "req-1",
       ok: true,
@@ -492,7 +510,10 @@ describe("BrowserToolsBroker", () => {
     });
     await newTabPromise;
 
-    const resultPromise = broker.execute({ command, requestId: "req-command" });
+    const resultPromise = broker.execute({
+      command,
+      requestId: "req-command",
+    });
 
     expect(owner.receivedRequests.at(-1)).toEqual({
       type: "browser.automation.execute.request",
@@ -521,7 +542,9 @@ describe("BrowserToolsBroker", () => {
     broker.registerClient(other);
     broker.registerClient(owner);
 
-    const newTabPromise = broker.execute({ command: { command: "new_tab", args: {} } });
+    const newTabPromise = broker.execute({
+      command: { command: "new_tab", args: {} },
+    });
     owner.resolveLatestWith(broker, {
       requestId: "req-1",
       ok: true,
@@ -669,7 +692,10 @@ describe("BrowserToolsBroker", () => {
     });
     await expect(
       broker.execute({
-        command: { command: "scroll", args: { browserId: BROWSER_ID, deltaX: 0, deltaY: 400 } },
+        command: {
+          command: "scroll",
+          args: { browserId: BROWSER_ID, deltaX: 0, deltaY: 400 },
+        },
       }),
     ).resolves.toEqual({
       requestId: "req-1",
@@ -708,12 +734,16 @@ describe("BrowserToolsBroker", () => {
     const replacement = new FakeBrowserHostClient("host-2");
     broker.registerClient(replacement);
 
-    await expect(
-      broker.execute({
-        command: { command: "snapshot", args: { browserId: BROWSER_ID } },
-        workspaceId: "workspace-1",
-      }),
-    ).resolves.toEqual({
+    const result = broker.execute({
+      command: { command: "snapshot", args: { browserId: BROWSER_ID } },
+      workspaceId: "workspace-1",
+    });
+    replacement.resolveLatestWith(broker, {
+      requestId: "probe",
+      ok: true,
+      result: { command: "list_tabs", tabs: [] },
+    });
+    await expect(result).resolves.toEqual({
       requestId: "req-1",
       ok: false,
       error: {
@@ -722,7 +752,149 @@ describe("BrowserToolsBroker", () => {
         retryable: true,
       },
     });
-    expect(replacement.receivedRequests).toEqual([]);
+    expect(replacement.receivedRequests.map((r) => r.command.command)).toEqual(["list_tabs"]);
+  });
+
+  test.each([
+    "owner",
+    "none",
+    "wrong-workspace",
+    "duplicate",
+    "failed",
+    "disconnect",
+    "changed-host",
+  ])("reload rediscovers a changed subscription safely: %s", async (mode) => {
+    const broker = createBroker({ timeoutMs: 1000 });
+    const old = new FakeBrowserHostClient("old-subscription");
+    const unregister = broker.registerClient(old);
+    const seed = broker.execute({
+      command: { command: "list_tabs", args: {} },
+    });
+    const tab = {
+      browserId: BROWSER_ID,
+      workspaceId: "workspace-1",
+      url: "https://example.com",
+      title: "Example",
+    };
+    old.resolveLatestWith(broker, {
+      requestId: "seed",
+      ok: true,
+      result: { command: "list_tabs", tabs: [tab] },
+    });
+    await seed;
+    unregister();
+    const next = new FakeBrowserHostClient("new-subscription");
+    const other = new FakeBrowserHostClient("other-host");
+    const removeNext = broker.registerClient(next);
+    broker.registerClient(other);
+    const result = broker.execute({
+      command: {
+        command: "navigate",
+        args: { browserId: BROWSER_ID, url: "https://example.org" },
+      },
+      workspaceId: "workspace-1",
+    });
+    if (mode === "disconnect") removeNext();
+    else if (mode === "failed")
+      next.resolveLatestWith(broker, {
+        requestId: "probe",
+        ok: false,
+        error: {
+          code: "browser_no_host",
+          message: "Disconnected",
+          retryable: true,
+        },
+      });
+    else
+      next.resolveLatestWith(broker, {
+        requestId: "probe",
+        ok: true,
+        result: {
+          command: "list_tabs",
+          tabs:
+            mode === "none"
+              ? []
+              : [
+                  {
+                    ...tab,
+                    workspaceId: mode === "wrong-workspace" ? "workspace-2" : tab.workspaceId,
+                  },
+                ],
+        },
+      });
+    if (mode === "changed-host") broker.registerClient(new FakeBrowserHostClient("late-host"));
+    other.resolveLatestWith(broker, {
+      requestId: "probe",
+      ok: true,
+      result: { command: "list_tabs", tabs: mode === "duplicate" ? [tab] : [] },
+    });
+    if (mode === "owner") {
+      await vi.waitFor(() =>
+        expect(next.receivedRequests.at(-1)?.command.command).toBe("navigate"),
+      );
+      next.resolveLatestWith(broker, {
+        requestId: "navigate",
+        ok: false,
+        error: {
+          code: "browser_unknown_error",
+          message: "fixture navigation",
+          retryable: false,
+        },
+      });
+      await expect(result).resolves.toMatchObject({
+        error: { message: "fixture navigation" },
+      });
+    } else {
+      await expect(result).resolves.toMatchObject({
+        ok: false,
+        error: { code: "browser_no_host" },
+      });
+      expect(next.receivedRequests.map((r) => r.command.command)).toEqual(["list_tabs"]);
+    }
+    expect(other.receivedRequests.map((r) => r.command.command)).toEqual(["list_tabs"]);
+    expect(broker.getPendingRequestCount()).toBe(0);
+  });
+
+  test("rediscovery and original command share one timeout budget", async () => {
+    vi.useFakeTimers();
+    const broker = createBroker({ timeoutMs: 100 });
+    const old = new FakeBrowserHostClient("old");
+    const remove = broker.registerClient(old);
+    const seed = broker.execute({
+      command: { command: "list_tabs", args: {} },
+    });
+    const tab = {
+      browserId: BROWSER_ID,
+      workspaceId: "workspace-1",
+      url: "https://example.com",
+      title: "Example",
+    };
+    old.resolveLatestWith(broker, {
+      requestId: "seed",
+      ok: true,
+      result: { command: "list_tabs", tabs: [tab] },
+    });
+    await seed;
+    remove();
+    const next = new FakeBrowserHostClient("new");
+    broker.registerClient(next);
+    const result = broker.execute({
+      command: snapshotCommand(),
+      workspaceId: "workspace-1",
+    });
+    await vi.advanceTimersByTimeAsync(80);
+    next.resolveLatestWith(broker, {
+      requestId: "probe",
+      ok: true,
+      result: { command: "list_tabs", tabs: [tab] },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(next.receivedRequests.at(-1)?.command.command).toBe("snapshot");
+    await vi.advanceTimersByTimeAsync(20);
+    await expect(result).resolves.toMatchObject({
+      error: { code: "browser_timeout" },
+    });
+    expect(broker.getPendingRequestCount()).toBe(0);
   });
 
   test("reconnecting the same host reclaims its stranded browser ids", async () => {
@@ -852,7 +1024,9 @@ describe("BrowserToolsBroker", () => {
     });
     expect(broker.getPendingRequestCount()).toBe(0);
 
-    const listResult = broker.execute({ command: { command: "list_tabs", args: {} } });
+    const listResult = broker.execute({
+      command: { command: "list_tabs", args: {} },
+    });
     expect(newHost.receivedRequests).toHaveLength(1);
     newHost.resolveLatestWith(broker, {
       requestId: "req-1",

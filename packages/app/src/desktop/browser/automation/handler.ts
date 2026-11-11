@@ -1,9 +1,9 @@
+import { revealWorkspaceBrowser } from "../workspace-navigation";
 import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import { getDesktopHost, type DesktopHostBridge } from "@/desktop/host";
 import {
   ensureResidentBrowserWebview as ensureResidentBrowserWebviewDefault,
-  removeResidentBrowserWebview,
   resizeResidentBrowserWebview,
 } from "@/desktop/browser/resident-webviews";
 import {
@@ -14,6 +14,7 @@ import {
 } from "@/desktop/browser/store";
 import { collectAllTabs, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+import { useWorkspaceBrowserStore, removeWorkspaceBrowserPage } from "../workspace-store";
 
 type BrowserAutomationExecuteRequest = Extract<
   SessionOutboundMessage,
@@ -142,6 +143,14 @@ async function handleBrowserAutomationRequest(params: {
     return;
   }
 
+  if (request.command.command !== "close_tab" && "browserId" in request.command.args) {
+    presentBrowserTab({
+      serverId,
+      workspaceId: request.workspaceId,
+      browserId: request.command.args.browserId,
+    });
+  }
+
   if (request.command.command === "resize") {
     client.sendBrowserAutomationExecuteResponse({
       type: "browser.automation.execute.response",
@@ -192,6 +201,44 @@ async function handleBrowserAutomationRequest(params: {
       type: "browser.automation.execute.response",
       payload: normalizeThrownBridgeError(request.requestId, error),
     });
+  }
+}
+
+function presentBrowserTab(input: {
+  serverId?: string;
+  workspaceId?: string;
+  browserId: string;
+}): void {
+  if (!input.serverId || !input.workspaceId) return;
+  const workspaceKey = buildWorkspaceTabPersistenceKey({
+    serverId: input.serverId,
+    workspaceId: input.workspaceId,
+  });
+  if (!workspaceKey) return;
+  const store = useWorkspaceLayoutStore.getState();
+  if (store.layoutMode !== "split-panes") return;
+  const panel = useWorkspaceBrowserStore.getState().panelsByWorkspace[workspaceKey];
+  const layout = store.layoutByWorkspace[workspaceKey];
+  const existingTab =
+    layout &&
+    collectAllTabs(layout.root).some(
+      (tab) => tab.target.kind === "browser" && tab.target.browserId === input.browserId,
+    );
+  if (!panel?.browserIds.includes(input.browserId) && !existingTab) return;
+  adoptWorkspaceBrowserTabs(workspaceKey);
+  useWorkspaceBrowserStore.getState().selectPage(workspaceKey, input.browserId);
+  revealWorkspaceBrowser(workspaceKey, { respectHidden: true });
+}
+
+function adoptWorkspaceBrowserTabs(workspaceKey: string): void {
+  const layoutStore = useWorkspaceLayoutStore.getState();
+  const layout = layoutStore.layoutByWorkspace[workspaceKey];
+  if (!layout) return;
+  for (const tab of collectAllTabs(layout.root)) {
+    if (tab.target.kind !== "browser") continue;
+    useWorkspaceBrowserStore.getState().openPage(workspaceKey, tab.target.browserId);
+    // Only the workspace shell moves; the resident guest and its page state stay alive.
+    layoutStore.closeTab(workspaceKey, tab.tabId);
   }
 }
 
@@ -280,10 +327,13 @@ async function closeBrowserTabForRequest(params: {
     });
   }
 
-  useWorkspaceLayoutStore.getState().closeTab(workspaceTab.workspaceKey, workspaceTab.tabId);
-  useBrowserStore.getState().removeBrowser(browserId);
-  removeResidentBrowserWebview(browserId);
-  await browserHost?.unregisterWorkspaceBrowser?.(browserId);
+  if (workspaceTab.tabId)
+    useWorkspaceLayoutStore.getState().closeTab(workspaceTab.workspaceKey, workspaceTab.tabId);
+  await removeWorkspaceBrowserPage({
+    workspaceKey: workspaceTab.workspaceKey,
+    browserId,
+    browserHost,
+  });
 
   return {
     requestId: request.requestId,
@@ -296,7 +346,7 @@ function findWorkspaceBrowserTab(input: {
   serverId: string;
   workspaceId: string | undefined;
   browserId: string;
-}): { workspaceKey: string; tabId: string } | null {
+}): { workspaceKey: string; tabId: string | null } | null {
   if (!input.workspaceId) {
     return null;
   }
@@ -306,6 +356,13 @@ function findWorkspaceBrowserTab(input: {
   });
   if (!workspaceKey) {
     return null;
+  }
+  if (
+    useWorkspaceBrowserStore
+      .getState()
+      .panelsByWorkspace[workspaceKey]?.browserIds.includes(input.browserId)
+  ) {
+    return { workspaceKey, tabId: null };
   }
   const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
   const tab = layout
@@ -357,11 +414,14 @@ async function openBrowserTabForRequest(params: {
       message: "Cannot create a browser tab without a workspace context.",
     });
   }
-  useWorkspaceLayoutStore.getState().openTab({
-    workspaceKey,
-    target: { kind: "browser", browserId },
-    intent: "background",
-  });
+  const store = useWorkspaceLayoutStore.getState();
+  if (store.layoutMode === "split-panes") {
+    adoptWorkspaceBrowserTabs(workspaceKey);
+    useWorkspaceBrowserStore.getState().openPage(workspaceKey, browserId);
+    revealWorkspaceBrowser(workspaceKey, { respectHidden: true });
+  } else {
+    store.openTab({ workspaceKey, target: { kind: "browser", browserId }, intent: "background" });
+  }
 
   if (browserHost?.executeAutomationCommand) {
     ensureResidentBrowserWebview({ browserId, workspaceId, url: normalizedUrl });

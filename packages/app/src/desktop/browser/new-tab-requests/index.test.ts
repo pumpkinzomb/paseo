@@ -30,6 +30,23 @@ describe("browser new-tab requests", () => {
     });
   });
 
+  it("accepts pages inside the current workspace browser sidebar", () => {
+    expect(
+      resolveBrowserNewTabRequest({
+        payload: { sourceBrowserId: "sidebar-page", url: "https://example.com/target" },
+        workspaceLayout: createDefaultLayout(),
+        browserIds: ["sidebar-page"],
+      }),
+    ).toEqual({ sourceBrowserId: "sidebar-page", url: "https://example.com/target" });
+    expect(
+      resolveBrowserNewTabRequest({
+        payload: { sourceBrowserId: "other-page", url: "https://example.com/target" },
+        workspaceLayout: createDefaultLayout(),
+        browserIds: ["sidebar-page"],
+      }),
+    ).toBeNull();
+  });
+
   it("ignores desktop requests from another workspace", () => {
     const request = resolveBrowserNewTabRequest({
       payload: {

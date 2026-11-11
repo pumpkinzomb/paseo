@@ -90,6 +90,14 @@ const manifests = {
     compactSheet: null,
     resourceKey: (target) => target.browserId,
   },
+  browser_workspace: {
+    kind: "browser_workspace",
+    supportedHosts: ["explorer"],
+    showCloseButton: false,
+    singleton: true,
+    compactSheet: null,
+    resourceKey: () => "browser_workspace",
+  },
   changes_tree: {
     kind: "changes_tree",
     supportedHosts: ["explorer"],

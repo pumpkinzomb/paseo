@@ -137,7 +137,14 @@ export class BrowserToolsBroker {
       });
     }
 
-    const host = this.selectHostForCommand(request.data.command, requestId);
+    const timeoutMs = input.timeoutMs ?? this.defaultTimeoutMs;
+    const deadline = Date.now() + timeoutMs;
+    let host = this.selectHostForCommand(request.data.command, requestId);
+    const browserId = getBrowserIdForCommand(request.data.command);
+    if (!host.ok && browserId && this.strandedBrowserHostByBrowserId.has(browserId)) {
+      const recovered = await this.rediscoverStrandedHost(request.data, browserId, deadline);
+      if (recovered) host = { ok: true, value: recovered };
+    }
     if (!host.ok) {
       return host.payload;
     }
@@ -154,7 +161,7 @@ export class BrowserToolsBroker {
     return this.sendRequest({
       host: host.value,
       request: request.data,
-      timeoutMs: input.timeoutMs ?? this.defaultTimeoutMs,
+      timeoutMs: Math.max(0, deadline - Date.now()),
     });
   }
 
@@ -264,6 +271,61 @@ export class BrowserToolsBroker {
     };
   }
 
+  // Subscription IDs change on renderer reload. Discover the actual tab owner rather
+  // than assuming that an unrelated newly connected host owns a stranded tab.
+  private async rediscoverStrandedHost(
+    request: BrowserAutomationExecuteRequest,
+    browserId: string,
+    deadline: number,
+  ): Promise<RegisteredBrowserHost | null> {
+    const hosts = [...this.clients.values()];
+    const generation = this.registrationSequence;
+    if (!hosts.length || hosts.some((host) => !host.supportedCommands.has("list_tabs"))) {
+      return null;
+    }
+    const responses = await Promise.all(
+      hosts.map(async (host) => ({
+        host,
+        payload: await this.sendRequest({
+          host,
+          request: {
+            ...request,
+            requestId: `browser_recover_${randomUUID()}`,
+            command: { command: "list_tabs", args: {} },
+          },
+          rememberAffinity: false,
+          timeoutMs: Math.max(0, deadline - Date.now()),
+        }),
+      })),
+    );
+    // A changed host set, partial result, or ambiguous ownership is not evidence
+    // that it is safe to deliver the original (possibly mutating) command.
+    if (
+      Date.now() >= deadline ||
+      generation !== this.registrationSequence ||
+      responses.some(
+        ({ host, payload }) =>
+          this.clients.get(host.client.id) !== host ||
+          !payload.ok ||
+          payload.result.command !== "list_tabs",
+      )
+    )
+      return null;
+    const owners = responses.flatMap(({ host, payload }) =>
+      payload.ok && payload.result.command === "list_tabs"
+        ? payload.result.tabs
+            .filter((tab) => tab.browserId === browserId)
+            .map((tab) => ({ host, tab }))
+        : [],
+    );
+    if (owners.length !== 1) return null;
+    const { host, tab } = owners[0]!;
+    if (request.workspaceId && tab.workspaceId !== request.workspaceId) return null;
+    this.browserHostByBrowserId.set(browserId, host.client.id);
+    this.strandedBrowserHostByBrowserId.delete(browserId);
+    return host;
+  }
+
   private selectHostForCommand(
     command: BrowserAutomationCommand,
     requestId: string,
@@ -351,7 +413,9 @@ export class BrowserToolsBroker {
     return browserToolsFailure({
       requestId: params.requestId,
       code: "browser_unsupported",
-      message: `Browser automation command "${params.commandName}" is not supported by the ${describeBrowserHost(params.host)}.`,
+      message: `Browser automation command "${
+        params.commandName
+      }" is not supported by the ${describeBrowserHost(params.host)}.`,
     });
   }
 

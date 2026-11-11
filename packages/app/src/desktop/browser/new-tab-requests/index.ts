@@ -1,3 +1,4 @@
+import { useWorkspaceBrowserStore } from "../workspace-store";
 import { useEffect } from "react";
 import { getDesktopHost, type DesktopBrowserNewTabRequestEvent } from "@/desktop/host";
 import { collectAllTabs, type WorkspaceLayout } from "@/stores/workspace-layout-store";
@@ -47,6 +48,7 @@ function workspaceContainsBrowser(input: {
 }
 
 export function resolveBrowserNewTabRequest(input: {
+  browserIds?: readonly string[];
   payload: unknown;
   workspaceLayout: WorkspaceLayout | null | undefined;
 }): BrowserNewTabRequest | null {
@@ -55,6 +57,7 @@ export function resolveBrowserNewTabRequest(input: {
     return null;
   }
   if (
+    !input.browserIds?.includes(request.sourceBrowserId) &&
     !workspaceContainsBrowser({
       workspaceLayout: input.workspaceLayout,
       browserId: request.sourceBrowserId,
@@ -67,6 +70,7 @@ export function resolveBrowserNewTabRequest(input: {
 
 export function useDesktopBrowserNewTabRequests(input: {
   enabled: boolean;
+  workspaceKey?: string | null;
   workspaceLayout: WorkspaceLayout | null | undefined;
   openUrl: (url: string) => void;
 }): void {
@@ -74,6 +78,9 @@ export function useDesktopBrowserNewTabRequests(input: {
     const request = resolveBrowserNewTabRequest({
       payload,
       workspaceLayout: input.workspaceLayout,
+      browserIds: input.workspaceKey
+        ? useWorkspaceBrowserStore.getState().panelsByWorkspace[input.workspaceKey]?.browserIds
+        : undefined,
     });
     if (!request) {
       return;

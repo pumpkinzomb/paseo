@@ -1,200 +1,94 @@
-import { indexedDB, IDBKeyRange } from "fake-indexeddb";
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { StateStorage } from "zustand/middleware";
+import { createValidatedPersistStorage } from "../storage/validated-persist-storage";
+import { WorkspaceLayoutPersistedStateSchema } from "./workspace-layout-storage";
 import {
-  createWorkspaceLayoutStore,
-  collectAllTabs,
-  selectExplorerSidebarPaneId,
-} from "./workspace-layout-store";
-import { deriveWorkspacePaneState } from "../screens/workspace/workspace-pane-state";
-import { selectVisibleAgentIds } from "../screens/workspace/visible-agent-ids";
+  createBrowserWorkspaceLayoutStorage,
+  LEGACY_WORKSPACE_LAYOUT_STORAGE_KEY as LEGACY,
+  WORKSPACE_LAYOUT_STORAGE_KEY as CURRENT,
+} from "./workspace-layout-persistence";
 
-Object.assign(globalThis, { indexedDB, IDBKeyRange });
-
-it("skips unchanged reconciliations and immediately saves real layout changes", async () => {
-  const values = new Map<string, string>();
-  let writes = 0;
-  const storage: StateStorage = {
-    getItem: (name) => values.get(name) ?? null,
-    setItem: (name, value) => {
-      writes += 1;
-      values.set(name, value);
-    },
-    removeItem: (name) => {
-      values.delete(name);
+function fixture(kind: "browser" | "browser_workspace") {
+  return {
+    version: 2,
+    state: {
+      layoutByWorkspace: {
+        workspace: {
+          focusedPaneId: "main",
+          root: {
+            kind: "pane",
+            pane: {
+              id: "main",
+              tabIds: ["agent", "browser"],
+              focusedTabId: "agent",
+              tabs: [
+                { tabId: "agent", target: { kind: "agent", agentId: "keep-me" }, createdAt: 1 },
+                {
+                  tabId: "browser",
+                  target: kind === "browser" ? { kind, browserId: "page-1" } : { kind },
+                  createdAt: 2,
+                },
+              ],
+            },
+          },
+        },
+      },
+      pinnedAgentIdsByWorkspace: { workspace: ["keep-me"] },
     },
   };
-  const store = createWorkspaceLayoutStore(undefined, storage);
-  await store.persist.rehydrate();
-  const workspaceKey = "server:workspace";
-  const openAgent = (agentId: string) =>
-    store.getState().openTab({
-      workspaceKey,
-      target: { kind: "agent", agentId },
-      intent: "reveal",
-    });
-  openAgent("agent-1");
-  const layout = store.getState().layoutByWorkspace[workspaceKey];
-  const writesBefore = writes;
-  expect(writesBefore).toBe(1);
-  for (let index = 0; index < 50; index += 1) {
-    store.getState().reconcileTabs(workspaceKey, {
-      agentsHydrated: true,
-      terminalsHydrated: true,
-      activeAgentIds: ["agent-1"],
-      autoOpenAgentIds: ["agent-1"],
-      knownTerminalIds: [],
-      standaloneTerminalIds: [],
-    });
-  }
-  expect(store.getState().layoutByWorkspace[workspaceKey]).toBe(layout);
-  expect(writes).toBe(writesBefore);
-
-  openAgent("agent-2");
-  expect(writes).toBe(writesBefore + 1);
-  const restored = createWorkspaceLayoutStore(undefined, storage);
-  await restored.persist.rehydrate();
-  expect(restored.getState().layoutByWorkspace[workspaceKey]).toEqual(
-    store.getState().layoutByWorkspace[workspaceKey],
-  );
-});
-
-it("keeps the saved layout when the shell publishes its layout mode before hydration", async () => {
-  const values = new Map<string, string>();
-  const storage: StateStorage = {
-    getItem: (name) => values.get(name) ?? null,
-    setItem: (name, value) => {
-      values.set(name, value);
+}
+function setup(raw: string) {
+  const values = new Map([[LEGACY, raw]]);
+  const backing: StateStorage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => {
+      values.set(key, value);
     },
-    removeItem: (name) => {
-      values.delete(name);
+    removeItem: (key) => {
+      values.delete(key);
     },
   };
-  const workspaceKey = "server:workspace";
-  const saved = createWorkspaceLayoutStore(undefined, storage);
-  await saved.persist.rehydrate();
-  saved.getState().openTab({
-    workspaceKey,
-    target: { kind: "file", path: "notes.md" },
-    intent: "reveal",
+  const storage = createValidatedPersistStorage(
+    createBrowserWorkspaceLayoutStorage(backing),
+    WorkspaceLayoutPersistedStateSchema,
+  );
+  return { values, storage };
+}
+
+describe("browser workspace layout persistence boundary", () => {
+  it("imports the full old layout without changing the rollback snapshot", async () => {
+    const raw = JSON.stringify(fixture("browser"));
+    const { values, storage } = setup(raw);
+    expect(await storage.getItem(CURRENT)).toEqual(fixture("browser"));
+    expect(values.get(CURRENT)).toBe(raw);
+    expect(values.get(LEGACY)).toBe(raw);
   });
 
-  // A page load: the shell publishes its mode from the first commit, before the read settles.
-  const loaded = createWorkspaceLayoutStore(undefined, storage);
-  loaded.getState().setLayoutMode("single-pane");
-  await new Promise<void>((resolve) => loaded.persist.onFinishHydration(() => resolve()));
-  expect(loaded.getState().layoutByWorkspace[workspaceKey]).toEqual(
-    saved.getState().layoutByWorkspace[workspaceKey],
-  );
+  it("keeps new edits through rollback and return, without sending new targets to the old key", async () => {
+    const raw = JSON.stringify(fixture("browser"));
+    const { values, storage } = setup(raw);
+    await storage.getItem(CURRENT);
+    const upgraded = WorkspaceLayoutPersistedStateSchema.parse(fixture("browser_workspace").state);
+    await storage.setItem(CURRENT, { state: upgraded, version: 2 });
+    expect(values.get(LEGACY)).toBe(raw);
+    // A rollback may change its own layout, but cannot overwrite the upgraded layout.
+    values.set(LEGACY, JSON.stringify({ version: 2, state: { layoutByWorkspace: {} } }));
+    expect(await storage.getItem(CURRENT)).toEqual({ state: upgraded, version: 2 });
+  });
 
-  // Leaving the page before any other layout change must not lose the tabs.
-  const reloaded = createWorkspaceLayoutStore(undefined, storage);
-  await reloaded.persist.rehydrate();
-  expect(reloaded.getState().layoutByWorkspace[workspaceKey]).toEqual(
-    saved.getState().layoutByWorkspace[workspaceKey],
-  );
+  it("losslessly imports a legacy key already written by the browser preview", async () => {
+    const raw = JSON.stringify(fixture("browser_workspace"));
+    const { values, storage } = setup(raw);
+    expect(await storage.getItem(CURRENT)).toEqual(fixture("browser_workspace"));
+    expect(values.get(CURRENT)).toBe(raw);
+    // This contaminated legacy key still requires a compatible rollback build.
+    expect(values.get(LEGACY)).toBe(raw);
+  });
+
+  it("does not remove the old snapshot when a copied layout fails validation", async () => {
+    const { values, storage } = setup("invalid json");
+    expect(await storage.getItem(CURRENT)).toBeNull();
+    expect(values.get(LEGACY)).toBe("invalid json");
+    expect(values.has(CURRENT)).toBe(false);
+  });
 });
-
-it("keeps every saved layout when a draft tab's setup carries a nested provider option", async () => {
-  const values = new Map<string, string>();
-  const storage: StateStorage = {
-    getItem: (name) => values.get(name) ?? null,
-    setItem: (name, value) => {
-      values.set(name, value);
-    },
-    removeItem: (name) => {
-      values.delete(name);
-    },
-  };
-  const store = createWorkspaceLayoutStore(undefined, storage);
-  await store.persist.rehydrate();
-  store.getState().openTab({
-    workspaceKey: "server:kept",
-    target: { kind: "agent", agentId: "agent-1" },
-    intent: "reveal",
-  });
-  store.getState().openTab({
-    workspaceKey: "server:forked",
-    target: {
-      kind: "draft",
-      draftId: "draft-1",
-      setup: {
-        provider: "codex",
-        cwd: "/repo",
-        modeId: null,
-        model: null,
-        thinkingOptionId: null,
-        providerOptions: { sandbox_workspace_write: { network_access: true }, max_turns: 3 },
-      },
-    },
-    intent: "reveal",
-  });
-
-  const restored = createWorkspaceLayoutStore(undefined, storage);
-  await restored.persist.rehydrate();
-
-  expect(Object.keys(restored.getState().layoutByWorkspace).sort()).toEqual([
-    "server:forked",
-    "server:kept",
-  ]);
-  expect(JSON.stringify(restored.getState().layoutByWorkspace["server:forked"])).toContain(
-    "network_access",
-  );
-});
-
-it.each([1, 2])(
-  "restores the agent pane after parked focus in storage version %i",
-  async (version) => {
-    const values = new Map<string, string>();
-    const storage: StateStorage = {
-      getItem: (key) => values.get(key) ?? null,
-      setItem: (key, value) => {
-        values.set(key, value);
-      },
-      removeItem: (key) => {
-        values.delete(key);
-      },
-    };
-    const key = "host:workspace";
-    const source = createWorkspaceLayoutStore(undefined, storage);
-    await source.persist.rehydrate();
-    source.getState().setLayoutMode("compact");
-    source.getState().openTab({
-      workspaceKey: key,
-      target: { kind: "agent", agentId: "agent-a" },
-      intent: "reveal",
-    });
-    source.getState().unfocusPane(key);
-    expect(source.getState().layoutByWorkspace[key].focusedPaneId).toBeNull();
-    const persisted = JSON.parse(values.get("workspace-layout-state")!);
-    persisted.version = version;
-    values.set("workspace-layout-state", JSON.stringify(persisted));
-    const restored = createWorkspaceLayoutStore(undefined, storage);
-    restored.getState().setLayoutMode("compact");
-    await restored.persist.rehydrate();
-    restored.getState().reconcileTabs(key, {
-      agentsHydrated: true,
-      terminalsHydrated: true,
-      activeAgentIds: ["agent-a"],
-      autoOpenAgentIds: ["agent-a"],
-      knownTerminalIds: [],
-      standaloneTerminalIds: [],
-    });
-    const layout = restored.getState().layoutByWorkspace[key];
-    const tabs = collectAllTabs(layout.root);
-    const restoredExplorerId = selectExplorerSidebarPaneId(restored.getState(), key);
-    const main = deriveWorkspacePaneState({ layout, tabs });
-    const visible = selectVisibleAgentIds({
-      layout,
-      tabs,
-      routeFocused: true,
-      focusedPaneOnly: true,
-      explorerPaneId: restoredExplorerId,
-      explorerVisible: false,
-    });
-    expect(layout.focusedPaneId).toBe("main");
-    expect(main.activeTab?.descriptor.target).toEqual({ kind: "agent", agentId: "agent-a" });
-    expect(main.tabs.map((t) => t.descriptor.kind)).toEqual(["agent"]);
-    expect(visible).toEqual(["agent-a"]);
-  },
-);

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import { createJSONStorage, type StateStorage } from "zustand/middleware";
 import { mountBrowserAutomationHandler } from "./handler";
+import { useWorkspaceBrowserStore } from "../workspace-store";
 import type { DesktopHostBridge } from "@/desktop/host";
 import { useBrowserStore } from "@/desktop/browser/store";
 import { findPaneById } from "@/stores/workspace-layout-actions";
@@ -275,14 +276,24 @@ useWorkspaceLayoutStore.persist.setOptions({
   storage: createJSONStorage(() => browserAutomationStorage),
 });
 
+useWorkspaceBrowserStore.persist.setOptions({
+  storage: createJSONStorage(() => browserAutomationStorage),
+});
+
 describe("mountBrowserAutomationHandler", () => {
   beforeEach(() => {
     browserAutomationStorage.clear();
     useBrowserStore.setState({ browsersById: {} });
-    useWorkspaceLayoutStore.setState({ layoutByWorkspace: {} });
+    useWorkspaceBrowserStore.setState({ panelsByWorkspace: {} });
+    useWorkspaceLayoutStore.setState({
+      layoutByWorkspace: {},
+      sidePaneIdByWorkspace: {},
+      layoutMode: "split-panes",
+      focusRequest: null,
+    });
   });
 
-  test("browser_new_tab creates a workspace browser tab without stealing focus", async () => {
+  test("browser_new_tab opens a page inside the existing sidebar without adding a main workspace tab", async () => {
     const browser = new BrowserAutomationHandlerHarness();
     const workspaceKey = buildWorkspaceTabPersistenceKey({
       serverId: "server-1",
@@ -296,6 +307,7 @@ describe("mountBrowserAutomationHandler", () => {
       target: { kind: "draft", draftId: "human-draft" },
       intent: "reveal",
     });
+    const previousFocusRequest = useWorkspaceLayoutStore.getState().focusRequest;
     browser.mount({ serverId: "server-1" });
 
     browser.receive(browserNewTabRequest());
@@ -304,22 +316,26 @@ describe("mountBrowserAutomationHandler", () => {
     const result = newTabResultFrom(browser.client.payloadAt(0));
     const openedTabs = workspaceBrowserTabs(workspaceKey, result.browserId);
     const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
-    expect(openedTabs).toEqual([
-      expect.objectContaining({
-        target: { kind: "browser", browserId: result.browserId },
-      }),
-    ]);
-    // Workspaces keep a stable hidden explorer companion pane at the root
-    // (see "retain workspace explorer pane"), so the root is a group and the
-    // draft/browser tabs land in the "main" pane, not at the root directly.
+    expect(openedTabs).toEqual([]);
+    expect(useWorkspaceBrowserStore.getState().panelsByWorkspace[workspaceKey]).toEqual({
+      browserIds: [result.browserId],
+      activeBrowserId: result.browserId,
+    });
     if (!layout) {
       throw new Error("Expected workspace layout");
     }
     expect(layout.root.kind).toBe("group");
+    const sidebar = findPaneById(layout.root, "explorer");
+    expect(sidebar?.hidden).not.toBe(true);
+    expect(sidebar?.focusedTabId).toBe("browser_workspace");
+    expect(sidebar?.tabIds.filter((id) => id === "browser_workspace")).toHaveLength(1);
+
     expect(findPaneById(layout.root, "main")).toEqual(
       expect.objectContaining({ focusedTabId: previousFocusedTabId }),
     );
-    expect(openedTabs[0]?.tabId).not.toBe(previousFocusedTabId);
+    expect(useWorkspaceLayoutStore.getState().sidePaneIdByWorkspace[workspaceKey]).toBeUndefined();
+    expect(layout.focusedPaneId).toBe("main");
+    expect(useWorkspaceLayoutStore.getState().focusRequest).toEqual(previousFocusRequest);
     expect(browser.browser.activeWorkspaceBrowsers).toEqual([]);
     expect(browser.resident.ensuredWebviews).toEqual([
       {
@@ -338,6 +354,174 @@ describe("mountBrowserAutomationHandler", () => {
       },
     ]);
   });
+
+  test("hidden sidebar keeps processing commands and new pages without reopening", async () => {
+    const browser = new BrowserAutomationHandlerHarness();
+    const workspaceKey = buildWorkspaceTabPersistenceKey({
+      serverId: "server-1",
+      workspaceId: "wks_workspace_a",
+    });
+    if (!workspaceKey) throw new Error("Expected workspace key");
+    useWorkspaceLayoutStore
+      .getState()
+      .openTab({ workspaceKey, target: { kind: "agent", agentId: "agent-1" }, intent: "reveal" });
+    browser.mount({ serverId: "server-1" });
+    browser.receive(browserNewTabRequest());
+    await flushAsyncWork();
+    const first = newTabResultFrom(browser.client.payloadAt(0));
+    useWorkspaceLayoutStore.getState().hideExplorerSidebar(workspaceKey);
+    browser.receive({
+      ...browserNewTabRequest(),
+      requestId: "hidden-snapshot",
+      command: { command: "snapshot", args: { browserId: first.browserId } },
+    });
+    await flushAsyncWork();
+    expect(
+      findPaneById(
+        useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey].root,
+        "explorer",
+      )?.hidden,
+    ).toBe(true);
+    browser.receive(browserNewTabRequest());
+    await flushAsyncWork();
+    expect(
+      findPaneById(
+        useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey].root,
+        "explorer",
+      )?.hidden,
+    ).toBe(true);
+    expect(
+      useWorkspaceBrowserStore.getState().panelsByWorkspace[workspaceKey]?.browserIds,
+    ).toHaveLength(2);
+    expect(browser.browser.unregisteredWorkspaceBrowsers).toEqual([]);
+    useWorkspaceLayoutStore.getState().showExplorerSidebar(workspaceKey);
+    expect(
+      findPaneById(
+        useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey].root,
+        "explorer",
+      )?.hidden,
+    ).not.toBe(true);
+  });
+
+  test("commands follow the existing browser in the same right pane while preserving the conversation", async () => {
+    const browser = new BrowserAutomationHandlerHarness();
+    const workspaceKey = buildWorkspaceTabPersistenceKey({
+      serverId: "server-1",
+      workspaceId: "wks_workspace_a",
+    });
+    if (!workspaceKey) throw new Error("Expected workspace key");
+    const store = useWorkspaceLayoutStore.getState();
+    const chatTabId = store.openTab({
+      workspaceKey,
+      target: { kind: "agent", agentId: "agent-1" },
+      intent: "reveal",
+    });
+    const focusRequest = useWorkspaceLayoutStore.getState().focusRequest;
+    browser.mount({ serverId: "server-1" });
+    browser.receive(browserNewTabRequest());
+    await flushAsyncWork();
+    const first = newTabResultFrom(browser.client.payloadAt(0));
+    browser.receive(browserNewTabRequest());
+    await flushAsyncWork();
+    const second = newTabResultFrom(browser.client.payloadAt(1));
+    expect(
+      useWorkspaceBrowserStore.getState().panelsByWorkspace[workspaceKey]?.activeBrowserId,
+    ).toBe(second.browserId);
+
+    browser.receive({
+      ...browserNewTabRequest(),
+      requestId: "req-snapshot-first",
+      command: { command: "snapshot", args: { browserId: first.browserId } },
+    });
+    await flushAsyncWork();
+    const state = useWorkspaceLayoutStore.getState();
+    const layout = state.layoutByWorkspace[workspaceKey];
+    expect(state.sidePaneIdByWorkspace[workspaceKey]).toBeUndefined();
+    expect(useWorkspaceBrowserStore.getState().panelsByWorkspace[workspaceKey]).toEqual({
+      browserIds: [first.browserId, second.browserId],
+      activeBrowserId: first.browserId,
+    });
+    expect(findPaneById(layout.root, "main")?.focusedTabId).toBe(chatTabId);
+    expect(layout.focusedPaneId).toBe("main");
+    expect(state.focusRequest).toEqual(focusRequest);
+    expect(browser.resident.ensuredWebviews).toHaveLength(2);
+    const sidebar = findPaneById(layout.root, "explorer");
+    expect(sidebar?.tabIds.filter((id) => id === "browser_workspace")).toHaveLength(1);
+    expect(sidebar?.focusedTabId).toBe("browser_workspace");
+
+    browser.receive(browserCloseTabRequest(first.browserId));
+    await flushAsyncWork();
+    expect(useWorkspaceBrowserStore.getState().panelsByWorkspace[workspaceKey]).toEqual({
+      browserIds: [second.browserId],
+      activeBrowserId: second.browserId,
+    });
+    expect(browser.browser.unregisteredWorkspaceBrowsers).toEqual([first.browserId]);
+    expect(useBrowserStore.getState().browsersById[second.browserId]).toBeDefined();
+  });
+
+  test("commands present a previously background browser from the main pane without recreating it", async () => {
+    const browser = new BrowserAutomationHandlerHarness();
+    const workspaceKey = buildWorkspaceTabPersistenceKey({
+      serverId: "server-1",
+      workspaceId: "wks_workspace_a",
+    });
+    if (!workspaceKey) throw new Error("Expected workspace key");
+    const browserId = useBrowserStore
+      .getState()
+      .createBrowser({ initialUrl: "https://example.com" });
+    const store = useWorkspaceLayoutStore.getState();
+    const chatTabId = store.openTab({
+      workspaceKey,
+      target: { kind: "agent", agentId: "agent-1" },
+      intent: "reveal",
+    });
+    store.openTab({
+      workspaceKey,
+      target: { kind: "browser", browserId },
+      intent: "background",
+    });
+    browser.mount({ serverId: "server-1" });
+    browser.receive({
+      ...browserNewTabRequest(),
+      command: { command: "snapshot", args: { browserId } },
+    });
+    await flushAsyncWork();
+    const state = useWorkspaceLayoutStore.getState();
+    const layout = state.layoutByWorkspace[workspaceKey];
+    expect(useWorkspaceBrowserStore.getState().panelsByWorkspace[workspaceKey]).toEqual({
+      browserIds: [browserId],
+      activeBrowserId: browserId,
+    });
+    expect(findPaneById(layout.root, "main")?.tabIds).toEqual([chatTabId]);
+    expect(layout.focusedPaneId).toBe("main");
+    expect(workspaceBrowserTabs(workspaceKey, browserId)).toEqual([]);
+    expect(browser.resident.ensuredWebviews).toEqual([]);
+  });
+
+  test.each(["compact", "single-pane"] as const)(
+    "%s layouts keep browser automation in the background",
+    async (layoutMode) => {
+      useWorkspaceLayoutStore.setState({ layoutMode });
+      const browser = new BrowserAutomationHandlerHarness();
+      const workspaceKey = buildWorkspaceTabPersistenceKey({
+        serverId: "server-1",
+        workspaceId: "wks_workspace_a",
+      });
+      if (!workspaceKey) throw new Error("Expected workspace key");
+      const chatTabId = useWorkspaceLayoutStore
+        .getState()
+        .openTab({ workspaceKey, target: { kind: "agent", agentId: "agent-1" }, intent: "reveal" });
+      browser.mount({ serverId: "server-1" });
+      browser.receive(browserNewTabRequest());
+      await flushAsyncWork();
+      newTabResultFrom(browser.client.payloadAt(0));
+      const state = useWorkspaceLayoutStore.getState();
+      expect(state.sidePaneIdByWorkspace[workspaceKey]).toBeUndefined();
+      expect(findPaneById(state.layoutByWorkspace[workspaceKey].root, "main")?.focusedTabId).toBe(
+        chatTabId,
+      );
+    },
+  );
 
   test("browser_new_tab returns a retryable timeout when the resident webview does not register", async () => {
     const browser = new BrowserAutomationHandlerHarness();
@@ -472,6 +656,9 @@ describe("mountBrowserAutomationHandler", () => {
       result: { command: "close_tab", browserId: result.browserId },
     });
     expect(workspaceBrowserTabs(workspaceKey, result.browserId)).toEqual([]);
+    expect(useWorkspaceBrowserStore.getState().panelsByWorkspace[workspaceKey]?.browserIds).toEqual(
+      [],
+    );
     expect(useBrowserStore.getState().browsersById[result.browserId]).toBeUndefined();
     expect(browser.browser.unregisteredWorkspaceBrowsers).toEqual([result.browserId]);
     expect(currentBrowserTabs()).toEqual([]);

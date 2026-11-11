@@ -292,7 +292,7 @@ describe("workspace-layout-store helpers", () => {
     const persisted = createWorkspaceLayoutWithExplorerSidebar();
     const persistedIds = new Set(collectAllTabs(persisted.root).map((tab) => tab.tabId));
     await AsyncStorage.setItem(
-      "workspace-layout-state",
+      "workspace-layout-state-browser-workspace-v1",
       JSON.stringify({
         state: {
           layoutByWorkspace: { workspace: persisted },
@@ -486,9 +486,9 @@ describe("workspace-layout-store version 2 migration", () => {
           },
         }
       : layout;
-    await AsyncStorage.removeItem("workspace-layout-state");
+    await AsyncStorage.removeItem("workspace-layout-state-browser-workspace-v1");
     await AsyncStorage.setItem(
-      "workspace-layout-state",
+      "workspace-layout-state-browser-workspace-v1",
       JSON.stringify({
         state: {
           layoutByWorkspace: {
@@ -560,7 +560,7 @@ describe("workspace-layout-store version 2 migration", () => {
       expectMigratedLayout(restored);
       await vi.waitFor(async () => {
         const persisted = JSON.parse(
-          (await AsyncStorage.getItem("workspace-layout-state")) ?? "{}",
+          (await AsyncStorage.getItem("workspace-layout-state-browser-workspace-v1")) ?? "{}",
         );
         expect(persisted.version).toBe(2);
       });
@@ -586,7 +586,9 @@ describe("workspace-layout-store version 2 migration", () => {
     await restored.persist.rehydrate();
 
     await vi.waitFor(async () => {
-      const persisted = JSON.parse((await AsyncStorage.getItem("workspace-layout-state")) ?? "{}");
+      const persisted = JSON.parse(
+        (await AsyncStorage.getItem("workspace-layout-state-browser-workspace-v1")) ?? "{}",
+      );
       expect(persisted.version).toBe(2);
       expect(Object.keys(persisted.state).sort()).toEqual([
         "explorerPaneIdByWorkspace",
@@ -621,7 +623,9 @@ describe("workspace-layout-store version 2 migration", () => {
     expect(addedTabId).toBeTruthy();
 
     await vi.waitFor(async () => {
-      const persisted = JSON.parse((await AsyncStorage.getItem("workspace-layout-state")) ?? "{}");
+      const persisted = JSON.parse(
+        (await AsyncStorage.getItem("workspace-layout-state-browser-workspace-v1")) ?? "{}",
+      );
       expect(persisted.version).toBe(2);
     });
     const reloaded = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
@@ -1260,7 +1264,7 @@ describe("workspace-layout-store actions", () => {
         stateByTabId: { draft_saved: { savedContent: "preserve me" } },
       });
       await AsyncStorage.setItem(
-        "workspace-layout-state",
+        "workspace-layout-state-browser-workspace-v1",
         JSON.stringify({
           version: 2,
           state: {
@@ -1308,7 +1312,7 @@ describe("workspace-layout-store actions", () => {
       stateByTabId: { draft_saved: { savedContent: "preserve me" } },
     });
     await AsyncStorage.setItem(
-      "workspace-layout-state",
+      "workspace-layout-state-browser-workspace-v1",
       JSON.stringify({
         version: 2,
         state: {
@@ -1330,7 +1334,7 @@ describe("workspace-layout-store actions", () => {
   it("migrates legacy layouts to include the hidden registered explorer pane", async () => {
     const legacyLayout = createDefaultLayout();
     await AsyncStorage.setItem(
-      "workspace-layout-state",
+      "workspace-layout-state-browser-workspace-v1",
       JSON.stringify({
         state: { layoutByWorkspace: { legacy: legacyLayout } },
         version: 1,
@@ -1353,13 +1357,15 @@ describe("workspace-layout-store actions", () => {
       { kind: "changes_tree" },
     ]);
     expect(restored.getState().splitSizesByWorkspace).toEqual({});
-    await expect(AsyncStorage.getItem("workspace-layout-state")).resolves.not.toBeNull();
+    await expect(
+      AsyncStorage.getItem("workspace-layout-state-browser-workspace-v1"),
+    ).resolves.not.toBeNull();
   });
 
   it("restores a layout saved before the Side panel rename, PR bookkeeping and all", async () => {
     const savedLayout = createWorkspaceLayoutWithExplorerSidebar();
     await AsyncStorage.setItem(
-      "workspace-layout-state",
+      "workspace-layout-state-browser-workspace-v1",
       JSON.stringify({
         state: {
           layoutByWorkspace: { renamed: savedLayout },
@@ -1379,7 +1385,7 @@ describe("workspace-layout-store actions", () => {
   });
 
   it("persists first-class pane targets, visibility, and focus", async () => {
-    await AsyncStorage.removeItem("workspace-layout-state");
+    await AsyncStorage.removeItem("workspace-layout-state-browser-workspace-v1");
     const workspaceKey = createWorkspaceKey();
     const source = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
     await source.persist.rehydrate();
@@ -1408,7 +1414,9 @@ describe("workspace-layout-store actions", () => {
     source.getState().hideExplorerSidebar(workspaceKey);
 
     await vi.waitFor(async () => {
-      expect(await AsyncStorage.getItem("workspace-layout-state")).not.toBeNull();
+      expect(
+        await AsyncStorage.getItem("workspace-layout-state-browser-workspace-v1"),
+      ).not.toBeNull();
     });
 
     const restored = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
@@ -1430,7 +1438,7 @@ describe("workspace-layout-store actions", () => {
   });
 
   it("persists and rehydrates independent Changes state through validated storage", async () => {
-    await AsyncStorage.removeItem("workspace-layout-state");
+    await AsyncStorage.removeItem("workspace-layout-state-browser-workspace-v1");
     const workspaceKey = createWorkspaceKey();
     const source = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
     await source.persist.rehydrate();
@@ -1457,7 +1465,7 @@ describe("workspace-layout-store actions", () => {
     source.getState().setTabState(workspaceKey, second, secondState);
 
     await vi.waitFor(async () => {
-      const persisted = await AsyncStorage.getItem("workspace-layout-state");
+      const persisted = await AsyncStorage.getItem("workspace-layout-state-browser-workspace-v1");
       expect(persisted).not.toBeNull();
       const root = JSON.parse(persisted ?? "{}").state.layoutByWorkspace[workspaceKey].root;
       expect(collectTabIds(root)).toEqual([first, second, "files", "changes_tree"]);
@@ -1968,7 +1976,7 @@ describe("workspace-layout-store actions", () => {
       agentId: "agent-1",
     };
     await AsyncStorage.setItem(
-      "workspace-layout-state",
+      "workspace-layout-state-browser-workspace-v1",
       JSON.stringify({
         state: {
           layoutByWorkspace: {
@@ -4459,7 +4467,7 @@ describe("workspace-layout-store actions", () => {
 });
 
 it("persists the once-only PR add after closing, and clears it when purging the workspace", async () => {
-  await AsyncStorage.removeItem("workspace-layout-state");
+  await AsyncStorage.removeItem("workspace-layout-state-browser-workspace-v1");
   const source = createWorkspaceLayoutStore(workspaceLayoutIds);
   await source.persist.rehydrate();
   const workspaceKey = "server-1:pr-once";
