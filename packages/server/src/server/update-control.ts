@@ -8,7 +8,10 @@ const maximumBytes = 16_384;
 export interface UpdateControlRequest {
   version: 1;
   id: string;
-  operation: "prepare" | "inspect" | "abort" | "commit" | "renew";
+  operation: "prepare" | "inspect" | "abort" | "commit" | "renew" | "reclaimDependencies";
+  daemonIdentity?: string;
+  registryId?: string;
+  evidence?: unknown;
   binding?: unknown;
   ticket?: unknown;
 }
@@ -18,7 +21,11 @@ export interface UpdateControlDescriptor {
   generation: string;
   workerPid: number;
   serverId: string;
-  capabilities: { rendererLease: boolean; daemonCommit: boolean };
+  capabilities: {
+    rendererLease: boolean;
+    daemonCommit: boolean;
+    managedDependencyRetirement?: boolean;
+  };
   ttlMs: number;
   instance: {
     pid: number;
@@ -118,7 +125,9 @@ export async function startUpdateControl(options: {
           !request ||
           request.version !== 1 ||
           request.id !== id ||
-          !["prepare", "inspect", "abort", "commit", "renew"].includes(request.operation)
+          !["prepare", "inspect", "abort", "commit", "renew", "reclaimDependencies"].includes(
+            request.operation,
+          )
         )
           throw new Error("Invalid update request");
         response = {

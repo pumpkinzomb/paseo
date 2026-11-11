@@ -202,6 +202,18 @@ export function createUpdateQuiescence(options: UpdateQuiescenceOptions) {
       timer.unref();
       return { ...lease };
     },
+    /** Final same-event-loop boundary for short synchronous filesystem detach only.
+     * Never pass async work here: admission may reopen immediately after return.
+     */
+    runSynchronousMaintenance<T>(ticket: UpdateTicket, operation: () => T): T {
+      validate(ticket);
+      check();
+      if (ticket.mode !== "renderer" || phase !== "held")
+        throw new UpdateBlocked("Maintenance requires a held renderer lease");
+      if (options.runtimes().length)
+        throw new UpdateBlocked("Maintenance requires no resident agent runtimes");
+      return operation();
+    },
     abort(ticket: UpdateTicket) {
       validate(ticket, true);
       if (phase === "committing") throw new UpdateBlocked("Commit outcome must be reconciled");

@@ -93,3 +93,34 @@ Focused tests cover mailbox permissions/schema, token/identity/digest, expiry,
 renewal, provider veto, epoch invalidation, concurrent admission, central Session
 retry responses, browser execution, and durable schedule/message/finish deferral.
 Actual Electron+daemon retained-update E2E is a separate required release check.
+
+## Managed dependency retirement
+
+When the supervisor supplies both `PASEO_MANAGED_DEPENDENCY_REGISTRY` and
+`PASEO_WORKTREE_SETUP_HELPER`, the descriptor advertises
+`managedDependencyRetirement`. The local mailbox also accepts
+`operation:"reclaimDependencies"`, `daemonIdentity`, a SHA-256 `registryId`, and
+`evidence:{sourceRevision,releaseDigest}`. It does **not** accept artifact paths or a
+caller-held update ticket. The daemon loads the retirement helper only from the
+trusted setup helper's directory. That helper validates the registered worktree,
+current deployed release, donor and exact dependency receipt before returning a
+synchronous detach operation.
+
+Preparation runs before lease acquisition. The daemon then acquires the same
+exclusive renderer lease used by updates. Existing updates block retirement and
+vice versa. Unlike renderer replacement, retirement requires **zero resident
+agent runtimes and zero retained terminals**, plus the normal ingress blockers.
+The final held-ticket/epoch/expiry, runtime and terminal checks and filesystem
+detach run in one synchronous event-loop turn. No asynchronous deletion takes
+place inside this boundary. This prevents daemon admission from interleaving
+between the last check and detach; it is not an OS lock against arbitrary external
+processes or other programs editing the worktree.
+
+After detach the daemon releases admission and returns
+`{detached:true,transactionId,root,purgePending:true}`. It purges the private retired
+artifacts asynchronously; this response does not claim that disk space has already
+been reclaimed. The filesystem helper retains transaction status for failures.
+A transport timeout is an unknown outcome, not permission to repeat destruction.
+Prepared setup locks are released on lease denial as well as success. Re-entering
+a retired managed worktree requires verified dependency re-preparation before
+interactive agent or terminal startup.

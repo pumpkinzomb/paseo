@@ -5,6 +5,10 @@ import {
   type UpdateBinding,
   type UpdateTicket,
 } from "./update-quiescence.js";
+import {
+  loadManagedDetachHelper,
+  reclaimManagedDependencies,
+} from "./managed-dependency-maintenance.js";
 import { startUpdateControl } from "./update-control.js";
 import { getPidLockInfo } from "./pid-lock.js";
 import { createRestartRecovery } from "./agent/restart-recovery/index.js";
@@ -2044,7 +2048,14 @@ export async function createPaseoDaemon(
             workerPid: process.pid,
             serverId,
             instance,
-            capabilities: { rendererLease: true, daemonCommit: false },
+            capabilities: {
+              rendererLease: true,
+              daemonCommit: false,
+              managedDependencyRetirement: Boolean(
+                process.env.PASEO_MANAGED_DEPENDENCY_REGISTRY &&
+                process.env.PASEO_WORKTREE_SETUP_HELPER,
+              ),
+            },
             ttlMs: 15_000,
           },
           handle: async (request) => {
@@ -2058,6 +2069,36 @@ export async function createPaseoDaemon(
               (current.bootId ?? null) !== instance.bootId
             )
               throw new UpdateBlocked("Daemon instance changed");
+            if (request.operation === "reclaimDependencies") {
+              const registry = process.env.PASEO_MANAGED_DEPENDENCY_REGISTRY;
+              const helper = process.env.PASEO_WORKTREE_SETUP_HELPER;
+              if (!registry || !helper)
+                throw new UpdateBlocked("Managed dependency retirement unavailable");
+              return reclaimManagedDependencies(
+                {
+                  daemonIdentity: request.daemonIdentity,
+                  registryId: request.registryId,
+                  evidence: request.evidence,
+                },
+                {
+                  daemonIdentity,
+                  registry,
+                  prepare: await loadManagedDetachHelper(helper),
+                  quiescence,
+                  assertNoTerminals: () => {
+                    if (
+                      terminalManager.getUnavailableError?.() ||
+                      terminalManager.listDirectories().length
+                    )
+                      throw new UpdateBlocked(
+                        "Maintenance requires an available worker with no terminals",
+                      );
+                  },
+                  onPurgeError: (error) =>
+                    logger.warn({ error }, "Retired dependency purge remains pending"),
+                },
+              );
+            }
             if (request.operation === "prepare") {
               const binding = bindingSchema.parse(request.binding) as UpdateBinding;
               if (binding.mode !== "renderer")

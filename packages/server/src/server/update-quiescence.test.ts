@@ -149,3 +149,32 @@ it("external event invalidation prevents commit and renewal but allows safe abor
   f.lease.abort(ticket);
   expect(f.fence.enter()).not.toBeNull();
 });
+
+it("refuses maintenance with resident runtimes even when safe for renderer updates", async () => {
+  const f = fixture();
+  const ticket = await f.lease.prepare({ ...binding, mode: "renderer" });
+  await f.lease.commit(ticket);
+  const detach = vi.fn();
+  expect(() => f.lease.runSynchronousMaintenance(ticket, detach)).toThrow("no resident");
+  expect(detach).not.toHaveBeenCalled();
+  f.lease.abort(ticket);
+});
+it("refuses maintenance before the renderer lease reaches held phase", async () => {
+  const f = fixture();
+  f.options.runtimes = () => [];
+  const ticket = await f.lease.prepare({ ...binding, mode: "renderer" });
+  expect(() => f.lease.runSynchronousMaintenance(ticket, vi.fn())).toThrow("held renderer");
+  f.lease.abort(ticket);
+});
+
+it("rejects synchronous maintenance when the held lease has expired", async () => {
+  vi.useFakeTimers();
+  const f = fixture();
+  f.options.runtimes = () => [];
+  const ticket = await f.lease.prepare({ ...binding, mode: "renderer" });
+  await f.lease.commit(ticket);
+  await vi.advanceTimersByTimeAsync(101);
+  const detach = vi.fn();
+  expect(() => f.lease.runSynchronousMaintenance(ticket, detach)).toThrow("Stale");
+  expect(detach).not.toHaveBeenCalled();
+});
