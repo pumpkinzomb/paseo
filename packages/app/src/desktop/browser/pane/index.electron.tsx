@@ -1,3 +1,4 @@
+import { trackBrowserSurfaceGeometry } from "../surface-geometry";
 import {
   useCallback,
   useEffect,
@@ -932,6 +933,12 @@ export function BrowserPane({
     } else {
       rememberResolvedBrowserWebviewSize(browserId, webview);
     }
+    if (!host || !clip) return;
+    // Only the visible page tracks position; retained background pages stay parked.
+    return trackBrowserSurfaceGeometry(host, clip, () => {
+      presentBrowserWebview(browserId, webview, host, clip, browserViewport);
+      rememberResolvedBrowserWebviewSize(browserId, webview);
+    });
   }, [browserId, browserViewport, isPresented]);
 
   const navigate = useCallback(
