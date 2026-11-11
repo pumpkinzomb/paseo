@@ -1,5 +1,4 @@
 import { resolveAgentPanelInteraction } from "./agent-panel-interaction";
-import { AssistantPaneLifecycle } from "@/default-assistant/lifecycle-controls";
 import { AssistantConversationHistory } from "@/default-assistant/conversation-history";
 import {
   AssistantConversationProvider,
@@ -1252,7 +1251,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       style={animatedStaticStyles.content}
       onStartShouldSetResponderCapture={handleAttentionInteraction}
     >
-      {showsComposer ? <AssistantPaneLifecycle serverId={serverId} /> : null}
       <AssistantConversationHistory serverId={serverId} />
       {showsComposer ? null : <SheetAgentFacts serverId={serverId} agentId={agentId} />}
       <RenderProfile id={`AgentStreamSection:${agentId}`}>

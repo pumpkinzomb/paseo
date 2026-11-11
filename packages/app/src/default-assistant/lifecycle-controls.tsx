@@ -9,10 +9,8 @@ import { useHostRuntimeClient, getHostRuntimeStore } from "@/runtime/host-runtim
 import { useHostFeature } from "@/runtime/host-features";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { toErrorMessage } from "@/utils/error-messages";
-import { usePaneContext } from "@/panels/pane-context";
-import { useSessionStore } from "@/stores/session-store";
 import { closeSessionTabs, collectSessionWorkspaces } from "./lifecycle-layout";
-import { ASSISTANT_CONVERSATION_QUERY_ROOT, useAssistantConversationContext } from "./conversation";
+import { ASSISTANT_CONVERSATION_QUERY_ROOT } from "./conversation";
 import {
   assistantLifecycleActions,
   assistantLifecycleBusy,
@@ -145,24 +143,6 @@ export function AssistantLifecycleControls({
   );
 }
 
-export function AssistantPaneLifecycle({ serverId }: { serverId: string }) {
-  const conversation = useAssistantConversationContext();
-  const supported = useHostFeature(serverId, "assistantConversationLifecycle");
-  const pane = usePaneContext();
-  const agent = useSessionStore((state) =>
-    conversation ? state.sessions[serverId]?.agents.get(conversation.activeAgentId) : undefined,
-  );
-  if (!conversation || !supported) return null;
-  return (
-    <AssistantLifecycleControls
-      serverId={serverId}
-      agentId={conversation.activeAgentId}
-      archived={Boolean(agent?.archivedAt)}
-      status={agent?.status}
-      onClose={pane.closeCurrentTab}
-    />
-  );
-}
 const styles = StyleSheet.create((theme) => ({
   container: {
     paddingHorizontal: theme.spacing[3],
