@@ -13,6 +13,7 @@ import type { ControlSize } from "@/components/ui/control-geometry";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { useToast } from "@/contexts/toast-context";
 import { useFilePicker } from "@/hooks/use-file-picker";
+import { useProjects } from "@/hooks/use-projects";
 import {
   openProjectEditForm,
   type ProjectEditFormError,
@@ -21,7 +22,15 @@ import {
   type ProjectIconIntent,
 } from "@/projects/edit-form";
 import { importProjectIconFromUrl } from "@/projects/import-project-icon";
+import { useHostFeature } from "@/runtime/host-features";
+import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { toErrorMessage } from "@/utils/error-messages";
+import {
+  getProjectHostEntry,
+  getProjectSummaryForHostProject,
+  isProjectHostEditable,
+  type ProjectHostEntry,
+} from "@/utils/projects";
 
 export interface ProjectEditSheetProps {
   visible: boolean;
@@ -33,6 +42,64 @@ export interface ProjectEditSheetProps {
   /** False on hosts that predate custom project icons — the icon field is hidden. */
   supportsCustomIcon: boolean;
   snapshot: ProjectEditFormSnapshot;
+}
+
+/** Seeds the edit form from the project as its host reports it right now. */
+export function buildProjectEditSnapshot(
+  host: Pick<ProjectHostEntry, "projectName" | "projectCustomName" | "customIconRevision">,
+  currentIconDataUri: string | null,
+): ProjectEditFormSnapshot {
+  return {
+    projectName: host.projectName,
+    projectCustomName: host.projectCustomName,
+    hasCustomIcon: (host.customIconRevision ?? null) !== null,
+    currentIconDataUri,
+  };
+}
+
+export interface HostProjectEditSheetProps {
+  visible: boolean;
+  onClose: () => void;
+  serverId: string;
+  projectId: string;
+  /** The icon the caller already shows for this project, so the form opens with it. */
+  currentIconDataUri: string | null;
+}
+
+/**
+ * The project edit sheet for callers that only know the project's host address (the sidebar
+ * project menu). Resolves the project, client and icon support itself, and renders nothing
+ * when the project is not editable — the same gate as the project settings screen.
+ * Mount a new instance per open: the form is seeded once, at mount.
+ */
+export function HostProjectEditSheet({
+  visible,
+  onClose,
+  serverId,
+  projectId,
+  currentIconDataUri,
+}: HostProjectEditSheetProps) {
+  const { projects } = useProjects();
+  const project = getProjectSummaryForHostProject(projects, serverId, projectId);
+  const host = getProjectHostEntry(project, serverId, projectId);
+  const client = useHostRuntimeClient(serverId);
+  const supportsCustomIcon = useHostFeature(serverId, "projectCustomIcon");
+  const [snapshot] = useState(() =>
+    host ? buildProjectEditSnapshot(host, currentIconDataUri) : null,
+  );
+  if (!project || !client || !snapshot || !isProjectHostEditable(host)) return null;
+  return (
+    <ProjectEditSheet
+      visible={visible}
+      onClose={onClose}
+      serverId={serverId}
+      projectId={projectId}
+      projectViewKey={project.viewKey}
+      client={client}
+      supportsCustomIcon={supportsCustomIcon}
+      snapshot={snapshot}
+    />
+  );
 }
 
 /** Editing a project is its name and its icon, decided together and saved once. */

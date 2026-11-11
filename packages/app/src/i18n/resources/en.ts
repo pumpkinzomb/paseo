@@ -1448,6 +1448,7 @@ export const en = {
       actions: {
         menu: "Project actions",
         openSettings: "Open project settings",
+        rename: "Rename project",
         openNewWindow: "Open in new window",
         openNewWindowFailed: "Couldn't open a new window",
         openFolder: "Open in file manager",

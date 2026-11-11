@@ -36,8 +36,9 @@ import type { SidebarSurfaceBackdrop } from "@/styles/surface-backdrop";
 import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop";
 import { type GestureType } from "react-native-gesture-handler";
 import { WorkspaceRenameModal } from "@/components/workspace-rename-modal";
+import { HostProjectEditSheet } from "@/components/project-edit-sheet";
 import { useWorkspaceClipboardActions } from "@/hooks/use-workspace-clipboard-actions";
-import { ExternalLink, Settings, MoreVertical, Plus, Trash2 } from "lucide-react-native";
+import { ExternalLink, Settings, MoreVertical, Pencil, Plus, Trash2 } from "lucide-react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
 import type { DraggableListDragHandleProps } from "./draggable-list.types";
@@ -167,6 +168,7 @@ const ThemedPlus = withUnistyles(Plus);
 const ThemedMoreVertical = withUnistyles(MoreVertical);
 const ThemedTrash2 = withUnistyles(Trash2);
 const ThemedSettings = withUnistyles(Settings);
+const ThemedPencil = withUnistyles(Pencil);
 
 const foregroundColorMapping = (theme: Theme) => ({
   color: theme.colors.foreground,
@@ -413,6 +415,7 @@ function ProjectRowTrailingActions({
   isMobileBreakpoint,
   isProjectActive,
   onBeginWorkspaceSetup,
+  onRenameProject,
   onRemoveProject,
   removeProjectStatus,
 }: {
@@ -425,6 +428,7 @@ function ProjectRowTrailingActions({
   isMobileBreakpoint: boolean;
   isProjectActive: boolean;
   onBeginWorkspaceSetup: () => void;
+  onRenameProject?: () => void;
   onRemoveProject?: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }) {
@@ -449,6 +453,7 @@ function ProjectRowTrailingActions({
             projectViewKey={projectViewKey}
             settingsTarget={settingsTarget}
             projectPath={projectPath}
+            onRenameProject={onRenameProject}
             onRemoveProject={onRemoveProject}
             removeProjectStatus={removeProjectStatus}
           />
@@ -460,6 +465,7 @@ function ProjectRowTrailingActions({
 
 const trash2LeadingIcon = <ThemedTrash2 size={14} uniProps={foregroundMutedColorMapping} />;
 const settingsLeadingIcon = <ThemedSettings size={14} uniProps={foregroundMutedColorMapping} />;
+const renameLeadingIcon = <ThemedPencil size={14} uniProps={foregroundMutedColorMapping} />;
 const openInNewWindowLeadingIcon = (
   <ThemedExternalLink size={14} uniProps={foregroundMutedColorMapping} />
 );
@@ -477,12 +483,14 @@ function ProjectKebabMenu({
   projectViewKey,
   settingsTarget,
   projectPath,
+  onRenameProject,
   onRemoveProject,
   removeProjectStatus,
 }: {
   projectViewKey: string;
   settingsTarget: { serverId: string; projectId: string } | null;
   projectPath: string;
+  onRenameProject?: () => void;
   onRemoveProject: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }) {
@@ -504,6 +512,7 @@ function ProjectKebabMenu({
           projectViewKey={projectViewKey}
           settingsTarget={settingsTarget}
           projectPath={projectPath}
+          onRenameProject={onRenameProject}
           onRemoveProject={onRemoveProject}
           removeProjectStatus={removeProjectStatus}
         />
@@ -532,6 +541,7 @@ function ProjectMenuItems({
   projectViewKey,
   settingsTarget,
   projectPath,
+  onRenameProject,
   onRemoveProject,
   removeProjectStatus,
 }: {
@@ -539,6 +549,7 @@ function ProjectMenuItems({
   projectViewKey: string;
   settingsTarget: { serverId: string; projectId: string } | null;
   projectPath: string;
+  onRenameProject?: () => void;
   onRemoveProject: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }) {
@@ -570,6 +581,16 @@ function ProjectMenuItems({
           onSelect={handleOpenProjectSettings}
         >
           {t("sidebar.project.actions.openSettings")}
+        </ProjectMenuItem>
+      ) : null}
+      {onRenameProject ? (
+        <ProjectMenuItem
+          surface={surface}
+          testID={`sidebar-project-menu-rename-${projectViewKey}`}
+          leading={renameLeadingIcon}
+          onSelect={onRenameProject}
+        >
+          {t("sidebar.project.actions.rename")}
         </ProjectMenuItem>
       ) : null}
       {canOpenInNewWindow ? (
@@ -882,6 +903,7 @@ function ProjectHeaderRow({
   const localDaemonServerId = useLocalDaemonServerId();
   const projectPath = resolveSidebarProjectLocalPath(project, localDaemonServerId);
   const settingsTarget = project.hosts[0] ?? null;
+  const rename = useProjectRenameSheet({ settingsTarget, iconDataUri });
   const handleBeginWorkspaceSetup = useCallback(() => {
     if (!worktreeTarget) {
       return;
@@ -976,6 +998,7 @@ function ProjectHeaderRow({
         isMobileBreakpoint={isMobileBreakpoint}
         isProjectActive={isProjectActive}
         onBeginWorkspaceSetup={handleBeginWorkspaceSetup}
+        onRenameProject={rename.open}
         onRemoveProject={onRemoveProject}
         removeProjectStatus={removeProjectStatus}
       />
@@ -1045,12 +1068,54 @@ function ProjectHeaderRow({
           projectViewKey={project.viewKey}
           settingsTarget={settingsTarget}
           projectPath={projectPath}
+          onRenameProject={rename.open}
           onRemoveProject={onRemoveProject}
           removeProjectStatus={removeProjectStatus}
         />
       </ContextMenuContent>
+      {rename.sheet}
     </ContextMenu>
   );
+}
+
+/**
+ * "Rename project" in the sidebar project menu opens the same edit sheet as the pencil on the
+ * project settings screen. The menu item only shows while the host is online; the sheet itself
+ * applies the full settings-screen gate. The sheet lives on the row, not in the menu, because
+ * the menu unmounts as soon as an item is selected.
+ */
+function useProjectRenameSheet({
+  settingsTarget,
+  iconDataUri,
+}: {
+  settingsTarget: { serverId: string; projectId: string } | null;
+  iconDataUri: string | null;
+}): { open: (() => void) | undefined; sheet: ReactElement | null } {
+  const [session, setSession] = useState<{ id: number; visible: boolean }>({
+    id: 0,
+    visible: false,
+  });
+  const connectionStatus = useHostRuntimeConnectionStatus(settingsTarget?.serverId ?? "");
+  const canRename = settingsTarget !== null && connectionStatus === "online";
+  const open = useCallback(() => {
+    setSession((current) => ({ id: current.id + 1, visible: true }));
+  }, []);
+  const close = useCallback(() => {
+    setSession((current) => ({ ...current, visible: false }));
+  }, []);
+  const sheet =
+    settingsTarget && session.id > 0 ? (
+      <HostProjectEditSheet
+        // A new instance per open seeds the form from the project as it stands now.
+        key={`${settingsTarget.serverId}:${settingsTarget.projectId}:${session.id}`}
+        visible={session.visible}
+        onClose={close}
+        serverId={settingsTarget.serverId}
+        projectId={settingsTarget.projectId}
+        currentIconDataUri={iconDataUri}
+      />
+    ) : null;
+  return { open: canRename ? open : undefined, sheet };
 }
 
 function WorkspaceRowInner({

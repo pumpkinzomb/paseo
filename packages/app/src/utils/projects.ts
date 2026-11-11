@@ -83,6 +83,15 @@ export function getProjectHostEntry(
   return undefined;
 }
 
+/** A project can be edited (renamed, re-iconed, configured) only through an online host that owns its root. */
+export function isProjectHostEditable(
+  host: ProjectHostEntry | undefined,
+): host is ProjectHostEntry {
+  return (
+    host?.isOnline === true && host.serverId.trim().length > 0 && host.repoRoot.trim().length > 0
+  );
+}
+
 interface HostGroup {
   serverId: string;
   projectId: string;

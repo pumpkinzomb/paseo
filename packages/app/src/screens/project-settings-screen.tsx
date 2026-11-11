@@ -24,7 +24,7 @@ import { Alert } from "@/components/ui/alert";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Switch } from "@/components/ui/switch";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
-import { ProjectEditSheet } from "@/components/project-edit-sheet";
+import { buildProjectEditSnapshot, ProjectEditSheet } from "@/components/project-edit-sheet";
 import { EditingTextInput as TextInput } from "@/components/ui/text-input";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { SettingsGroup } from "@/components/settings/headings/settings-group";
@@ -50,6 +50,7 @@ import {
 import {
   getProjectHostEntry,
   getProjectSummaryForHostProject,
+  isProjectHostEditable,
   type ProjectHostEntry,
   type ProjectSummary,
 } from "@/utils/projects";
@@ -116,12 +117,7 @@ export default function ProjectSettingsScreen({
       selectedSnapshot?.connectionStatus === "error");
 
   const client = useHostRuntimeClient(serverId);
-  const canEdit =
-    selectedHost?.isOnline === true &&
-    selectedHost.serverId.trim().length > 0 &&
-    selectedHost.repoRoot.trim().length > 0;
-
-  if (!project || !selectedHost || !client || !canEdit) {
+  if (!project || !client || !isProjectHostEditable(selectedHost)) {
     return (
       <NoEditableTarget
         onBackToProjects={onBackToProjects}
@@ -238,12 +234,15 @@ function ProjectSettingsBody({
   const projectIcons = useProjectIcons({ projects: projectIconTargets });
   const projectIconDataUri = projectIcons.get(project.viewKey) ?? null;
   const editSnapshot = useMemo<ProjectEditFormSnapshot>(
-    () => ({
-      projectName: selectedHost.projectName,
-      projectCustomName: selectedHost.projectCustomName,
-      hasCustomIcon: customIconRevision !== null,
-      currentIconDataUri: projectIconDataUri,
-    }),
+    () =>
+      buildProjectEditSnapshot(
+        {
+          projectName: selectedHost.projectName,
+          projectCustomName: selectedHost.projectCustomName,
+          customIconRevision,
+        },
+        projectIconDataUri,
+      ),
     [
       customIconRevision,
       projectIconDataUri,

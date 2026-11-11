@@ -1329,6 +1329,7 @@ export const ru: TranslationResources = {
       actions: {
         menu: "Действия проекта",
         openSettings: "Открыть настройки проекта",
+        rename: "Переименовать проект",
         openNewWindow: "Открыть в новом окне",
         openNewWindowFailed: "Не удалось открыть новое окно",
         openFolder: "Открыть в файловом менеджере",

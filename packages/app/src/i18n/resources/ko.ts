@@ -1447,6 +1447,7 @@ export const ko: TranslationResources = {
       actions: {
         menu: "프로젝트 작업",
         openSettings: "프로젝트 설정 열기",
+        rename: "프로젝트 이름 변경",
         openNewWindow: "새 창에서 열기",
         openNewWindowFailed: "새 창을 열 수 없습니다",
         openFolder: "파일 관리자에서 열기",

@@ -1338,6 +1338,7 @@ export const fr: TranslationResources = {
       actions: {
         menu: "Actions du projet",
         openSettings: "Ouvrir les paramètres du projet",
+        rename: "Renommer le projet",
         openNewWindow: "Ouvrir dans une nouvelle fenêtre",
         openNewWindowFailed: "Impossible d’ouvrir une nouvelle fenêtre",
         openFolder: "Ouvrir dans le gestionnaire de fichiers",

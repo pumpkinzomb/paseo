@@ -1308,6 +1308,7 @@ export const ar: TranslationResources = {
       actions: {
         menu: "إجراءات المشروع",
         openSettings: "افتح إعدادات المشروع",
+        rename: "إعادة تسمية المشروع",
         openNewWindow: "Open in new window",
         openNewWindowFailed: "Couldn't open a new window",
         openFolder: "Open in file manager",

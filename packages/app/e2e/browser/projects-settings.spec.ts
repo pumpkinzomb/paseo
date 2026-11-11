@@ -230,6 +230,45 @@ test.describe("Projects settings", () => {
     }
   });
 
+  test("renames a project from the sidebar project menu", async ({ page }) => {
+    const repo = await createTempGitRepo("projects-sidebar-rename-");
+    const client = await connectSeedClient();
+    let projectViewKey: string | null = null;
+
+    try {
+      await gotoAppShell(page);
+      projectViewKey = await addProjectFromSidebar(page, repo.path);
+
+      const projectRow = page.getByTestId(`sidebar-project-row-${projectViewKey}`);
+      await projectRow.hover();
+      await page.getByTestId(`sidebar-project-kebab-${projectViewKey}`).click();
+      const renameItem = page.getByTestId(`sidebar-project-menu-rename-${projectViewKey}`);
+      await expect(renameItem).toHaveText("Rename project");
+      await renameItem.click();
+
+      await expectProjectEditName(page, "");
+      await fillProjectName(page, "Sidebar renamed");
+      await page.getByRole("button", { name: "Save changes" }).click();
+      await expectProjectEditSaved(page);
+      await expect(projectRow).toContainText("Sidebar renamed", { timeout: 30_000 });
+      await expect(page.getByRole("textbox", { name: "Project name" })).toHaveCount(0);
+
+      await projectRow.hover();
+      await page.getByTestId(`sidebar-project-kebab-${projectViewKey}`).click();
+      await page.getByTestId(`sidebar-project-menu-rename-${projectViewKey}`).click();
+      await expectProjectEditName(page, "Sidebar renamed");
+    } finally {
+      if (projectViewKey) {
+        const project = (await client.listProjects()).projects.find(
+          (entry) => entry.projectKey === projectViewKey,
+        );
+        if (project) await client.removeProject(project.projectId);
+      }
+      await client.close().catch(() => undefined);
+      await repo.cleanup().catch(() => undefined);
+    }
+  });
+
   test("edits worktree setup, navigates within the host, and removes a script", async ({
     page,
     editableProject,

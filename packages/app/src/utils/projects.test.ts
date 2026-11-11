@@ -1,7 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { createProjectViewKey } from "@/projects/workspace-structure";
 import type { ProjectDescriptor, WorkspaceDescriptor } from "@/stores/session-store";
-import { buildProjects, getProjectSummaryForHostProject } from "./projects";
+import {
+  buildProjects,
+  getProjectSummaryForHostProject,
+  isProjectHostEditable,
+  type ProjectHostEntry,
+} from "./projects";
 
 function descriptor(
   id: string,
@@ -207,5 +212,30 @@ describe("workspace change request number", () => {
         forge: "github",
       }),
     ).toBeNull();
+  });
+});
+
+describe("isProjectHostEditable", () => {
+  const host: ProjectHostEntry = {
+    serverId: "server-1",
+    projectId: "project-1",
+    projectName: "acme/app",
+    projectCustomName: null,
+    serverName: "Laptop",
+    isOnline: true,
+    repoRoot: "/repo/app",
+    workspaceCount: 0,
+    workspaces: [],
+  };
+
+  test("allows an online host that owns the project root", () => {
+    expect(isProjectHostEditable(host)).toBe(true);
+  });
+
+  test("rejects a missing, offline, or rootless host", () => {
+    expect(isProjectHostEditable(undefined)).toBe(false);
+    expect(isProjectHostEditable({ ...host, isOnline: false })).toBe(false);
+    expect(isProjectHostEditable({ ...host, repoRoot: "  " })).toBe(false);
+    expect(isProjectHostEditable({ ...host, serverId: "" })).toBe(false);
   });
 });
