@@ -1,4 +1,4 @@
-import { RotateCw } from "lucide-react-native";
+import { Plug, RotateCw } from "lucide-react-native";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View, type StyleProp, type TextStyle } from "react-native";
@@ -8,7 +8,6 @@ import {
   iconButtonChromeGlyphSize,
   smallIconButtonChromeFrameSize,
 } from "@/components/ui/icon-button-chrome";
-import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ToolbarButton, paneContentToolbarIconSize } from "@/components/ui/pane-content-toolbar";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -32,6 +31,7 @@ function statusText(report: UsageReport, t: TFunction): string | null {
     : t("providerUsage.status.unavailable");
 }
 
+const ThemedPlug = withUnistyles(Plug);
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 
@@ -103,6 +103,14 @@ export function UsageCard({
             compact={isCompact}
           />
         ) : null}
+        {needsUsageReconnect(entry) ? (
+          <UsageReconnectButton
+            sourceLabel={entry.sourceLabel}
+            compact={isCompact}
+            refreshState={refreshState}
+            onRefresh={refresh}
+          />
+        ) : null}
       </View>
 
       {messages.length > 0 ? (
@@ -114,16 +122,6 @@ export function UsageCard({
       {needsUsageReconnect(entry) ? (
         <View style={styles.reconnect}>
           <Text style={styles.footer}>{t("providerUsage.reconnectHint")}</Text>
-          <Button
-            testID="usage-reconnect"
-            size="sm"
-            variant="outline"
-            leftIcon={RotateCw}
-            loading={refreshState === "pending"}
-            onPress={refresh}
-          >
-            {t("providerUsage.reconnect")}
-          </Button>
         </View>
       ) : null}
 
@@ -182,6 +180,44 @@ export function UsageCard({
         </Text>
       ) : null}
     </View>
+  );
+}
+
+function UsageReconnectButton({
+  sourceLabel,
+  compact,
+  refreshState,
+  onRefresh,
+}: {
+  sourceLabel: string;
+  compact: boolean;
+  refreshState: UsageRefresh;
+  onRefresh: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <ToolbarButton
+      label={`${t("providerUsage.reconnect")} ${sourceLabel}`}
+      tooltip={t("providerUsage.reconnectHint")}
+      tooltipSide="top"
+      compact={compact}
+      disabled={refreshState === "pending"}
+      onPress={onRefresh}
+      style={compact ? styles.refreshButtonCompact : styles.refreshButton}
+      testID="usage-reconnect"
+    >
+      {refreshState === "pending" ? (
+        <ThemedLoadingSpinner
+          size={paneContentToolbarIconSize(compact)}
+          uniProps={extraMutedIconColorMapping}
+        />
+      ) : (
+        <ThemedPlug
+          size={paneContentToolbarIconSize(compact)}
+          uniProps={extraMutedIconColorMapping}
+        />
+      )}
+    </ToolbarButton>
   );
 }
 

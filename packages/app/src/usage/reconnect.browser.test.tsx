@@ -7,6 +7,7 @@ import type { UsageDisplay } from "./display";
 import type { UsageReportEntry } from "./types";
 
 const state = vi.hoisted(() => ({ refresh: vi.fn(), refreshState: "idle" as "idle" | "pending" }));
+vi.mock("./source-icon", () => ({ UsageSourceIcon: () => null }));
 vi.mock("./queries", () => ({ useReportRefresh: () => state }));
 const entry: UsageReportEntry = {
   id: "cursor:test",
@@ -41,7 +42,7 @@ function render() {
         entry={entry}
         display={display}
         pinnable={false}
-        refreshable={false}
+        refreshable={true}
       />,
     ),
   );
@@ -50,6 +51,10 @@ it("provides an explicit reconnect action and prevents duplicate attempts while 
   render();
   const button = container.querySelector<HTMLElement>('[data-testid="usage-reconnect"]')!;
   expect(button).not.toBeNull();
+  const refreshButton = container.querySelector('[data-testid="usage-refresh"]')!;
+  expect(
+    refreshButton.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
   expect(container.textContent).toContain("This does not sign you in automatically.");
   act(() => button.click());
   expect(state.refresh).toHaveBeenCalledOnce();
