@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +22,8 @@ import {
 
 const mocks = vi.hoisted(() => ({
   paseoHome: "",
+  isPackaged: true,
+  stopDaemonInstance: vi.fn(),
   settings: {
     releaseChannel: "stable",
     daemon: {
@@ -39,7 +49,9 @@ vi.mock("electron", () => ({
   app: {
     getPath: vi.fn(() => mocks.paseoHome),
     getVersion: vi.fn(() => "1.2.3"),
-    isPackaged: true,
+    get isPackaged() {
+      return mocks.isPackaged;
+    },
   },
   ipcMain: { handle: vi.fn() },
   powerMonitor: { getSystemIdleTime: vi.fn(() => 0) },
@@ -61,6 +73,7 @@ vi.mock("@getpaseo/server/daemon-control", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   resolvePaseoHome: () => mocks.paseoHome,
   spawnProcess: mocks.spawnProcess,
+  stopDaemonInstance: mocks.stopDaemonInstance,
 }));
 
 vi.mock("../settings/desktop-settings-electron.js", () => ({
@@ -91,6 +104,8 @@ describe("daemon-manager commands", () => {
   beforeEach(() => {
     fixtureRoot = mkdtempSync(path.join(tmpdir(), "paseo daemon manager "));
     mocks.paseoHome = path.join(fixtureRoot, "home");
+    mocks.isPackaged = true;
+    mocks.stopDaemonInstance.mockReset();
     mocks.appLogPath = path.join(fixtureRoot, "main.log");
     mocks.settings = DEFAULT_DESKTOP_SETTINGS;
     mocks.runExternalCliJsonCommand.mockReset();
@@ -105,6 +120,7 @@ describe("daemon-manager commands", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     rmSync(fixtureRoot, { recursive: true, force: true });
   });
 
@@ -182,6 +198,89 @@ describe("daemon-manager commands", () => {
     writeFileSync(lockPath, JSON.stringify({ ...lock, desktopManaged: false }));
     expect(await handler({ listen: "localhost:6799" })).toBeNull();
   });
+
+  it.each([
+    { valid: true, failReceipt: false },
+    { valid: false, failReceipt: false },
+    { valid: true, failReceipt: true },
+  ])(
+    "adopts only an exact handoff and acknowledges durable ownership: %j",
+    async ({ valid, failReceipt }) => {
+      vi.resetModules();
+      const manager = await import("./daemon-manager");
+      mocks.isPackaged = false;
+      mocks.paseoHome = path.join(realpathSync(fixtureRoot), "home");
+      mkdirSync(mocks.paseoHome);
+      const directory = path.join(realpathSync(fixtureRoot), "generation");
+      mkdirSync(directory, { mode: 0o700 });
+      const instance = {
+        pid: process.pid,
+        startedAt: new Date().toISOString(),
+        uid: process.getuid?.() ?? 0,
+        hostname: hostname(),
+        serverId: "retained-server",
+        listen: "127.0.0.1:6799",
+        desktopManaged: true,
+      };
+      writeFileSync(path.join(mocks.paseoHome, "paseo.pid"), JSON.stringify(instance));
+      writeFileSync(
+        path.join(directory, "daemon-handoff.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          generation: valid ? "generation-1" : "stale",
+          home: mocks.paseoHome,
+          instance,
+        }),
+      );
+      vi.stubEnv("PASEO_DEV_UPDATE_CONTROL_DIR", directory);
+      vi.stubEnv("PASEO_DEV_UPDATE_GENERATION", "generation-1");
+      mocks.runExternalCliJsonCommand.mockResolvedValue({
+        ...instance,
+        localDaemon: "running",
+        daemonVersion: "0.0.1-retained",
+      });
+      const receipt = path.join(directory, "daemon-owned.json");
+      if (failReceipt) {
+        mkdirSync(receipt);
+        expect(await manager.resolveDesktopDaemonStatus()).toMatchObject({ status: "errored" });
+        rmSync(receipt, { recursive: true });
+      }
+      expect(await manager.resolveDesktopDaemonStatus()).toMatchObject({
+        status: "running",
+        ownedByDesktop: valid,
+      });
+      expect(mocks.stopDaemonInstance).not.toHaveBeenCalled();
+      expect(mocks.createNodeEntrypointInvocation).not.toHaveBeenCalled();
+      if (valid && !failReceipt) {
+        expect(JSON.parse(readFileSync(receipt, "utf8"))).toEqual({
+          schemaVersion: 1,
+          generation: "generation-1",
+          home: mocks.paseoHome,
+          instance,
+        });
+      } else expect(existsSync(receipt)).toBe(false);
+      // Renderer start requests must not turn a safe UI handoff into a daemon
+      // restart, even when this release has a different daemon version.
+      expect(await manager.createDaemonCommandHandlers().start_desktop_daemon()).toMatchObject({
+        status: "running",
+        ownedByDesktop: valid,
+        version: "0.0.1-retained",
+      });
+      expect(mocks.stopDaemonInstance).not.toHaveBeenCalled();
+      expect(mocks.createNodeEntrypointInvocation).not.toHaveBeenCalled();
+      await manager.stopDesktopDaemon("quit");
+      if (valid) {
+        expect(mocks.stopDaemonInstance).toHaveBeenCalledWith(
+          mocks.paseoHome,
+          expect.objectContaining({ instance, keepTerminals: false }),
+        );
+        // Even if the stop mock leaves the lock in place, polling must not adopt again.
+        expect(await manager.resolveDesktopDaemonStatus()).toMatchObject({ ownedByDesktop: false });
+      } else {
+        expect(mocks.stopDaemonInstance).not.toHaveBeenCalled();
+      }
+    },
+  );
 });
 
 describe("desktop stops and terminals", () => {

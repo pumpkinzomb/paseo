@@ -85,6 +85,7 @@ export async function acquireLock(directory, name, owner = {}) {
 const mutable = (relative) =>
   relative === "release.json" ||
   relative === "packages/app/.expo" ||
+  relative === "packages/app/expo-env.d.ts" ||
   relative === "node_modules/.cache";
 // npm packages can install aliases as hardlinks (for example workerd). Break
 // those links in the private staging tree, never by modifying a shared inode.

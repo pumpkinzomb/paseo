@@ -20,7 +20,13 @@ import {
   queueRelease,
   inside,
 } from "./dev-update-store.mjs";
-import { runSupervisor, validateConfig, validateRuntimePaths } from "./dev-update-runtime.mjs";
+import {
+  runSupervisor,
+  validateConfig,
+  validateRuntimePaths,
+  assertRuntimeArtifacts,
+  captureBootstrapDaemon,
+} from "./dev-update-runtime.mjs";
 const exec = promisify(execFile);
 const directory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -92,8 +98,17 @@ export async function stageRelease({ source, releases, id, statePreserving }) {
     resolvePlan(staging, await readJson(path.join(staging, ".lab-config.json"))),
     process.env,
   );
+  delete env.ELECTRON_OVERRIDE_DIST_PATH;
+  delete env.ELECTRON_SKIP_BINARY_DOWNLOAD;
   const checks = [
     ["npm", ["ci"]],
+    [
+      "node",
+      [
+        "-e",
+        "const fs=require('node:fs'); const executable=require('electron'); fs.accessSync(executable,fs.constants.X_OK); console.log('Electron binary installed:',executable);",
+      ],
+    ],
     ["node", ["scripts/isolated-lab.mjs", "build"]],
     ["npm", ["run", "build:app-deps"]],
     ["npm", ["run", "build:main", "--workspace=@getpaseo/desktop"]],
@@ -110,6 +125,7 @@ export async function stageRelease({ source, releases, id, statePreserving }) {
         "vitest",
         "run",
         "src/dev-update",
+        "src/daemon/daemon-manager.test.ts",
         "--bail=1",
       ],
     ],
@@ -121,6 +137,7 @@ export async function stageRelease({ source, releases, id, statePreserving }) {
   // original Git repository, running runtime and user state are never touched.
   for (const relative of [".git", ".lab", ".lab-config.json"])
     await fs.rm(path.join(staging, relative), { recursive: true, force: true });
+  await assertRuntimeArtifacts(staging);
   await detachStagingHardlinks(staging);
   const manifest = {
     schemaVersion: 1,
@@ -170,7 +187,11 @@ async function main() {
     const config = await readJson(required("config"));
     validateConfig(config);
     await validateRuntimePaths(config, control);
-    await verifyRelease(config.releases, required("release"), required("digest"));
+    const selected = await verifyRelease(config.releases, required("release"), required("digest"));
+    const bootstrap =
+      options["retain-current-daemon"] === true
+        ? await captureBootstrapDaemon(config, { ...selected, digest: options.digest })
+        : null;
     await privateDirectory(control);
     if (await readOptionalJson(path.join(control, "state.json")))
       throw new Error("Already initialized; no existing selection overwritten");
@@ -192,6 +213,7 @@ async function main() {
     await atomicJson(path.join(control, "state.json"), {
       schemaVersion: 1,
       current: { id: options.release, digest: options.digest },
+      ...(bootstrap ? { bootstrap } : {}),
       previous: null,
       pending: null,
       transition: null,

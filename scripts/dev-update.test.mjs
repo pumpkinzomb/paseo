@@ -21,6 +21,11 @@ import {
 } from "./dev-update-store.mjs";
 import {
   runtimeEnvironment,
+  matchesDaemonOwnership,
+  validateManagedSettings,
+  assertRuntimeArtifacts,
+  captureBootstrapDaemon,
+  electronExecutable,
   validateConfig,
   validateRuntimePaths,
   spawnOwned,
@@ -83,6 +88,36 @@ async function initialized(t, changes) {
 }
 
 export function registerDevUpdateTests() {
+  test("retained readiness requires exact generation-bound ownership receipt", () => {
+    const instance = {
+      pid: 123,
+      startedAt: "start",
+      uid: 501,
+      hostname: "host",
+      serverId: "srv",
+      desktopManaged: true,
+      listen: "127.0.0.1:6781",
+    };
+    const receipt = { schemaVersion: 1, generation: "current", instance };
+    assert.equal(matchesDaemonOwnership(receipt, "current", instance), true);
+    for (const value of [
+      null,
+      {},
+      { ...receipt, schemaVersion: 2 },
+      { ...receipt, generation: "stale" },
+      { ...receipt, instance: {} },
+    ])
+      assert.equal(matchesDaemonOwnership(value, "current", instance), false);
+    for (const key of Object.keys(instance))
+      assert.equal(
+        matchesDaemonOwnership(
+          { ...receipt, instance: { ...instance, [key]: "wrong" } },
+          "current",
+          instance,
+        ),
+        false,
+      );
+  });
   test("complete manifests reject additions, changed files and changed approval", async (t) => {
     const f = await fixture(t),
       r = await release(f.releases, "one");
@@ -93,6 +128,15 @@ export function registerDevUpdateTests() {
     await fs.unlink(path.join(r.root, "extra.js"));
     await fs.writeFile(path.join(r.root, "packages/app/src/view.ts"), "changed");
     await assert.rejects(verifyRelease(f.releases, r.id, r.digest), /contents changed/);
+  });
+  test("Metro-generated type references do not invalidate immutable runtime inputs", async (t) => {
+    const f = await fixture(t),
+      r = await release(f.releases, "one");
+    await fs.writeFile(
+      path.join(r.root, "packages/app/expo-env.d.ts"),
+      '/// <reference types="expo/types" />',
+    );
+    await verifyRelease(f.releases, r.id, r.digest);
   });
   test("release trees reject escaping symlinks, aliases and shared hardlinks", async (t) => {
     const f = await fixture(t),
@@ -105,6 +149,25 @@ export function registerDevUpdateTests() {
       path.join(r.root, "shared.js"),
     );
     await assert.rejects(scanRelease(r.root), /Shared hardlink/);
+  });
+  test("runtime preflight rejects a lazy Electron package without its executable", async (t) => {
+    const f = await fixture(t);
+    await assert.rejects(assertRuntimeArtifacts(f.root), /ENOENT/);
+    const executable = electronExecutable(f.root);
+    await fs.mkdir(path.dirname(executable), { recursive: true });
+    await fs.writeFile(executable, "fixture", { mode: 0o755 });
+    for (const relative of [
+      "packages/desktop/dist/main.js",
+      "packages/desktop/dist/preload.js",
+      "packages/server/dist/scripts/supervisor-entrypoint.js",
+      "node_modules/expo/bin/cli",
+      "packages/app/package.json",
+    ]) {
+      const file = path.join(f.root, relative);
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, "fixture");
+    }
+    await assertRuntimeArtifacts(f.root);
   });
   test("staging detaches npm hardlinks without changing shared source data", async (t) => {
     const f = await fixture(t),
@@ -178,7 +241,19 @@ export function registerDevUpdateTests() {
     assert.equal(env.PASEO_DEV_SEED_HOME, undefined);
     assert.equal(env.NODE_OPTIONS, undefined);
     assert.equal(env.EXPO_DEV_URL, "http://localhost:18091");
+    assert.equal(env.EXPO_PUBLIC_LOCAL_DAEMON, undefined);
     assert.equal(env.PASEO_DEV_UPDATE_GENERATION, "gen");
+  });
+  test("managed runtime validates persisted listen and CORS before launching", () => {
+    const config = { daemonPort: 19781, metroPort: 19091 };
+    assert.throws(() => validateManagedSettings(config, {}), /persisted listen/);
+    assert.throws(
+      () => validateManagedSettings(config, { daemon: { listen: "127.0.0.1:19781" } }),
+      /CORS/,
+    );
+    validateManagedSettings(config, {
+      daemon: { listen: "127.0.0.1:19781", cors: { allowedOrigins: ["http://localhost:19091"] } },
+    });
   });
   test("configuration refuses port collisions and relative state paths", () => {
     assert.throws(
@@ -238,7 +313,9 @@ export function registerDevUpdateTests() {
         inspected = true;
         return value;
       },
-      launch: async (_config, root) => {
+      launch: async (_config, root, _control, options) => {
+        if (launches.length === 0) assert.equal(options.daemonHandoff, null);
+        else assert.deepEqual(options.daemonHandoff, daemon);
         launches.push(root);
         return childRuntime(t, {
           ready: (owned) => {
@@ -355,6 +432,54 @@ export function registerDevUpdateTests() {
         launch: () => assert.fail("must not launch"),
       }),
       /normally stopped/,
+    );
+  });
+  test("explicit bootstrap captures a matching live identity once, without stopping it", async (t) => {
+    const f = await initialized(t, {});
+    const daemon = {
+      pid: 123,
+      startedAt: "fixture",
+      desktopManaged: true,
+      listen: "127.0.0.1:16781",
+      serverId: "stable",
+      uid: process.getuid(),
+    };
+    const bootstrap = await captureBootstrapDaemon(
+      f.config,
+      { root: f.before.root, digest: f.before.digest },
+      async () => daemon,
+    );
+    const state = await readJson(path.join(f.control, "state.json"));
+    await atomicJson(path.join(f.control, "state.json"), { ...state, bootstrap });
+    await runSupervisor(f.control, {
+      inspectDaemon: async () => daemon,
+      launch: async (_config, _root, _control, options) => {
+        assert.deepEqual(options.daemonHandoff, daemon);
+        return childRuntime(t, { ready: (owned) => owned.child.send("quit") });
+      },
+    });
+    assert.equal((await readJson(path.join(f.control, "state.json"))).bootstrap, undefined);
+  });
+  test("bootstrap cannot adopt a different daemon or resurrect a missing daemon", async (t) => {
+    const f = await initialized(t, {});
+    const state = await readJson(path.join(f.control, "state.json"));
+    await atomicJson(path.join(f.control, "state.json"), {
+      ...state,
+      bootstrap: { selectionDigest: f.before.digest, instance: { pid: 123 } },
+    });
+    await assert.rejects(
+      runSupervisor(f.control, {
+        inspectDaemon: async () => ({ pid: 456 }),
+        launch: () => assert.fail("must not launch"),
+      }),
+      /normally stopped/,
+    );
+    await assert.rejects(
+      runSupervisor(f.control, {
+        inspectDaemon: async () => null,
+        launch: () => assert.fail("must not launch"),
+      }),
+      /no longer running/,
     );
   });
   test("partial launch failures retain lock because child ownership may be uncertain", async (t) => {

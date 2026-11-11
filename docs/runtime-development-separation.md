@@ -137,7 +137,7 @@ node scripts/dev-update.mjs stage --source /absolute/lab \
 ```
 
 The source commit is cloned without hardlinks into a new staging directory before
-validation. Dependencies are installed from the lockfile there. Server/app/desktop
+validation. Dependencies are installed from the lockfile there, and Electron's lazy binary download is completed and checked before sealing. Server/app/desktop
 builds, repository typecheck/lint/format and focused updater tests run in that
 snapshot. The command refuses a dirty source tree and never copies live state,
 authentication, `.env` files or existing dependencies. A failed check leaves an
@@ -148,8 +148,8 @@ ID and manifest digest to pass to `init` or `queue`.
 there must be no incompatible state migration. The updater cannot infer that from
 tests and does not support data/schema rollback. The complete staged tree is
 hashed, including dependencies, links and executable bits. npm-created hardlinks are detached into independent files before hashing.
-Escaping symlinks and any remaining shared hardlinks are refused. Only Metro's `.expo` and dependency cache directories
-are mutable. Versioned releases must not be edited after registration.
+Escaping symlinks and any remaining shared hardlinks are refused. Only Metro's `.expo`, generated `expo-env.d.ts` type stub, and dependency cache
+directories are mutable. Versioned releases must not be edited after registration.
 
 ### First installation
 
@@ -171,7 +171,16 @@ Create a configuration JSON outside the source/release/state directories:
 }
 ```
 
+`enableLocalInspection: true` preserves an already-authorized local debugging
+workflow by assigning an ephemeral loopback DevTools port. It is off by default.
+Do not enable it as a new security setting without the user's approval.
+
 Use the same existing home/profile/server identity; do not copy sessions or auth.
+Managed daemon launches intentionally ignore listen/CORS environment overrides.
+The existing home's persisted `daemon.listen` must exactly match the configured
+loopback port, and `daemon.cors.allowedOrigins` must permit the Metro localhost
+origin. Startup validates these without modifying them. Any required security
+setting change needs the user's approval through the supported settings flow.
 Choose non-overlapping, canonical absolute paths. The control directory must be
 owned by the user with mode 0700. `init` creates it with that mode if absent; it
 never changes permissions on an existing directory.
@@ -182,7 +191,17 @@ node scripts/dev-update.mjs init --control /absolute/control \
 node /absolute/control/controller/dev-update.mjs start --control /absolute/control
 ```
 
-Before the **first start**, normally quit the previous app and stop its daemon
+For an explicitly reviewed first installation that must retain the existing
+managed daemon, `init --retain-current-daemon` captures its actual identity from
+the configured home. It is a one-use bootstrap grant bound to the selected digest,
+not permission to adopt a future PID or a replacement daemon. Use it only after
+reviewing UI/daemon compatibility and arranging for the old desktop to quit without
+stopping that daemon. The new desktop receives a private generation-bound identity
+handoff and restores normal quit ownership. Startup requires the desktop to acknowledge
+the exact adopted identity before consuming bootstrap or reporting success. A retained daemon is never automatically
+restarted for a version mismatch. Never assume empty/unavailable work inventory.
+
+Without that explicit bootstrap option, before the **first start**, normally quit the previous app and stop its daemon
 through the existing supported flow when the user is ready. The new supervisor
 refuses an existing daemon or occupied Metro port, rather than guessing ownership
 or killing it. Repoint the user's launcher separately after startup verification.

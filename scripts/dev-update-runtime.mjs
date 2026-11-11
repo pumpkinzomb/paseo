@@ -30,10 +30,8 @@ export function runtimeEnvironment(
     PASEO_HOME: config.home,
     PASEO_LISTEN: `127.0.0.1:${config.daemonPort}`,
     PASEO_DAEMON_ENDPOINT: `localhost:${config.daemonPort}`,
-    PASEO_CORS_ORIGINS: `http://localhost:${config.metroPort},http://127.0.0.1:${config.metroPort}`,
     PASEO_ELECTRON_USER_DATA_DIR: config.userData,
     EXPO_DEV_URL: `http://localhost:${config.metroPort}`,
-    EXPO_PUBLIC_LOCAL_DAEMON: `localhost:${config.daemonPort}`,
     PASEO_NODE_ENV: "development",
     PASEO_WEB_PLATFORM: "electron",
     EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL: "supervised-runtime",
@@ -42,6 +40,7 @@ export function runtimeEnvironment(
     PASEO_DEV_UPDATE_CONTROL_DIR: generationDirectory,
     PASEO_DEV_UPDATE_GENERATION: generation,
   });
+  if (config.enableLocalInspection === true) env.PASEO_ELECTRON_FLAGS = "--remote-debugging-port=0";
   if (config.selfDevelopmentPolicy)
     env.PASEO_SELF_DEVELOPMENT_POLICY = JSON.stringify(config.selfDevelopmentPolicy);
   return env;
@@ -55,6 +54,11 @@ export function validateConfig(config) {
     if (!Number.isInteger(config[key]) || config[key] < 1024 || config[key] > 65535)
       throw new Error(`Invalid ${key}`);
   if (config.daemonPort === config.metroPort) throw new Error("Runtime ports collide");
+  if (
+    config.enableLocalInspection !== undefined &&
+    typeof config.enableLocalInspection !== "boolean"
+  )
+    throw new Error("Invalid local inspection option");
   if (typeof config.serverId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(config.serverId))
     throw new Error("Expected existing daemon serverId is required");
 }
@@ -143,7 +147,7 @@ async function waitForMetro(port, owned) {
   }
   throw new Error("Metro readiness timed out");
 }
-async function daemonSnapshot(root, home) {
+export async function daemonSnapshot(root, home) {
   const { readDaemonInstance } = await import(
     pathToFileURL(path.join(root, "packages/server/dist/server/server/daemon-instance.js"))
   );
@@ -173,9 +177,9 @@ class Supervisor {
   inspectDaemon() {
     return this.deps.inspectDaemon(this.release.root, this.config.home);
   }
-  async launch(root) {
+  async launch(root, daemonHandoff = null) {
     this.launchAttempted = true;
-    this.runtime = await this.deps.launch(this.config, root, this.control);
+    this.runtime = await this.deps.launch(this.config, root, this.control, { daemonHandoff });
     await this.runtime.ready();
   }
   async initialize() {
@@ -188,11 +192,31 @@ class Supervisor {
       state.current.digest,
     );
     this.selection = state.current;
-    if (await this.inspectDaemon())
-      throw new Error(
-        "Initial supervisor start requires the prior desktop and daemon to be normally stopped; no existing daemon was adopted",
-      );
-    await this.launch(this.release.root);
+    const existing = await this.inspectDaemon();
+    if (existing) {
+      if (
+        !state.bootstrap ||
+        state.bootstrap.selectionDigest !== this.selection.digest ||
+        !sameDaemon(state.bootstrap.instance, existing)
+      )
+        throw new Error(
+          "Initial supervisor start requires the prior desktop and daemon to be normally stopped; no existing daemon was adopted",
+        );
+    } else if (state.bootstrap)
+      throw new Error("Explicit bootstrap daemon is no longer running; reconcile before starting");
+    await this.launch(this.release.root, existing);
+    if (existing && !sameDaemon(existing, await this.inspectDaemon()))
+      throw new Error("Bootstrap daemon identity changed during startup");
+    if (state.bootstrap)
+      await changeState(this.control, (current) => {
+        if (
+          current.bootstrap?.selectionDigest !== this.selection.digest ||
+          current.current.digest !== this.selection.digest
+        )
+          throw new Error("Bootstrap ownership changed");
+        const { bootstrap: _bootstrap, ...remaining } = current;
+        return remaining;
+      });
     await this.status({ state: "running", releaseId: this.selection.id });
   }
   async stopAfterExit(status) {
@@ -263,7 +287,7 @@ class Supervisor {
     await verifyRelease(this.config.releases, pending.id, pending.digest);
     if (!sameDaemon(daemonBefore, await this.inspectDaemon()))
       throw new Error("Daemon identity changed during handoff");
-    await this.launch(candidate.root);
+    await this.launch(candidate.root, uiOnly ? daemonBefore : null);
     if (uiOnly && daemonBefore && !sameDaemon(daemonBefore, await this.inspectDaemon()))
       throw new Error("UI-only update changed daemon identity");
     await changeState(this.control, (current) => {
@@ -346,12 +370,78 @@ export async function runSupervisor(
     if (safeToUnlock) await unlock();
   }
 }
-export async function launchRuntime(config, root, control) {
+export function matchesDaemonOwnership(receipt, generation, instance) {
+  return Boolean(
+    receipt?.schemaVersion === 1 &&
+    receipt.generation === generation &&
+    receipt.instance &&
+    ["pid", "startedAt", "uid", "hostname", "serverId", "desktopManaged", "listen"].every(
+      (key) => receipt.instance[key] === instance[key],
+    ),
+  );
+}
+export async function captureBootstrapDaemon(config, release, inspect = daemonSnapshot) {
+  const instance = await inspect(release.root, config.home);
+  if (
+    !instance ||
+    !instance.desktopManaged ||
+    instance.listen !== `127.0.0.1:${config.daemonPort}` ||
+    instance.serverId !== config.serverId ||
+    (process.getuid && instance.uid !== process.getuid())
+  )
+    throw new Error(
+      "Cannot capture a ready same-user desktop-managed daemon with the configured identity",
+    );
+  return { selectionDigest: release.digest, instance };
+}
+export function electronExecutable(root) {
+  const names = { darwin: "Electron.app/Contents/MacOS/Electron", win32: "electron.exe" };
+  return path.join(root, "node_modules/electron/dist", names[process.platform] ?? "electron");
+}
+export function validateManagedSettings(config, persisted) {
+  const expected = `127.0.0.1:${config.daemonPort}`;
+  if ((persisted.daemon?.listen ?? "127.0.0.1:6767") !== expected)
+    throw new Error(
+      `Managed daemon persisted listen must be ${expected}; environment overrides are intentionally ignored`,
+    );
+  const origins = persisted.daemon?.cors?.allowedOrigins ?? [];
+  if (!origins.includes("*") && !origins.includes(`http://localhost:${config.metroPort}`))
+    throw new Error(
+      "Managed daemon persisted CORS does not allow this Metro origin; use the supported settings flow with user approval",
+    );
+}
+async function assertManagedConfiguration(config, root) {
+  const { readPersistedConfig } = await import(
+    pathToFileURL(path.join(root, "packages/server/dist/server/server/persisted-config.js"))
+  );
+  validateManagedSettings(config, readPersistedConfig(config.home));
+}
+export async function assertRuntimeArtifacts(root) {
+  await fs.access(electronExecutable(root), 1);
+  for (const relative of [
+    "packages/desktop/dist/main.js",
+    "packages/desktop/dist/preload.js",
+    "packages/server/dist/scripts/supervisor-entrypoint.js",
+    "node_modules/expo/bin/cli",
+    "packages/app/package.json",
+  ])
+    await fs.access(path.join(root, relative), 4);
+}
+export async function launchRuntime(config, root, control, { daemonHandoff = null } = {}) {
+  await assertRuntimeArtifacts(root);
+  await assertManagedConfiguration(config, root);
   await portFree(config.metroPort);
   const generation = crypto.randomUUID();
   const generationDirectory = path.join(control, `generation-${generation}`);
   await privateDirectory(generationDirectory);
   const env = runtimeEnvironment(config, generationDirectory, generation);
+  if (daemonHandoff)
+    await atomicJson(path.join(generationDirectory, "daemon-handoff.json"), {
+      schemaVersion: 1,
+      generation,
+      home: config.home,
+      instance: daemonHandoff,
+    });
   const log = await fs.open(path.join(control, "runtime.log"), "a", 0o600);
   const stdio = ["ignore", log.fd, log.fd];
   const metro = spawnOwned(
@@ -362,13 +452,11 @@ export async function launchRuntime(config, root, control) {
   let desktop;
   try {
     await waitForMetro(config.metroPort, metro);
-    const electronPaths = { darwin: "Electron.app/Contents/MacOS/Electron", win32: "electron.exe" };
-    const electron = electronPaths[process.platform] ?? "electron";
-    desktop = spawnOwned(
-      path.join(root, "node_modules/electron/dist", electron),
-      [path.join(root, "packages/desktop")],
-      { cwd: root, env, stdio },
-    );
+    desktop = spawnOwned(electronExecutable(root), [path.join(root, "packages/desktop")], {
+      cwd: root,
+      env,
+      stdio,
+    });
     await atomicJson(path.join(generationDirectory, "processes.json"), {
       generation,
       root,
@@ -380,6 +468,14 @@ export async function launchRuntime(config, root, control) {
     throw error;
   } finally {
     await log.close();
+  }
+  async function ownershipAcknowledged() {
+    if (!daemonHandoff) return true;
+    const ownership = await readOptionalJson(path.join(generationDirectory, "daemon-owned.json"));
+    if (!ownership) return false;
+    if (!matchesDaemonOwnership(ownership, generation, daemonHandoff))
+      throw new Error("Desktop did not acknowledge the exact retained daemon ownership");
+    return true;
   }
   return {
     exited: desktop.closed,
@@ -416,7 +512,14 @@ export async function launchRuntime(config, root, control) {
           const daemon = await daemonSnapshot(root, config.home);
           if (daemon?.serverId && daemon.serverId !== config.serverId)
             throw new Error("Daemon identity differs from configured state");
-          if (daemon?.serverId === config.serverId && daemon.listen) return;
+          if (daemon?.listen && daemon.listen !== `127.0.0.1:${config.daemonPort}`)
+            throw new Error("Daemon started on a different listen address than configured");
+          if (
+            daemon?.serverId === config.serverId &&
+            daemon.listen === `127.0.0.1:${config.daemonPort}` &&
+            (await ownershipAcknowledged())
+          )
+            return;
         }
         await delay(250);
       }

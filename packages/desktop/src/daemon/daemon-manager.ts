@@ -58,9 +58,14 @@ import {
   readLegacySkillSelection,
 } from "../integrations/legacy-skill-selection.js";
 import { tailFile } from "../diagnostics/tail-file.js";
+import {
+  readDevUpdateDaemonHandoff,
+  writeDevUpdateDaemonOwnership,
+} from "../dev-update/daemon-handoff.js";
 
 const DAEMON_LOG_FILENAME = "daemon.log";
-let ownedLaunch: { home: string; instance: DaemonInstance } | null = null;
+let ownedLaunch: { home: string; instance: DaemonInstance; retained?: boolean } | null = null;
+let checkedDevUpdateDaemonHandoff = false;
 
 type DesktopDaemonState = "starting" | "running" | "stopped" | "errored";
 const DESKTOP_DAEMON_STOP_REASON_VALUES = [
@@ -231,7 +236,29 @@ export async function resolveDesktopDaemonStatus(): Promise<DesktopDaemonStatus>
   try {
     // The app polls this while no local daemon runs. Answer that case in-process,
     // since launching the CLI once per poll keeps spawning processes while idle.
-    if (!(await readDaemonInstance(home))) {
+    const instance = await readDaemonInstance(home);
+    if (!checkedDevUpdateDaemonHandoff) {
+      checkedDevUpdateDaemonHandoff = true;
+      const adopted = readDevUpdateDaemonHandoff({
+        isPackaged: app.isPackaged,
+        directory: process.env.PASEO_DEV_UPDATE_CONTROL_DIR,
+        generation: process.env.PASEO_DEV_UPDATE_GENERATION,
+        home,
+        instance,
+      });
+      if (!ownedLaunch && adopted) {
+        ownedLaunch = { home, instance: adopted, retained: true };
+        writeDevUpdateDaemonOwnership({
+          isPackaged: app.isPackaged,
+          directory: process.env.PASEO_DEV_UPDATE_CONTROL_DIR,
+          generation: process.env.PASEO_DEV_UPDATE_GENERATION,
+          home,
+          instance: adopted,
+        });
+        logDesktopDaemonLifecycle("adopted retained supervisor", { pid: adopted.pid });
+      }
+    }
+    if (!instance) {
       return statusFromDaemonProbe({ localDaemon: "stopped" }, home);
     }
 
@@ -270,6 +297,9 @@ function normalizeVersion(version: string | null): string | null {
 
 function shouldRestartForVersion(current: DesktopDaemonStatus): boolean {
   if (!current.ownedByDesktop) return false;
+  // The supervisor deliberately retained this daemon to preserve its work.
+  // Ownership enables explicit lifecycle actions, not an implicit version restart.
+  if (ownedLaunch?.retained) return false;
   const appVersion = normalizeVersion(resolveDesktopAppVersion());
   const daemonVersion = normalizeVersion(current.version);
   return Boolean(appVersion && daemonVersion && appVersion !== daemonVersion);
