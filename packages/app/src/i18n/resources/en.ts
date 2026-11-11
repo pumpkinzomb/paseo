@@ -1416,7 +1416,7 @@ export const en = {
     },
     actions: {
       addProject: "New project",
-      newWorkspace: "New workspace",
+      newWorkspace: "New lead agent",
       hosts: "Hosts",
       settings: "Settings",
       closeSidebar: "Close sidebar",
@@ -1500,10 +1500,10 @@ export const en = {
       },
       actions: {
         menu: "Workspace actions",
-        newWorkspace: "New workspace",
+        newWorkspace: "New lead agent",
         showMore: "Show more",
         showLess: "Show less",
-        createWorkspaceFor: "Create a new workspace for {{projectName}}",
+        createWorkspaceFor: "Create a new lead agent in {{projectName}}",
         copyPath: "Copy path",
         copyBranchName: "Copy branch name",
         rename: "Rename workspace",
@@ -1541,7 +1541,10 @@ export const en = {
     },
   },
   newWorkspace: {
-    title: "New workspace",
+    environmentTitle: "New working environment",
+    environmentOptions: "Working environment · Advanced",
+    environmentOnly: "Create only an environment when the prompt is empty",
+    title: "New lead agent",
     create: "Create",
     isolation: {
       local: "Local",
@@ -2963,7 +2966,7 @@ export const en = {
       },
       help: {
         openProject: "Open project",
-        newWorkspace: "New workspace",
+        newWorkspace: "New lead agent",
         newWorktree: "New worktree",
         archiveWorkspace: "Archive workspace",
         newTab: "New tab",

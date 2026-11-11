@@ -1396,6 +1396,9 @@ export const ar: TranslationResources = {
     },
   },
   newWorkspace: {
+    environmentTitle: "New working environment",
+    environmentOptions: "Working environment · Advanced",
+    environmentOnly: "Create only an environment when the prompt is empty",
     title: "مساحة عمل جديدة",
     create: "يخلق",
     isolation: {

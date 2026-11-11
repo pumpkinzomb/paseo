@@ -1413,6 +1413,9 @@ export const ja: TranslationResources = {
     },
   },
   newWorkspace: {
+    environmentTitle: "New working environment",
+    environmentOptions: "Working environment · Advanced",
+    environmentOnly: "Create only an environment when the prompt is empty",
     title: "新しいワークスペース",
     create: "作成",
     isolation: {

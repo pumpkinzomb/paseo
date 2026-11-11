@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ComposerAttachment } from "@/attachments/types";
 import type { MessagePayload } from "@/composer/types";
-import { isEmptyWorkspaceSubmission, runCreateEmptyWorkspace } from "./new-workspace-empty";
+import {
+  isEmptyWorkspaceSubmission,
+  runCreateEmptyWorkspace,
+  shouldCreateEmptyEnvironment,
+} from "./new-workspace-empty";
 
 function payload(
   input: { text?: string; attachments?: ComposerAttachment[] } = {},
@@ -58,5 +62,16 @@ describe("isEmptyWorkspaceSubmission", () => {
 
     expect(isEmptyWorkspaceSubmission(payload({ text: " \n\t " }))).toBe(true);
     expect(isEmptyWorkspaceSubmission(payload({ attachments: [attachment] }))).toBe(false);
+  });
+});
+
+describe("lead creation defaults", () => {
+  it("creates a lead even when the initial prompt is blank", () => {
+    expect(shouldCreateEmptyEnvironment(payload(), false)).toBe(false);
+    expect(shouldCreateEmptyEnvironment(payload({ text: "  " }), false)).toBe(false);
+  });
+  it("only skips lead creation for explicit environment-only blank submissions", () => {
+    expect(shouldCreateEmptyEnvironment(payload(), true)).toBe(true);
+    expect(shouldCreateEmptyEnvironment(payload({ text: "Build it" }), true)).toBe(false);
   });
 });

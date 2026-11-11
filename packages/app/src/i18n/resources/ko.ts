@@ -208,7 +208,7 @@ export const ko: TranslationResources = {
       files: "파일",
       workspaces: "워크스페이스",
       agents: "에이전트",
-      newAgent: "새 에이전트 세션",
+      newAgent: "새 세션",
       open: "{{name}} 열기",
       openInSidePane: "사이드 패널에서 {{name}} 열기",
       openInFocusedPane: "포커스된 창에서 {{name}} 열기",
@@ -798,7 +798,7 @@ export const ko: TranslationResources = {
       modified: "저장되지 않은 변경사항",
       loadingAgentTitle: "에이전트 제목 불러오는 중",
       fallback: {
-        newAgent: "새 에이전트 세션",
+        newAgent: "새 세션",
         setup: "설정",
         workspaceSetup: "워크스페이스 설정",
         terminal: "터미널",
@@ -833,7 +833,7 @@ export const ko: TranslationResources = {
       },
       actions: {
         newTab: "새 탭",
-        newAgent: "새 에이전트 세션",
+        newAgent: "새 세션",
         newTerminal: "새 터미널",
         preparingTerminal: "터미널 탭 준비 중",
         preparingTerminalTooltip: "터미널 준비 중...",
@@ -906,7 +906,7 @@ export const ko: TranslationResources = {
       actions: {
         workspaceActions: "워크스페이스 작업",
         workspaceActionsUnhealthy: "워크스페이스 작업, 비정상 서비스가 있습니다",
-        newAgent: "새 에이전트 세션",
+        newAgent: "새 세션",
         newTerminal: "새 터미널",
         newBrowser: "새 브라우저 탭",
         importSession: "세션 가져오기",
@@ -1416,7 +1416,7 @@ export const ko: TranslationResources = {
     },
     actions: {
       addProject: "새 프로젝트",
-      newWorkspace: "새 워크스페이스",
+      newWorkspace: "새 리드 에이전트",
       hosts: "호스트",
       settings: "설정",
       closeSidebar: "사이드바 닫기",
@@ -1500,10 +1500,10 @@ export const ko: TranslationResources = {
       },
       actions: {
         menu: "워크스페이스 작업",
-        newWorkspace: "새 워크스페이스",
+        newWorkspace: "새 리드 에이전트",
         showMore: "더 보기",
         showLess: "간략히 보기",
-        createWorkspaceFor: "{{projectName}}을(를) 위한 새 워크스페이스 생성",
+        createWorkspaceFor: "{{projectName}}에 새 리드 에이전트 생성",
         copyPath: "경로 복사",
         copyBranchName: "브랜치 이름 복사",
         rename: "워크스페이스 이름 변경",
@@ -1541,7 +1541,10 @@ export const ko: TranslationResources = {
     },
   },
   newWorkspace: {
-    title: "새 워크스페이스",
+    environmentTitle: "새 작업환경",
+    environmentOptions: "작업환경 · 고급 옵션",
+    environmentOnly: "빈 입력 시 리드 없이 작업환경만 생성",
+    title: "새 리드 에이전트",
     create: "생성",
     isolation: {
       local: "로컬",
@@ -2213,7 +2216,7 @@ export const ko: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "새 에이전트 세션",
+      newAgent: "새 세션",
       creatingAgent: "에이전트 생성 중",
     },
     file: {
@@ -2853,7 +2856,7 @@ export const ko: TranslationResources = {
       },
       help: {
         openProject: "프로젝트 열기",
-        newWorkspace: "새 워크스페이스",
+        newWorkspace: "새 리드 에이전트",
         newWorktree: "새 워크트리",
         archiveWorkspace: "워크스페이스 보관",
         newTab: "새 탭",

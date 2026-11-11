@@ -1,5 +1,13 @@
-import { useCallback, useMemo, type ReactElement, type ReactNode, type RefObject } from "react";
-import { View } from "react-native";
+import {
+  useCallback,
+  useMemo,
+  useState,
+  type ReactElement,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import { Text, View } from "react-native";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import type { TerminalProfile } from "@getpaseo/protocol/messages";
@@ -10,12 +18,7 @@ import type { LaunchTarget } from "@/new-workspace-launch/target";
 import type { HostProjectListItem } from "@/projects/host-projects";
 import type { HostProfile } from "@/types/host-connection";
 import type { PickerItem } from "../../new-workspace-picker-item";
-import {
-  FIELD_BADGE_HEIGHT,
-  FIELD_HEIGHT,
-  FieldTrigger,
-  type FieldTriggerVariant,
-} from "./field-trigger";
+import { FIELD_BADGE_HEIGHT, FieldTrigger, type FieldTriggerVariant } from "./field-trigger";
 import { branchIcon, folderIcon, ProjectIcon, pullRequestIcon } from "./icons";
 import { LaunchControl } from "./launch-control";
 import { AddProjectOption, IsolationOption, ProjectOption, RefOption } from "./options";
@@ -32,6 +35,8 @@ interface PickerControl {
 
 export interface NewWorkspaceFormProps {
   isCompact: boolean;
+  environmentOnly: boolean;
+  onEnvironmentOnlyChange: (value: boolean) => void;
   isPending: boolean;
   /** Plugin fields, drawn after the base ref. */
   pluginItems: ReactNode;
@@ -78,6 +83,48 @@ export interface NewWorkspaceFormProps {
     profiles: readonly TerminalProfile[];
     disabled: boolean;
   };
+}
+
+function useEnvironmentOptions(
+  { isPending, environmentOnly, onEnvironmentOnlyChange, launch }: NewWorkspaceFormProps,
+  advanced: boolean,
+  setAdvanced: (value: boolean) => void,
+) {
+  const { t } = useTranslation();
+  const expandedState = useMemo(() => ({ expanded: advanced }), [advanced]);
+  const checkedState = useMemo(() => ({ checked: environmentOnly }), [environmentOnly]);
+  const toggleAdvanced = useCallback(() => setAdvanced(!advanced), [advanced, setAdvanced]);
+  const toggleEnvironmentOnly = useCallback(
+    () => onEnvironmentOnlyChange(!environmentOnly),
+    [environmentOnly, onEnvironmentOnlyChange],
+  );
+  const advancedToggle = (
+    <PressHighlight
+      accessibilityRole="button"
+      accessibilityState={expandedState}
+      disabled={isPending}
+      onPress={toggleAdvanced}
+      testID="lead-environment-options"
+    >
+      <Text style={styles.optionText}>{t("newWorkspace.environmentOptions")}</Text>
+    </PressHighlight>
+  );
+  const environmentOnlyOption = (
+    <PressHighlight
+      accessibilityRole="checkbox"
+      accessibilityState={checkedState}
+      disabled={isPending || launch.target.kind !== "chat"}
+      onPress={toggleEnvironmentOnly}
+      testID="lead-environment-only"
+    >
+      <Text style={styles.optionText}>
+        {environmentOnly ? "☑ " : "☐ "}
+        {t("newWorkspace.environmentOnly")}
+      </Text>
+    </PressHighlight>
+  );
+
+  return { advancedToggle, environmentOnlyOption };
 }
 
 function hostOptionTestID(serverId: string): string {
@@ -168,6 +215,7 @@ function useRefRenderOption(itemById: Map<string, PickerItem>, isPending: boolea
 export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement {
   const { t } = useTranslation();
   const { isCompact, isPending, pluginItems, project, host, isolation, base, launch } = props;
+  const [advanced, setAdvanced] = useState(false);
   const variant: FieldTriggerVariant = isCompact ? "field" : "badge";
   const projectPicker = useProjectPicker(project, isPending);
   const isolationPicker = useIsolationPicker(isolation, isPending);
@@ -285,6 +333,12 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
     />
   );
 
+  const { advancedToggle, environmentOnlyOption } = useEnvironmentOptions(
+    props,
+    advanced,
+    setAdvanced,
+  );
+
   const pickers = (
     <>
       <Combobox
@@ -336,15 +390,17 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
     return (
       <View testID="new-workspace-ref-picker-row" style={styles.compactStack}>
         {projectField}
-        {hostField}
-        {isolationField}
-        {baseField}
-        {pluginItems}
-        {launchField}
-        {/* Isolation and Base come and go with the project; their rows stay reserved so the
-            stack keeps one height and nothing above the composer jumps. */}
-        {isolationField ? null : <View style={styles.reservedField} pointerEvents="none" />}
-        {baseField ? null : <View style={styles.reservedField} pointerEvents="none" />}
+        {advancedToggle}
+        {advanced ? (
+          <>
+            {hostField}
+            {isolationField}
+            {baseField}
+            {pluginItems}
+            {launchField}
+            {environmentOnlyOption}
+          </>
+        ) : null}
         {pickers}
       </View>
     );
@@ -353,28 +409,33 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
   return (
     <View testID="new-workspace-ref-picker-row" style={styles.desktopRow} pointerEvents="box-none">
       <View style={styles.desktopControl}>{projectField}</View>
-      <View style={styles.desktopControl}>{hostField}</View>
-      {isolationField ? <View style={styles.desktopControl}>{isolationField}</View> : null}
-      {baseField ? <View style={styles.desktopControl}>{baseField}</View> : null}
-      {pluginItems}
-      <View style={styles.launchSpacer} pointerEvents="none" />
-      {launchField}
+      {advancedToggle}
+      {advanced ? (
+        <>
+          <View style={styles.desktopControl}>{hostField}</View>
+          {isolationField ? <View style={styles.desktopControl}>{isolationField}</View> : null}
+          {baseField ? <View style={styles.desktopControl}>{baseField}</View> : null}
+          {pluginItems}
+          <View style={styles.launchSpacer} pointerEvents="none" />
+          {launchField}
+          {environmentOnlyOption}
+        </>
+      ) : null}
       {pickers}
     </View>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
+  optionText: { color: theme.colors.foregroundMuted, padding: theme.spacing[2] },
   compactStack: {
     marginBottom: theme.spacing[4],
     paddingHorizontal: theme.spacing[4],
     gap: theme.spacing[2],
   },
-  reservedField: {
-    height: FIELD_HEIGHT,
-  },
   desktopRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     minHeight: FIELD_BADGE_HEIGHT,
     // Matches the gap between the composer and the Import session pill below it.

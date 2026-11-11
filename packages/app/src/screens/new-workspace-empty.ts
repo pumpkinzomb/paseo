@@ -28,3 +28,11 @@ export async function runCreateEmptyWorkspace(input: CreateEmptyWorkspaceInput):
   });
   navigate(serverId, ensuredWorkspace.id);
 }
+
+/** Blank submit creates a lead unless the user explicitly chooses environment-only mode. */
+export function shouldCreateEmptyEnvironment(
+  payload: MessagePayload,
+  environmentOnly: boolean,
+): boolean {
+  return environmentOnly && isEmptyWorkspaceSubmission(payload);
+}

@@ -82,7 +82,7 @@ import type { AgentAttachment, ForgeSearchItem } from "@getpaseo/protocol/messag
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { AgentProvider, JsonValue } from "@getpaseo/protocol/agent-types";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/workspace-tabs/model";
-import { isEmptyWorkspaceSubmission, runCreateEmptyWorkspace } from "./new-workspace-empty";
+import { shouldCreateEmptyEnvironment, runCreateEmptyWorkspace } from "./new-workspace-empty";
 import {
   getWorkspaceNamingAttachments,
   remapDraftCwdToWorkspace,
@@ -173,6 +173,10 @@ function buildFirstAgentContext(input: {
     ...(trimmedPrompt ? { prompt: trimmedPrompt } : {}),
     attachments: input.attachments,
   };
+}
+
+function resolveCreationTitle(terminal: boolean, environmentOnly: boolean) {
+  return terminal || environmentOnly ? "newWorkspace.environmentTitle" : "newWorkspace.title";
 }
 
 interface NewWorkspaceScreenProps {
@@ -932,22 +936,19 @@ export function NewWorkspaceScreen({
   // value reads live from preferences until the user manually picks
   // something in this screen, so the async preferences load doesn't race a
   // frozen useState initializer.
-  const { preferences: formPreferences, updatePreferences: updateFormPreferences } =
-    useFormPreferences();
+  const { updatePreferences: updateFormPreferences } = useFormPreferences();
   const { config: daemonConfig } = useDaemonConfig(selectedServerId);
   const terminalProfiles: readonly TerminalProfile[] = useMemo(
     () => resolveTerminalProfiles(daemonConfig?.terminalProfiles),
     [daemonConfig?.terminalProfiles],
   );
-  // Manual selection wins once the user picks something; until then the target
-  // reads live from preferences so the async load can't race a frozen
-  // initializer. Both go through `resolveLaunchTarget`, so a profile deleted
-  // daemon-side falls back to chat rather than leaving a dead selection.
+  // Every new lead starts as a conversation, never a remembered terminal launch.
   const [manualLaunchTarget, setManualLaunchTarget] = useState<LaunchTarget | null>(null);
   const launchTarget = useMemo(
-    () => resolveLaunchTarget(manualLaunchTarget ?? formPreferences.launchTarget, terminalProfiles),
-    [manualLaunchTarget, formPreferences.launchTarget, terminalProfiles],
+    () => resolveLaunchTarget(manualLaunchTarget ?? undefined, terminalProfiles),
+    [manualLaunchTarget, terminalProfiles],
   );
+  const [environmentOnly, setEnvironmentOnly] = useState(false);
   const [terminalPromptText, setTerminalPromptText] = useState("");
   const {
     isTerminalLaunch,
@@ -1317,7 +1318,7 @@ export function NewWorkspaceScreen({
         setErrorMessage(null);
         await composerState?.persistFormPreferences();
         await updateFormPreferences({ launchTarget });
-        if (isEmptyWorkspaceSubmission(payload)) {
+        if (shouldCreateEmptyEnvironment(payload, environmentOnly)) {
           setPendingAction("empty");
           let outcome: SubmitOutcome = "background";
           await runCreateEmptyWorkspace({
@@ -1372,6 +1373,7 @@ export function NewWorkspaceScreen({
     },
     [
       composerState,
+      environmentOnly,
       draftContextScopeKey,
       creationIdentity,
       chatDraft.clear,
@@ -1539,6 +1541,8 @@ export function NewWorkspaceScreen({
       emptyText: pickerEmptyText,
       showRefPicker,
     },
+    environmentOnly,
+    onEnvironmentOnlyChange: setEnvironmentOnly,
     launch: {
       serverId: selectedServerId,
       target: launchTarget,
@@ -1616,7 +1620,7 @@ export function NewWorkspaceScreen({
       <NewWorkspaceLayout
         isCompact={isCompact}
         fullscreen={isComposerFullscreen}
-        title={t("newWorkspace.title")}
+        title={t(resolveCreationTitle(isTerminalLaunch, environmentOnly))}
         formStack={formStack}
         onImportSession={importSession.open}
       >
