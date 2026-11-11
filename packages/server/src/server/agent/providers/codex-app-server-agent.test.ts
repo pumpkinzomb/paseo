@@ -8216,3 +8216,35 @@ describe("legacy empty additions", () => {
     expect(item.detail.unifiedDiff).toContain("diff --git a/second.txt b/second.txt");
   });
 });
+
+test("Codex runtime safety proves fresh conversations idle without ignoring other loaded threads", async () => {
+  let loaded: unknown = { data: [] };
+  let terminals: unknown = { data: [], nextCursor: null };
+  const appServer = createFakeCodexAppServer({
+    "thread/loaded/list": () => loaded,
+    "thread/backgroundTerminals/list": () => terminals,
+  });
+  const session = new CodexAppServerAgentSession(
+    createConfig(),
+    null,
+    createTestLogger(),
+    async () => appServer.child,
+  );
+  try {
+    expect(await session.canStopRuntime()).toBe(false);
+    await session.connect();
+    expect(await session.canStopRuntime()).toBe(true);
+    loaded = { data: ["other-thread"] };
+    terminals = { data: [{ processId: "background" }], nextCursor: null };
+    expect(await session.canStopRuntime()).toBe(false);
+    terminals = { data: [], nextCursor: "more" };
+    expect(await session.canStopRuntime()).toBe(false);
+    terminals = { data: [], nextCursor: null };
+    expect(await session.canStopRuntime()).toBe(true);
+    loaded = {};
+    await expect(session.canStopRuntime()).rejects.toThrow();
+    appServer.assertNoErrors();
+  } finally {
+    await session.close();
+  }
+});

@@ -178,3 +178,19 @@ it("rejects synchronous maintenance when the held lease has expired", async () =
   expect(() => f.lease.runSynchronousMaintenance(ticket, detach)).toThrow("Stale");
   expect(detach).not.toHaveBeenCalled();
 });
+
+it("allows unpersisted renderer sessions only with a provider proof, never daemon stop", async () => {
+  const f = fixture();
+  Object.assign(f.runtime, { sessionId: null });
+  await expect(f.lease.prepare(binding)).rejects.toThrow("Runtime safety unknown");
+  const ticket = await f.lease.prepare({ ...binding, mode: "renderer" });
+  await f.lease.commit(ticket);
+  expect(f.options.stop).not.toHaveBeenCalled();
+  f.lease.abort(ticket);
+  f.runtime.canStopRuntime = async () => false;
+  await expect(f.lease.prepare({ ...binding, mode: "renderer" })).rejects.toThrow("Runtime veto");
+  f.runtime.canStopRuntime = undefined;
+  await expect(f.lease.prepare({ ...binding, mode: "renderer" })).rejects.toThrow(
+    "Runtime safety unknown",
+  );
+});

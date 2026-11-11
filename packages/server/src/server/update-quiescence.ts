@@ -116,7 +116,14 @@ export function createUpdateQuiescence(options: UpdateQuiescenceOptions) {
     check();
     const before = options.runtimes();
     for (const runtime of before) {
-      if (!runtime.sessionId || !runtime.isEligible() || !runtime.canStopRuntime) {
+      // Renderer replacement preserves the provider process, so an idle, not-yet-
+      // persisted conversation may remain resident if its provider proves quiescence.
+      // Daemon replacement still requires a resumable session before stopping it.
+      if (
+        (ticket.mode === "daemon" && !runtime.sessionId) ||
+        !runtime.isEligible() ||
+        !runtime.canStopRuntime
+      ) {
         throw new UpdateBlocked(`Runtime safety unknown: ${runtime.agentId}`);
       }
       // Expiry revokes the fence even when a provider probe never resolves.

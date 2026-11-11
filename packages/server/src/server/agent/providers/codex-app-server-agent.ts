@@ -5240,7 +5240,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (
       !this.client ||
       this.client.hasPendingRequests() ||
-      !this.currentThreadId ||
+      this.connectionState !== "connected" ||
       this.activeForegroundTurnId ||
       this.currentTurnId ||
       this.pendingForegroundStart ||
@@ -5254,7 +5254,10 @@ export class CodexAppServerAgentSession implements AgentSession {
     const loaded = z
       .object({ data: z.array(z.string()) })
       .parse(await this.client.request("thread/loaded/list", {}, 10_000));
-    const threadIds = new Set([this.currentThreadId, ...loaded.data]);
+    // A freshly connected conversation has no thread until its first turn. Still
+    // query every loaded thread: absence of our own id is not proof of no work.
+    const threadIds = new Set(loaded.data);
+    if (this.currentThreadId) threadIds.add(this.currentThreadId);
     for (const threadId of threadIds) {
       const response = z
         .object({ data: z.array(z.unknown()), nextCursor: z.string().nullable() })
