@@ -129,6 +129,7 @@ export interface SeedDaemonClient {
         workspaceId?: string;
         model: string | null;
         currentModeId: string | null;
+        labels: Record<string, string>;
         status: string;
         title?: string | null;
       };

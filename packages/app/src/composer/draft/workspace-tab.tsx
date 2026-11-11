@@ -23,6 +23,7 @@ import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
 import { useAgentControlCommandCenterActions } from "@/command-center/agent-control-registration";
 import { encodeImages } from "@/utils/encode-images";
+import { requestWorkspaceAssistant } from "./create-assistant-request";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
 import {
   resolveDraftWorkingDirectory,
@@ -175,7 +176,9 @@ async function submitDraftCreateRequest(input: {
     ...(attachmentsArray && attachmentsArray.length > 0 ? { attachments: attachmentsArray } : {}),
   };
   const creation = useWorkspaceDraftSubmissionStore.getState().creationByDraftId[input.draftId];
-  const result = creation ? await creation.retry(options) : await client.createAgent(options);
+  const result = creation
+    ? await creation.retry(options)
+    : await requestWorkspaceAssistant(client, options);
 
   return {
     agentId: result.id,
@@ -235,7 +238,7 @@ function buildDraftAgentSnapshot(input: {
     controls: composerState.agentControls.optionControls?.controls,
     thinkingOptionId,
     parentAgentId: null,
-    labels: {},
+    labels: { "paseo.role": "assistant" },
   };
 }
 

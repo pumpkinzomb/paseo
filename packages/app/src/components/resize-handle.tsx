@@ -12,7 +12,7 @@ import {
 export interface ResizeHandleProps {
   testID?: string;
   direction: "horizontal" | "vertical";
-  hitAreaAlignment?: "center" | "end";
+  hitAreaAlignment?: "start" | "center" | "end";
   groupId: string;
   index: number;
   sizes: number[];
@@ -20,6 +20,9 @@ export interface ResizeHandleProps {
   onPreviewResizeSplit: (groupId: string, sizes: number[]) => void;
   onResizeSplit: (groupId: string, sizes: number[]) => void;
 }
+
+const POINTER_HIT_OFFSETS = { start: -10, center: -5, end: 0 } as const;
+const TOUCH_HIT_OFFSETS = { start: -24, center: -12, end: 0 } as const;
 
 interface PointerState {
   containerSize: number;
@@ -223,8 +226,8 @@ export function ResizeHandle({
       direction === "horizontal" ? styles.hitAreaHorizontal : styles.hitAreaVertical,
       {
         ...(direction === "horizontal"
-          ? { left: hitAreaAlignment === "end" ? 0 : -5 }
-          : { top: hitAreaAlignment === "end" ? 0 : -5 }),
+          ? { left: POINTER_HIT_OFFSETS[hitAreaAlignment] }
+          : { top: POINTER_HIT_OFFSETS[hitAreaAlignment] }),
         cursor: direction === "horizontal" ? "col-resize" : "row-resize",
         touchAction: "none",
       } as object,
@@ -237,8 +240,8 @@ export function ResizeHandle({
       direction === "horizontal" ? styles.touchHitAreaHorizontal : styles.touchHitAreaVertical,
       {
         ...(direction === "horizontal"
-          ? { left: hitAreaAlignment === "end" ? 0 : -12 }
-          : { top: hitAreaAlignment === "end" ? 0 : -12 }),
+          ? { left: TOUCH_HIT_OFFSETS[hitAreaAlignment] }
+          : { top: TOUCH_HIT_OFFSETS[hitAreaAlignment] }),
         touchAction: "none",
       } as object,
     ],

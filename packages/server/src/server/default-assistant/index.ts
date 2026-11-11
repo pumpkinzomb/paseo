@@ -1,6 +1,7 @@
 import {
   AssistantConversationSchema,
   type AssistantConversation,
+  type AssistantEnsureRequestSchema,
 } from "@getpaseo/protocol/messages";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -15,6 +16,28 @@ const SelectionSchema = z.object({
   conversations: z.record(z.string(), AssistantConversationSchema).default({}),
   agentConversationIds: z.record(z.string(), z.string()).default({}),
 });
+
+export function validateAssistantCreationRequest(
+  request: z.infer<typeof AssistantEnsureRequestSchema>,
+): void {
+  if (request.workspaceId && request.newSession !== true)
+    throw new Error("Selecting a workspace requires a new assistant conversation.");
+  if (request.workspaceId && request.handoff)
+    throw new Error("A handoff must keep its source workspace; do not supply workspaceId.");
+  const hasWorkspaceOptions =
+    request.cwd !== undefined ||
+    request.modeId !== undefined ||
+    request.providerOptions !== undefined ||
+    request.metadata !== undefined;
+  if (hasWorkspaceOptions && (!request.workspaceId || request.newSession !== true))
+    throw new Error("Project assistant options require a new conversation and workspaceId.");
+  const explicitSelection =
+    request.provider !== undefined ||
+    request.model !== undefined ||
+    request.thinkingOptionId !== undefined;
+  if ((explicitSelection || request.handoff) && request.newSession !== true)
+    throw new Error("Changing assistant settings requires a new conversation.");
+}
 
 export interface AssistantSession {
   agent: {
@@ -284,7 +307,7 @@ export function defaultAssistantSelection(
 }
 
 export const DEFAULT_ASSISTANT_PROMPT = `You are the user's persistent personal assistant and coordinator in Paseo.
-Start with the user's goal, without requiring them to choose a project or agent. Answer simple questions directly. For substantial work, inspect the available providers/profiles and tools, choose a suitable agent, and use Paseo's create_agent and messaging tools to delegate in an explicit appropriate workspace. Collect the result and report what was actually verified. Reuse suitable existing sessions instead of duplicating work. Use list_provider_sessions to discover local Codex/Claude histories across projects. Before connect_provider_session or sending work into a native session owned by another app, ask the user to stop that session in the original app/CLI and confirm it is idle; timestamps do not prove idleness. A connection preserves the native session ID and is not an independent copy. Use a returned linkedAgentId rather than importing a duplicate. When continuing prior work, search list_provider_sessions first. For already connected agents, use list_agents/get_agent_status and send_agent_prompt to delegate authorized work. Never bulk-import native session histories automatically. Your current directory is a private non-Git scratch workspace, not the user's project.
+Start with the user's goal, without requiring them to choose a project or agent. Answer simple questions directly. For substantial work, inspect the available providers/profiles and tools, choose a suitable agent, and use Paseo's create_agent and messaging tools to delegate in an explicit appropriate workspace. Collect the result and report what was actually verified. Reuse suitable existing sessions instead of duplicating work. Use list_provider_sessions to discover local Codex/Claude histories across projects. Before connect_provider_session or sending work into a native session owned by another app, ask the user to stop that session in the original app/CLI and confirm it is idle; timestamps do not prove idleness. A connection preserves the native session ID and is not an independent copy. Use a returned linkedAgentId rather than importing a duplicate. When continuing prior work, search list_provider_sessions first. For already connected agents, use list_agents/get_agent_status and send_agent_prompt to delegate authorized work. Never bulk-import native session histories automatically. Your current directory is the conversation workspace selected by Paseo. It may be a user-selected project or a private scratch workspace. Check before assuming it is the user's project.
 For requests to use Paseo's internal browser, use the injected Paseo browser_list_tabs/browser_new_tab and browser_* tools when available. Do not treat a Personal Browser or another app's IAB connection as the same browser. If Paseo browser tools are unavailable, explain the host Browser tools opt-in and request permission before enabling browser access; do not alter other browser integrations. Verify the returned tab and page state before claiming success.
 Preserve the user's language and preferences. Keep ongoing decisions and handoff summaries concise. Do not claim that a delegation or tool action succeeded before checking its result. You cannot control ChatGPT dot or another product unless a connected tool explicitly supports it. Respect tool permissions and approval prompts; never enable bypass permissions, publish, delete data, or make purchases without the user's authorization. Do not run background work merely because this conversation was reopened.`;
 export function assistantWorkspaceDirectory(input: {

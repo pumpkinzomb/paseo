@@ -2994,6 +2994,14 @@ export const AgentRecordDeleteResponseSchema = z.object({
 });
 
 export const AssistantEnsureRequestSchema = z.object({
+  modeId: z.string().optional(),
+  providerOptions: ProviderOptionsSchema.optional(),
+  metadata: EntityMetadataSchema.optional(),
+  cwd: z.string().min(1).optional(),
+  workspaceId: z
+    .string()
+    .regex(/^wks_[a-f0-9]{16}$/)
+    .optional(),
   type: z.literal("assistant.ensure.request"),
   requestId: z.string(),
   newSession: z.boolean().optional(),
@@ -4192,6 +4200,7 @@ export const ServerInfoStatusPayloadSchema = z
         entityMetadata: z.boolean().optional(),
         defaultAssistant: z.boolean().optional(),
         defaultAssistantModelSelection: z.boolean().optional(),
+        defaultAssistantWorkspaceCreation: z.boolean().optional(),
         defaultAssistantContextHandoff: z.boolean().optional(),
         defaultAssistantConversations: z.boolean().optional(),
         assistantConversationLifecycle: z.boolean().optional(),

@@ -1,6 +1,7 @@
 import type { AgentSessionConfig } from "@getpaseo/protocol/agent-types";
 import type { AgentSnapshotPayload, CreateAgentRequestMessage } from "@getpaseo/protocol/messages";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import { requestWorkspaceAssistant } from "./create-assistant-request";
 import { encodeImages } from "@/utils/encode-images";
 import type { UserMessageImageAttachment } from "@/types/stream";
 
@@ -22,7 +23,8 @@ export async function requestWorkspaceDraftAgent(
   request: WorkspaceDraftAgentRequest,
 ): Promise<AgentSnapshotPayload> {
   const images = await encodeImages(request.images);
-  return await client.createAgent({
+  return await requestWorkspaceAssistant(client, {
+    idempotencyKey: request.clientMessageId,
     config: request.config,
     workspaceId: request.workspaceId,
     clientMessageId: request.clientMessageId,

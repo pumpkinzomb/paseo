@@ -54,11 +54,17 @@ export async function submitAgentChatAndExpectCwd(
           return agents.entries
             .map((entry) => entry.agent)
             .filter((agent) => agent.workspaceId === workspace.workspaceId)
-            .map((agent) => ({ workspaceId: agent.workspaceId, cwd: agent.cwd }));
+            .map((agent) => ({
+              workspaceId: agent.workspaceId,
+              cwd: agent.cwd,
+              role: agent.labels["paseo.role"],
+            }));
         },
         { timeout: 30_000 },
       )
-      .toEqual([{ workspaceId: workspace.workspaceId, cwd: workspace.repoPath }]);
+      .toEqual([
+        { workspaceId: workspace.workspaceId, cwd: workspace.repoPath, role: "assistant" },
+      ]);
   } finally {
     await client.close();
   }

@@ -5608,6 +5608,11 @@ export class DaemonClient {
   async ensureDefaultAssistant(
     input: {
       newSession?: boolean;
+      workspaceId?: string;
+      cwd?: string;
+      modeId?: string;
+      providerOptions?: AgentSessionConfig["providerOptions"];
+      metadata?: CreateAgentRequestMessage["metadata"];
       requestId?: string;
       provider?: string;
       model?: string;
@@ -5625,6 +5630,12 @@ export class DaemonClient {
     if (input.handoff && !this.lastServerInfoMessage?.features?.defaultAssistantContextHandoff) {
       throw new Error("Update this host to transfer assistant context.");
     }
+    if (
+      input.workspaceId &&
+      !this.lastServerInfoMessage?.features?.defaultAssistantWorkspaceCreation
+    ) {
+      throw new Error("Update this host to create an assistant in a project workspace.");
+    }
     const hasSelection =
       input.provider !== undefined ||
       input.model !== undefined ||
@@ -5637,6 +5648,11 @@ export class DaemonClient {
       message: {
         type: "assistant.ensure.request",
         newSession: input.newSession,
+        workspaceId: input.workspaceId,
+        cwd: input.cwd,
+        modeId: input.modeId,
+        providerOptions: input.providerOptions,
+        metadata: input.metadata,
         provider: input.provider,
         model: input.model,
         thinkingOptionId: input.thinkingOptionId,

@@ -405,6 +405,26 @@ function IconTooltipContent({
   );
 }
 
+function SidebarBuildStatus() {
+  const { theme } = useUnistyles();
+  if (!DEV_BUILD_LABEL) return null;
+  return (
+    <View style={styles.buildStatusRow} testID="sidebar-build-status">
+      <View
+        pointerEvents="none"
+        style={styles.devBuildBadge}
+        testID="dev-build-label"
+        accessibilityLabel={`Development build: ${DEV_BUILD_LABEL}`}
+      >
+        <GitBranch size={12} color={theme.colors.accentForeground} />
+        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.devBuildBadgeText}>
+          {DEV_BUILD_LABEL}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 function SidebarFooter({
   handleOpenProject,
   handleSettings,
@@ -451,6 +471,7 @@ function SidebarFooter({
     <UsageSidebarRoot>
       <View style={styles.footerContainer} testID="sidebar-footer">
         <SidebarFooterRows onBeforeNavigate={onBeforeNavigate} />
+        <SidebarBuildStatus />
         <View
           style={styles.sidebarFooter}
           onLayout={handleRowLayout}
@@ -688,7 +709,6 @@ function MobileSidebar({
 }
 
 function DesktopSidebar({
-  theme,
   workspaceGroups,
   projectIconTargets,
   pinnedGroups,
@@ -823,22 +843,9 @@ function DesktopSidebar({
       <Animated.View style={desktopSidebarStyle}>
         <View style={desktopSidebarBorderStyle}>
           <View style={styles.sidebarDragArea}>
-            {ownsTopLeft || DEV_BUILD_LABEL ? (
+            {ownsTopLeft ? (
               <View style={styles.desktopChromeRow}>
                 <TitlebarDragRegion />
-                {DEV_BUILD_LABEL ? (
-                  <View
-                    pointerEvents="none"
-                    style={styles.devBuildBadge}
-                    testID="dev-build-label"
-                    accessibilityLabel={`Development build: ${DEV_BUILD_LABEL}`}
-                  >
-                    <GitBranch size={12} color={theme.colors.accentForeground} />
-                    <Text numberOfLines={1} ellipsizeMode="tail" style={styles.devBuildBadgeText}>
-                      {DEV_BUILD_LABEL}
-                    </Text>
-                  </View>
-                ) : null}
               </View>
             ) : (
               <TitlebarDragRegion />
@@ -980,8 +987,17 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: "transparent",
   },
+  buildStatusRow: {
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[1],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
   devBuildBadge: {
-    maxWidth: "60%",
+    maxWidth: "100%",
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],

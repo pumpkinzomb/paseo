@@ -4,6 +4,7 @@ import type {
   CreateWorkspaceRequestOptions,
 } from "@getpaseo/client/internal/daemon-client";
 import type { AgentSnapshotPayload, CreationSnapshot } from "@getpaseo/protocol/messages";
+import { requestWorkspaceAssistant } from "@/composer/draft/create-assistant-request";
 import { encodeImages } from "@/utils/encode-images";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -472,12 +473,12 @@ async function createWorkspaceChatAgent(input: CreateChatAgentInput): Promise<Su
     attachments: wirePayload.attachments?.length ? wirePayload.attachments : undefined,
   };
   const execute = async (requestedAgent = initialAgent): Promise<AgentSnapshotPayload> => {
-    const { agent } = await ensureWorkspace({
+    if (!requestedAgent.config) throw new Error("Assistant config is required");
+    const { workspace: createdWorkspace } = await ensureWorkspace({
       cwd,
       prompt: text,
       attachments: workspaceNamingAttachments,
-      withInitialAgent: true,
-      agent: requestedAgent,
+      withInitialAgent: false,
       onEvent: (snapshot) => {
         if (!snapshot.workspace || navigated) return;
         navigated = true;
@@ -488,7 +489,7 @@ async function createWorkspaceChatAgent(input: CreateChatAgentInput): Promise<Su
         ]);
         const initialSetup = buildWorkspaceDraftSetupForCreatedWorkspace({
           forkDraftSetup: input.forkDraftSetup,
-          workspaceDirectory: workspace.workspaceDirectory,
+          workspaceDirectory: createdWorkspace.workspaceDirectory,
           provider,
           composerState,
         });
@@ -503,7 +504,7 @@ async function createWorkspaceChatAgent(input: CreateChatAgentInput): Promise<Su
           draftId: input.draftId,
           initialSetup,
           workspaceId: workspace.id,
-          workspaceDirectory: workspace.workspaceDirectory,
+          workspaceDirectory: createdWorkspace.workspaceDirectory,
           text,
           attachments,
           provider,
@@ -513,8 +514,19 @@ async function createWorkspaceChatAgent(input: CreateChatAgentInput): Promise<Su
         });
       },
     });
-    if (!agent) throw new Error("Workspace creation returned no agent");
-    return agent;
+    return requestWorkspaceAssistant(input.resolveClient(), {
+      ...requestedAgent,
+      idempotencyKey: input.draftId ?? initialAgent.clientMessageId,
+      workspaceId: createdWorkspace.id,
+      config: {
+        ...requestedAgent.config,
+        cwd: remapDraftCwdToWorkspace({
+          cwd: requestedAgent.config.cwd,
+          sourceDirectory: cwd,
+          workspaceDirectory: createdWorkspace.workspaceDirectory,
+        }),
+      },
+    });
   };
   const agentCreation = {
     result: Promise.resolve().then(() => execute()),
