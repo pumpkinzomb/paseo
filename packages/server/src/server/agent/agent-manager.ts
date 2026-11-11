@@ -1,3 +1,7 @@
+import {
+  ensureManagedDependenciesReady,
+  needsManagedDependencyCheck,
+} from "../../utils/managed-dependencies-ready.js";
 import { UpdateAdmissionFence, UpdateBlocked } from "../update-quiescence.js";
 import {
   readSelfDevelopmentPolicy,
@@ -3258,6 +3262,8 @@ export class AgentManager {
   }): Promise<string> {
     const { agent, agentId, pendingRun, prompt, options } = params;
     try {
+      if (needsManagedDependencyCheck(agent.config.cwd))
+        await ensureManagedDependenciesReady(agent.config.cwd);
       const result = await agent.session.startTurn(prompt, options);
       if (pendingRun.settled) {
         throw new Error(`Agent ${agentId} run was canceled before its turn started`);
@@ -3306,6 +3312,8 @@ export class AgentManager {
 
   private async ensureInteractiveSession(agentId: string): Promise<ActiveManagedAgent> {
     const agent = this.requireSessionAgent(agentId);
+    if (needsManagedDependencyCheck(agent.config.cwd))
+      await ensureManagedDependenciesReady(agent.config.cwd);
     if (this.historySessions.has(agent.session)) {
       await this.runLifecycleMutation(agentId, () =>
         this.ensureInteractiveSessionUnlocked(agentId),
@@ -6424,6 +6432,7 @@ export class AgentManager {
     agentId: string,
     options: NormalizeConfigOptions = {},
   ): Promise<PreparedSessionConfig> {
+    await ensureManagedDependenciesReady(config.cwd, { purpose: options.purpose });
     const storedConfig = await this.normalizeConfig(stripInternalPaseoMcpServer(config), {
       env: options.env,
       purpose: options.purpose,

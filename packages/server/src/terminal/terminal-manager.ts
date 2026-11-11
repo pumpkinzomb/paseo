@@ -1,3 +1,4 @@
+import { ensureManagedDependenciesReady } from "../utils/managed-dependencies-ready.js";
 import {
   replayTerminal,
   type TerminalReplaySink,
@@ -348,6 +349,7 @@ export function createTerminalManager(
       paseoCliPath?: string | null;
     }): Promise<LocalTerminalSession> {
       assertAbsolutePath(options.cwd);
+      await ensureManagedDependenciesReady(options.cwd);
 
       const terminals = terminalsByCwd.get(options.cwd) ?? [];
       const defaultName = `Terminal ${terminals.length + 1}`;

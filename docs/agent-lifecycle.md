@@ -504,3 +504,14 @@ Requests without `deleteSessions` keep the legacy remove-project behavior (archi
 active workspaces, then remove the project registry entry). Ordinary workspace/worktree
 archive and its filesystem reference-count/undo contracts are unchanged. An old daemon
 cannot mistake the new inspect endpoint for a destructive remove request.
+
+### Resuming after managed artifact reclamation
+
+Interactive provider creation/resume/reload, a new turn on an already loaded agent,
+and terminal creation check for the nearest managed dependency receipt, stopping at
+a repository boundary. A `state: retired` receipt requires the trusted daemon setup
+helper to recreate verified dependencies before execution starts. The helper receives
+the managed worktree root, never an arbitrary shell command; there is no install or
+build fallback. Ordinary repositories and history-only reads do not prepare anything.
+Concurrent requests for one canonical worktree share the preparation promise. Aliased
+paths/receipts, unavailable helpers/donors, and incomplete restoration block execution.
