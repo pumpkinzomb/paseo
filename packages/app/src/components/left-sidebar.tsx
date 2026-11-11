@@ -911,8 +911,13 @@ function DesktopSidebar({
 }
 
 function WorkspacesSectionHeader() {
+  const { t } = useTranslation();
+  const groupMode = useSidebarViewStore((state) => state.groupMode);
+  const title = t(
+    groupMode === "project" ? "sidebar.sections.projects" : "sidebar.sections.workspaces",
+  );
   return (
-    <SidebarSectionHeader title="Workspaces">
+    <SidebarSectionHeader title={title}>
       <Tooltip delayDuration={300}>
         <TooltipTrigger asChild>
           <View>

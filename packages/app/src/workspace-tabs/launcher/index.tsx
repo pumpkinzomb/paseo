@@ -127,7 +127,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
     const builtIns: Record<BuiltInLaunchItemId, WorkspaceTabLaunchItem & { hidden?: boolean }> = {
       agent: {
         id: "agent",
-        label: t("workspace.tabs.fallback.agent"),
+        label: t("workspace.header.actions.newAgent"),
         Icon: SquarePen,
         shortcutActionId: "workspace-tab-target-agent",
         disabled: false,

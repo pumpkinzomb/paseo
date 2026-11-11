@@ -106,11 +106,11 @@ export const fr: TranslationResources = {
       files: "Fichiers",
       workspaces: "Espaces de travail",
       agents: "Agents",
-      newAgent: "Nouvel agent",
+      newAgent: "Nouvelle session d’agent",
       open: "Ouvrir {{name}}",
       openInSidePane: "Ouvrir {{name}} dans le panneau latéral",
       openInFocusedPane: "Ouvrir {{name}} dans le panneau actif",
-      addProject: "Ajouter un projet",
+      addProject: "Nouveau projet",
       home: "Accueil",
       groupByProject: "Grouper par projet",
       groupByStatus: "Grouper par statut",
@@ -668,7 +668,7 @@ export const fr: TranslationResources = {
       modified: "Modifications non enregistrées",
       loadingAgentTitle: "Chargement du titre de l’agent…",
       fallback: {
-        newAgent: "Nouvel agent",
+        newAgent: "Nouvelle session d’agent",
         setup: "Configuration",
         workspaceSetup: "Configuration de l’espace de travail",
         terminal: "Terminal",
@@ -703,7 +703,7 @@ export const fr: TranslationResources = {
       },
       actions: {
         newTab: "Nouvel onglet",
-        newAgent: "Nouvel agent",
+        newAgent: "Nouvelle session d’agent",
         newTerminal: "Nouveau terminal",
         preparingTerminal: "Préparation de l’onglet de terminal…",
         preparingTerminalTooltip: "Préparation du terminal…",
@@ -779,7 +779,7 @@ export const fr: TranslationResources = {
         workspaceActions: "Actions de l’espace de travail",
         workspaceActionsUnhealthy:
           "Actions de l’espace de travail, un service est en mauvaise santé",
-        newAgent: "Nouvel agent",
+        newAgent: "Nouvelle session d’agent",
         newTerminal: "Nouveau terminal",
         newBrowser: "Nouvel onglet de navigateur",
         importSession: "Importer une session",
@@ -1300,7 +1300,7 @@ export const fr: TranslationResources = {
       searchPlaceholder: "Rechercher des hôtes…",
     },
     actions: {
-      addProject: "Ajouter un projet",
+      addProject: "Nouveau projet",
       newWorkspace: "Nouvel espace de travail",
       hosts: "Hôtes",
       settings: "Paramètres",
@@ -1322,6 +1322,8 @@ export const fr: TranslationResources = {
       appName: "Paseo",
     },
     sections: {
+      projects: "Projets",
+      workspaces: "Espaces de travail",
       sessions: "Historique",
       search: "Recherche",
       schedules: "Planifications",
@@ -1351,6 +1353,7 @@ export const fr: TranslationResources = {
         cancel: "Annuler",
       },
       toasts: {
+        added: "Projet ajouté : {{projectName}}",
         hostDisconnected: "L’hôte n’est pas connecté",
         removeFailed: "Impossible de retirer certains espaces de travail",
         updateHostToRemove: "Mettez à jour l’hôte pour retirer des projets.",
@@ -1658,7 +1661,7 @@ export const fr: TranslationResources = {
   openProject: {
     tiles: {
       addProject: {
-        title: "Ajouter un projet",
+        title: "Nouveau projet",
         description: "Ouvrez un dossier sur votre machine",
       },
       importSession: {
@@ -1766,7 +1769,7 @@ export const fr: TranslationResources = {
           label: "Projets",
           title: "Ajoutez vos projets",
           description: "Où voulez-vous que vos agents travaillent",
-          addProject: "Ajouter un projet",
+          addProject: "Nouveau projet",
           added: "Ajouté",
           suggestions: {
             loading: "Recherche des dossiers dans lesquels vous avez travaillé",
@@ -2104,7 +2107,7 @@ export const fr: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "Nouvel agent",
+      newAgent: "Nouvelle session d’agent",
       creatingAgent: "Création de l’agent",
     },
     file: {

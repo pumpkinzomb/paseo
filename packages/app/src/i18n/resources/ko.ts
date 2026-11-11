@@ -202,11 +202,11 @@ export const ko: TranslationResources = {
       files: "파일",
       workspaces: "워크스페이스",
       agents: "에이전트",
-      newAgent: "새 에이전트",
+      newAgent: "새 에이전트 세션",
       open: "{{name}} 열기",
       openInSidePane: "사이드 패널에서 {{name}} 열기",
       openInFocusedPane: "포커스된 창에서 {{name}} 열기",
-      addProject: "프로젝트 추가",
+      addProject: "새 프로젝트",
       home: "홈",
       groupByProject: "프로젝트별 그룹화",
       groupByStatus: "상태별 그룹화",
@@ -792,7 +792,7 @@ export const ko: TranslationResources = {
       modified: "저장되지 않은 변경사항",
       loadingAgentTitle: "에이전트 제목 불러오는 중",
       fallback: {
-        newAgent: "새 에이전트",
+        newAgent: "새 에이전트 세션",
         setup: "설정",
         workspaceSetup: "워크스페이스 설정",
         terminal: "터미널",
@@ -827,7 +827,7 @@ export const ko: TranslationResources = {
       },
       actions: {
         newTab: "새 탭",
-        newAgent: "새 에이전트",
+        newAgent: "새 에이전트 세션",
         newTerminal: "새 터미널",
         preparingTerminal: "터미널 탭 준비 중",
         preparingTerminalTooltip: "터미널 준비 중...",
@@ -900,7 +900,7 @@ export const ko: TranslationResources = {
       actions: {
         workspaceActions: "워크스페이스 작업",
         workspaceActionsUnhealthy: "워크스페이스 작업, 비정상 서비스가 있습니다",
-        newAgent: "새 에이전트",
+        newAgent: "새 에이전트 세션",
         newTerminal: "새 터미널",
         newBrowser: "새 브라우저 탭",
         importSession: "세션 가져오기",
@@ -1409,7 +1409,7 @@ export const ko: TranslationResources = {
       searchPlaceholder: "호스트 검색...",
     },
     actions: {
-      addProject: "프로젝트 추가",
+      addProject: "새 프로젝트",
       newWorkspace: "새 워크스페이스",
       hosts: "호스트",
       settings: "설정",
@@ -1431,6 +1431,8 @@ export const ko: TranslationResources = {
       appName: "Paseo",
     },
     sections: {
+      projects: "프로젝트",
+      workspaces: "워크스페이스",
       sessions: "기록",
       search: "검색",
       schedules: "일정",
@@ -1460,6 +1462,7 @@ export const ko: TranslationResources = {
         cancel: "취소",
       },
       toasts: {
+        added: "프로젝트를 추가했어요: {{projectName}}",
         hostDisconnected: "호스트가 연결되어 있지 않습니다",
         removeFailed: "일부 워크스페이스를 제거하지 못했습니다",
         updateHostToRemove: "프로젝트를 제거하려면 호스트를 업데이트하세요.",
@@ -1758,7 +1761,7 @@ export const ko: TranslationResources = {
   openProject: {
     tiles: {
       addProject: {
-        title: "프로젝트 추가",
+        title: "새 프로젝트",
         description: "내 컴퓨터의 폴더를 엽니다",
       },
       importSession: {
@@ -1864,7 +1867,7 @@ export const ko: TranslationResources = {
           label: "프로젝트",
           title: "프로젝트 추가",
           description: "에이전트가 어디에서 작업하길 원하나요",
-          addProject: "프로젝트 추가",
+          addProject: "새 프로젝트",
           added: "추가됨",
           suggestions: {
             loading: "작업했던 폴더를 찾는 중",
@@ -2196,7 +2199,7 @@ export const ko: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "새 에이전트",
+      newAgent: "새 에이전트 세션",
       creatingAgent: "에이전트 생성 중",
     },
     file: {

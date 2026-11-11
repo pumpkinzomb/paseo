@@ -8,7 +8,7 @@ export type SidebarSection = PluginSidebarSection;
  * (Add project and the Hosts, Help and support, Settings icons) is fixed.
  */
 export const BUILTIN_SIDEBAR_ITEM_IDS = {
-  header: ["new-workspace", "history", "search", "schedules", "local-sessions"],
+  header: ["new-project", "history", "search", "schedules", "local-sessions"],
   footer: ["usage"],
 } as const satisfies Record<SidebarSection, readonly string[]>;
 
@@ -41,7 +41,7 @@ export type SidebarNavItem<Section extends SidebarSection = SidebarSection> =
   | PluginSidebarNavItem;
 
 const BUILTIN_LABEL_KEYS: Record<BuiltinSidebarItemId, string> = {
-  "new-workspace": "sidebar.actions.newWorkspace",
+  "new-project": "sidebar.actions.addProject",
   history: "sidebar.sections.sessions",
   "local-sessions": "localSessions.title",
   search: "sidebar.sections.search",
@@ -59,7 +59,7 @@ export function builtinSidebarNavLabelKey(id: BuiltinSidebarItemId): string {
  * two never disagree about which shortcut belongs to which item.
  */
 const BUILTIN_SHORTCUT_ACTIONS: Record<BuiltinSidebarItemId, string | null> = {
-  "new-workspace": "new-workspace",
+  "new-project": null,
   history: null,
   "local-sessions": null,
   search: "toggle-command-center",
@@ -92,6 +92,11 @@ function isBuiltinSidebarItemId<Section extends SidebarSection>(
   return ids.includes(key);
 }
 
+// Preserve the old header item's order and visibility when upgrading its action.
+function canonicalSidebarNavKey(key: string): string {
+  return key === "new-workspace" ? "new-project" : key;
+}
+
 export function resolveSidebarNavItems<Section extends SidebarSection>(input: {
   section: Section;
   pluginGroups: readonly PluginSidebarGroup[];
@@ -105,7 +110,8 @@ export function resolveSidebarNavItems<Section extends SidebarSection>(input: {
   const items: SidebarNavItem<Section>[] = [];
   const placed = new Set<string>();
 
-  for (const preference of input.preferences) {
+  for (const stored of input.preferences) {
+    const preference = { ...stored, key: canonicalSidebarNavKey(stored.key) };
     if (placed.has(preference.key)) continue;
     const group = groupsByKey.get(preference.key);
     if (group) {
@@ -151,7 +157,8 @@ function toPreferences(
   const preferences: SidebarNavPreference[] = [];
   const seenPrevious = new Set<string>();
 
-  for (const preference of previous) {
+  for (const stored of previous) {
+    const preference = { ...stored, key: canonicalSidebarNavKey(stored.key) };
     if (seenPrevious.has(preference.key)) continue;
     seenPrevious.add(preference.key);
 

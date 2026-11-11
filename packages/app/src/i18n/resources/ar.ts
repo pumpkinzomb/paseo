@@ -105,11 +105,11 @@ export const ar: TranslationResources = {
       files: "الملفات",
       workspaces: "مساحات العمل",
       agents: "الوكلاء",
-      newAgent: "وكيل جديد",
+      newAgent: "جلسة وكيل جديدة",
       open: "فتح {{name}}",
       openInSidePane: "فتح {{name}} في اللوحة الجانبية",
       openInFocusedPane: "فتح {{name}} في الجزء النشط",
-      addProject: "إضافة مشروع",
+      addProject: "مشروع جديد",
       home: "بيت",
       groupByProject: "تجميع حسب المشروع",
       groupByStatus: "تجميع حسب الحالة",
@@ -662,7 +662,7 @@ export const ar: TranslationResources = {
       modified: "تغييرات غير محفوظة",
       loadingAgentTitle: "جارٍ تحميل عنوان الوكيل",
       fallback: {
-        newAgent: "وكيل جديد",
+        newAgent: "جلسة وكيل جديدة",
         setup: "يثبت",
         workspaceSetup: "إعداد Workspace",
         terminal: "Terminal",
@@ -696,7 +696,7 @@ export const ar: TranslationResources = {
       },
       actions: {
         newTab: "علامة تبويب جديدة",
-        newAgent: "وكيل جديد",
+        newAgent: "جلسة وكيل جديدة",
         newTerminal: "محطة جديدة",
         preparingTerminal: "إعداد علامة التبويب المحطة الطرفية",
         preparingTerminalTooltip: "جارٍ تحضير المحطة...",
@@ -771,7 +771,7 @@ export const ar: TranslationResources = {
       actions: {
         workspaceActions: "إجراءات Workspace",
         workspaceActionsUnhealthy: "إجراءات Workspace، توجد خدمة غير سليمة",
-        newAgent: "وكيل جديد",
+        newAgent: "جلسة وكيل جديدة",
         newTerminal: "محطة جديدة",
         newBrowser: "علامة تبويب متصفح جديدة",
         importSession: "جلسة الاستيراد",
@@ -1270,7 +1270,7 @@ export const ar: TranslationResources = {
       searchPlaceholder: "بحث عن المضيفين...",
     },
     actions: {
-      addProject: "إضافة مشروع",
+      addProject: "مشروع جديد",
       newWorkspace: "مساحة عمل جديدة",
       hosts: "المضيفون",
       settings: "إعدادات",
@@ -1292,6 +1292,8 @@ export const ar: TranslationResources = {
       appName: "Paseo",
     },
     sections: {
+      projects: "المشاريع",
+      workspaces: "مساحات العمل",
       sessions: "السجل",
       search: "بحث",
       schedules: "الجداول",
@@ -1321,6 +1323,7 @@ export const ar: TranslationResources = {
         cancel: "يلغي",
       },
       toasts: {
+        added: "تمت إضافة المشروع: {{projectName}}",
         hostDisconnected: "Host غير متصل",
         removeFailed: "فشل في إزالة بعض مساحات العمل",
         updateHostToRemove: "قم بتحديث Host لإزالة المشاريع.",
@@ -1616,7 +1619,7 @@ export const ar: TranslationResources = {
   openProject: {
     tiles: {
       addProject: {
-        title: "أضف مشروعًا",
+        title: "مشروع جديد",
         description: "افتح مجلدًا على جهازك",
       },
       importSession: {
@@ -1721,7 +1724,7 @@ export const ar: TranslationResources = {
           label: "المشاريع",
           title: "أضف مشاريعك",
           description: "أين تريد أن يعمل وكلاؤك",
-          addProject: "إضافة مشروع",
+          addProject: "مشروع جديد",
           added: "تمت الإضافة",
           suggestions: {
             loading: "جارٍ البحث عن المجلدات التي عملت فيها",
@@ -2053,7 +2056,7 @@ export const ar: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "وكيل جديد",
+      newAgent: "جلسة وكيل جديدة",
       creatingAgent: "وكيل الخلق",
     },
     file: {

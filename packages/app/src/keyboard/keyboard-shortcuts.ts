@@ -442,7 +442,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     help: {
       id: "workspace-tab-target-agent",
       section: "tabs-panes",
-      label: "New agent",
+      label: "New agent session",
     },
   },
   {
@@ -453,7 +453,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     help: {
       id: "workspace-tab-target-agent",
       section: "tabs-panes",
-      label: "New agent",
+      label: "New agent session",
     },
   },
   {

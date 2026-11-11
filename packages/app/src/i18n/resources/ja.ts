@@ -106,11 +106,11 @@ export const ja: TranslationResources = {
       files: "ファイル",
       workspaces: "ワークスペース",
       agents: "エージェント",
-      newAgent: "新しいエージェント",
+      newAgent: "新しいエージェントセッション",
       open: "{{name}}を開く",
       openInSidePane: "{{name}}をサイドパネルで開く",
       openInFocusedPane: "{{name}}をフォーカス中のペインで開く",
-      addProject: "プロジェクトを追加",
+      addProject: "新しいプロジェクト",
       home: "ホーム",
       groupByProject: "プロジェクトでグループ化",
       groupByStatus: "ステータスでグループ化",
@@ -668,7 +668,7 @@ export const ja: TranslationResources = {
       modified: "未保存の変更",
       loadingAgentTitle: "エージェントタイトルを読み込み中",
       fallback: {
-        newAgent: "新しいエージェント",
+        newAgent: "新しいエージェントセッション",
         setup: "セットアップ",
         workspaceSetup: "ワークスペースセットアップ",
         terminal: "ターミナル",
@@ -703,7 +703,7 @@ export const ja: TranslationResources = {
       },
       actions: {
         newTab: "新しいタブ",
-        newAgent: "新しいエージェント",
+        newAgent: "新しいエージェントセッション",
         newTerminal: "新しいターミナル",
         preparingTerminal: "ターミナルタブを準備中",
         preparingTerminalTooltip: "ターミナルを準備中...",
@@ -775,7 +775,7 @@ export const ja: TranslationResources = {
       actions: {
         workspaceActions: "ワークスペースアクション",
         workspaceActionsUnhealthy: "ワークスペースアクション、異常なサービスがあります",
-        newAgent: "新しいエージェント",
+        newAgent: "新しいエージェントセッション",
         newTerminal: "新しいターミナル",
         newBrowser: "新しいブラウザタブ",
         importSession: "セッションをインポート",
@@ -1287,7 +1287,7 @@ export const ja: TranslationResources = {
       searchPlaceholder: "ホストを検索...",
     },
     actions: {
-      addProject: "プロジェクトを追加",
+      addProject: "新しいプロジェクト",
       newWorkspace: "新しいワークスペース",
       hosts: "ホスト",
       settings: "設定",
@@ -1309,6 +1309,8 @@ export const ja: TranslationResources = {
       appName: "Paseo",
     },
     sections: {
+      projects: "プロジェクト",
+      workspaces: "ワークスペース",
       sessions: "履歴",
       search: "検索",
       schedules: "スケジュール",
@@ -1338,6 +1340,7 @@ export const ja: TranslationResources = {
         cancel: "キャンセル",
       },
       toasts: {
+        added: "プロジェクトを追加しました: {{projectName}}",
         hostDisconnected: "ホストが接続されていません",
         removeFailed: "一部のワークスペースの削除に失敗しました",
         updateHostToRemove: "プロジェクトを削除するにはホストを更新してください。",
@@ -1636,7 +1639,7 @@ export const ja: TranslationResources = {
   openProject: {
     tiles: {
       addProject: {
-        title: "プロジェクトを追加",
+        title: "新しいプロジェクト",
         description: "マシン上のフォルダを開く",
       },
       importSession: {
@@ -1742,7 +1745,7 @@ export const ja: TranslationResources = {
           label: "プロジェクト",
           title: "プロジェクトを追加",
           description: "エージェントにどこで作業させますか",
-          addProject: "プロジェクトを追加",
+          addProject: "新しいプロジェクト",
           added: "追加済み",
           suggestions: {
             loading: "作業したフォルダーを探しています",
@@ -2077,7 +2080,7 @@ export const ja: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "新しいエージェント",
+      newAgent: "新しいエージェントセッション",
       creatingAgent: "エージェントを作成中",
     },
     file: {

@@ -105,11 +105,11 @@ export const zhCN: TranslationResources = {
       files: "文件",
       workspaces: "工作区",
       agents: "Agents",
-      newAgent: "新建 Agent",
+      newAgent: "新建智能体会话",
       open: "打开{{name}}",
       openInSidePane: "在侧边面板中打开{{name}}",
       openInFocusedPane: "在当前窗格中打开{{name}}",
-      addProject: "添加 project",
+      addProject: "新建项目",
       home: "首页",
       groupByProject: "按项目分组",
       groupByStatus: "按状态分组",
@@ -662,7 +662,7 @@ export const zhCN: TranslationResources = {
       modified: "未保存的更改",
       loadingAgentTitle: "正在加载 Agent 标题",
       fallback: {
-        newAgent: "新建 Agent",
+        newAgent: "新建智能体会话",
         setup: "Setup",
         workspaceSetup: "Workspace setup",
         terminal: "Terminal",
@@ -696,7 +696,7 @@ export const zhCN: TranslationResources = {
       },
       actions: {
         newTab: "新建标签页",
-        newAgent: "新建 Agent",
+        newAgent: "新建智能体会话",
         newTerminal: "新建 Terminal",
         preparingTerminal: "正在准备 Terminal 标签",
         preparingTerminalTooltip: "正在准备 Terminal...",
@@ -767,7 +767,7 @@ export const zhCN: TranslationResources = {
       actions: {
         workspaceActions: "Workspace 操作",
         workspaceActionsUnhealthy: "Workspace 操作，有服务异常",
-        newAgent: "新建 Agent",
+        newAgent: "新建智能体会话",
         newTerminal: "新建 Terminal",
         newBrowser: "新建浏览器标签",
         importSession: "导入会话",
@@ -1262,7 +1262,7 @@ export const zhCN: TranslationResources = {
       searchPlaceholder: "搜索 Hosts...",
     },
     actions: {
-      addProject: "添加 project",
+      addProject: "新建项目",
       newWorkspace: "新建工作区",
       hosts: "Hosts",
       settings: "设置",
@@ -1284,6 +1284,8 @@ export const zhCN: TranslationResources = {
       appName: "Paseo",
     },
     sections: {
+      projects: "项目",
+      workspaces: "工作区",
       sessions: "历史",
       search: "搜索",
       schedules: "计划",
@@ -1311,6 +1313,7 @@ export const zhCN: TranslationResources = {
         cancel: "取消",
       },
       toasts: {
+        added: "已添加项目：{{projectName}}",
         hostDisconnected: "Host 未连接",
         removeFailed: "部分 workspace 移除失败",
         updateHostToRemove: "更新 host 以移除 projects。",
@@ -1599,7 +1602,7 @@ export const zhCN: TranslationResources = {
   openProject: {
     tiles: {
       addProject: {
-        title: "添加 project",
+        title: "新建项目",
         description: "打开此机器上的文件夹",
       },
       importSession: {
@@ -1704,7 +1707,7 @@ export const zhCN: TranslationResources = {
           label: "项目",
           title: "添加项目",
           description: "你希望代理在哪里工作",
-          addProject: "添加项目",
+          addProject: "新建项目",
           added: "已添加",
           suggestions: {
             loading: "正在查找你工作过的文件夹",
@@ -2027,7 +2030,7 @@ export const zhCN: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "新建 Agent",
+      newAgent: "新建智能体会话",
       creatingAgent: "正在创建 Agent",
     },
     file: {

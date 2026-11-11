@@ -201,11 +201,11 @@ export const en = {
       files: "Files",
       workspaces: "Workspaces",
       agents: "Agents",
-      newAgent: "New agent",
+      newAgent: "New agent session",
       open: "Open {{name}}",
       openInSidePane: "Open {{name}} in side pane",
       openInFocusedPane: "Open {{name}} in focused pane",
-      addProject: "Add project",
+      addProject: "New project",
       home: "Home",
       groupByProject: "Group by project",
       groupByStatus: "Group by status",
@@ -791,7 +791,7 @@ export const en = {
       modified: "Unsaved changes",
       loadingAgentTitle: "Loading agent title",
       fallback: {
-        newAgent: "New agent",
+        newAgent: "New agent session",
         setup: "Setup",
         workspaceSetup: "Workspace setup",
         terminal: "Terminal",
@@ -825,7 +825,7 @@ export const en = {
       },
       actions: {
         newTab: "New tab",
-        newAgent: "New agent",
+        newAgent: "New agent session",
         newTerminal: "New terminal",
         preparingTerminal: "Preparing terminal tab",
         preparingTerminalTooltip: "Preparing terminal...",
@@ -898,7 +898,7 @@ export const en = {
       actions: {
         workspaceActions: "Workspace actions",
         workspaceActionsUnhealthy: "Workspace actions, a service is unhealthy",
-        newAgent: "New agent",
+        newAgent: "New agent session",
         newTerminal: "New terminal",
         newBrowser: "New browser tab",
         importSession: "Import session",
@@ -1410,7 +1410,7 @@ export const en = {
       searchPlaceholder: "Search hosts...",
     },
     actions: {
-      addProject: "Add project",
+      addProject: "New project",
       newWorkspace: "New workspace",
       hosts: "Hosts",
       settings: "Settings",
@@ -1432,6 +1432,8 @@ export const en = {
       appName: "Paseo",
     },
     sections: {
+      projects: "Projects",
+      workspaces: "Workspaces",
       sessions: "History",
       search: "Search",
       schedules: "Schedules",
@@ -1461,6 +1463,7 @@ export const en = {
         cancel: "Cancel",
       },
       toasts: {
+        added: "Project added: {{projectName}}",
         hostDisconnected: "Host is not connected",
         removeFailed: "Failed to remove some workspaces",
         updateHostToRemove: "Update the host to remove projects.",
@@ -1773,7 +1776,7 @@ export const en = {
   openProject: {
     tiles: {
       addProject: {
-        title: "Add a project",
+        title: "New project",
         description: "Open a folder on your machine",
       },
       importSession: {
@@ -1879,7 +1882,7 @@ export const en = {
           label: "Projects",
           title: "Add your projects",
           description: "Where do you want your agents to work on",
-          addProject: "Add project",
+          addProject: "New project",
           added: "Added",
           suggestions: {
             loading: "Looking for folders you've worked in",
@@ -2211,7 +2214,7 @@ export const en = {
   },
   panels: {
     draft: {
-      newAgent: "New Agent",
+      newAgent: "New agent session",
       creatingAgent: "Creating agent",
     },
     file: {

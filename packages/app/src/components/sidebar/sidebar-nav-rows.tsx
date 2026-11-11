@@ -7,8 +7,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { PluginSidebarItem } from "@/plugins/sidebar-items";
-import { canCreateWorktreeForProjectKind } from "@/projects/host-projects";
-import { useHostFeature } from "@/runtime/host-features";
+import { useOpenAddProject } from "@/hooks/use-open-add-project";
 import {
   builtinSidebarNavLabelKey,
   builtinSidebarNavShortcutAction,
@@ -17,12 +16,7 @@ import {
 import { useSidebarNavItems } from "@/sidebar-nav/use-sidebar-nav-items";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
-import { useWorkspace } from "@/stores/session-store-hooks";
-import {
-  buildNewWorkspaceRoute,
-  buildSchedulesRoute,
-  buildSessionsRoute,
-} from "@/utils/host-routes";
+import { buildSchedulesRoute, buildSessionsRoute } from "@/utils/host-routes";
 
 interface SidebarNavRowProps {
   onBeforeNavigate?: () => void;
@@ -78,49 +72,25 @@ export function SidebarNavRows({ style, onBeforeNavigate, firstRowTrailing }: Si
   );
 }
 
-const SidebarNewWorkspaceRow = memo(function SidebarNewWorkspaceRow({
+const SidebarNewProjectRow = memo(function SidebarNewProjectRow({
   onBeforeNavigate,
 }: SidebarNavRowProps) {
   const { t } = useTranslation();
-  const shortcutKeys = useShortcutKeys(builtinSidebarNavShortcutAction("new-workspace"));
-  const activeWorkspaceSelection = useActiveWorkspaceSelection();
-  const activeWorkspaceServerId = activeWorkspaceSelection?.serverId ?? null;
-  const activeWorkspaceId = activeWorkspaceSelection?.workspaceId ?? null;
-  const activeWorkspace = useWorkspace(activeWorkspaceServerId, activeWorkspaceId);
-  const supportsWorkspaceMultiplicity = useHostFeature(
-    activeWorkspaceServerId,
-    "workspaceMultiplicity",
-  );
-  const canUseActiveWorkspaceContext = Boolean(
-    activeWorkspace &&
-    (supportsWorkspaceMultiplicity || canCreateWorktreeForProjectKind(activeWorkspace.projectKind)),
-  );
-
+  const openProject = useOpenAddProject();
+  const selection = useActiveWorkspaceSelection();
+  const preferredHostId = selection?.serverId;
   const handlePress = useCallback(() => {
     onBeforeNavigate?.();
-    router.push(
-      activeWorkspaceServerId
-        ? buildNewWorkspaceRoute(
-            activeWorkspace && canUseActiveWorkspaceContext
-              ? {
-                  serverId: activeWorkspaceServerId,
-                  sourceDirectory: activeWorkspace.projectRootPath,
-                  projectId: activeWorkspace.projectId,
-                }
-              : { serverId: activeWorkspaceServerId },
-          )
-        : buildNewWorkspaceRoute(),
-    );
-  }, [activeWorkspace, activeWorkspaceServerId, canUseActiveWorkspaceContext, onBeforeNavigate]);
+    openProject(preferredHostId);
+  }, [onBeforeNavigate, openProject, preferredHostId]);
 
   return (
     <SidebarHeaderRow
       icon={Plus}
-      label={t(builtinSidebarNavLabelKey("new-workspace"))}
+      label={t(builtinSidebarNavLabelKey("new-project"))}
       onPress={handlePress}
-      testID="sidebar-global-new-workspace"
+      testID="sidebar-global-new-project"
       variant="compact"
-      shortcutKeys={shortcutKeys}
     />
   );
 });
@@ -205,7 +175,7 @@ function SidebarLocalSessionsRow({ onBeforeNavigate }: SidebarNavRowProps) {
 }
 
 const BUILTIN_ROWS: Record<BuiltinSidebarNavId, ComponentType<SidebarNavRowProps>> = {
-  "new-workspace": SidebarNewWorkspaceRow,
+  "new-project": SidebarNewProjectRow,
   history: SidebarHistoryRow,
   "local-sessions": SidebarLocalSessionsRow,
   search: SidebarSearchRow,

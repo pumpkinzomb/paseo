@@ -39,7 +39,7 @@ describe("resolveSidebarNavItems", () => {
     });
 
     expect(summarize(items)).toEqual([
-      { key: "new-workspace", visible: true },
+      { key: "new-project", visible: true },
       { key: "history", visible: true },
       { key: "search", visible: true },
       { key: "schedules", visible: true },
@@ -50,8 +50,8 @@ describe("resolveSidebarNavItems", () => {
     expect(items[5]).toEqual({ kind: "plugin", key: kanbanKey, group: kanban, visible: true });
     expect(items[0]).toEqual({
       kind: "builtin",
-      key: "new-workspace",
-      id: "new-workspace",
+      key: "new-project",
+      id: "new-project",
       visible: true,
     });
   });
@@ -64,7 +64,7 @@ describe("resolveSidebarNavItems", () => {
         { key: kanbanKey, visible: false },
         { key: "schedules", visible: true },
         { key: "local-sessions", visible: true },
-        { key: "new-workspace", visible: false },
+        { key: "new-project", visible: false },
       ],
     });
 
@@ -72,7 +72,7 @@ describe("resolveSidebarNavItems", () => {
       { key: kanbanKey, visible: false },
       { key: "schedules", visible: true },
       { key: "local-sessions", visible: true },
-      { key: "new-workspace", visible: false },
+      { key: "new-project", visible: false },
       { key: "history", visible: true },
       { key: "search", visible: true },
       { key: notesKey, visible: true },
@@ -92,7 +92,7 @@ describe("resolveSidebarNavItems", () => {
 
     expect(items.map((item) => item.key)).toEqual([
       "history",
-      "new-workspace",
+      "new-project",
       "search",
       "schedules",
       "local-sessions",
@@ -111,7 +111,7 @@ describe("resolveSidebarNavItems", () => {
 
     expect(summarize(items)).toEqual([
       { key: "history", visible: false },
-      { key: "new-workspace", visible: true },
+      { key: "new-project", visible: true },
       { key: "search", visible: true },
       { key: "schedules", visible: true },
       { key: "local-sessions", visible: true },
@@ -140,7 +140,7 @@ describe("setSidebarNavItemVisible", () => {
     const next = setSidebarNavItemVisible({ items, key: "search", visible: false, previous: [] });
 
     expect(next).toEqual([
-      { key: "new-workspace", visible: true },
+      { key: "new-project", visible: true },
       { key: "history", visible: true },
       { key: "search", visible: false },
       { key: "schedules", visible: true },
@@ -165,7 +165,7 @@ describe("setSidebarNavItemVisible", () => {
     expect(next).toEqual([
       { key: notesKey, visible: false },
       { key: "history", visible: false },
-      { key: "new-workspace", visible: true },
+      { key: "new-project", visible: true },
       { key: "search", visible: true },
       { key: "schedules", visible: true },
       { key: "local-sessions", visible: true },
@@ -174,7 +174,7 @@ describe("setSidebarNavItemVisible", () => {
 
   it("keeps an unavailable plugin in its configured position", () => {
     const previous: SidebarNavPreference[] = [
-      { key: "new-workspace", visible: true },
+      { key: "new-project", visible: true },
       { key: notesKey, visible: false },
       { key: "history", visible: true },
       { key: "search", visible: true },
@@ -190,7 +190,7 @@ describe("setSidebarNavItemVisible", () => {
     const next = setSidebarNavItemVisible({ items, key: "history", visible: false, previous });
 
     expect(next).toEqual([
-      { key: "new-workspace", visible: true },
+      { key: "new-project", visible: true },
       { key: notesKey, visible: false },
       { key: "history", visible: false },
       { key: "search", visible: true },
@@ -232,7 +232,7 @@ describe("moveSidebarNavItem", () => {
     const next = moveSidebarNavItem({ items, key: "search", direction: "up", previous: [] });
 
     expect(next.map((preference) => preference.key)).toEqual([
-      "new-workspace",
+      "new-project",
       "search",
       "history",
       "schedules",
@@ -245,7 +245,7 @@ describe("moveSidebarNavItem", () => {
     const next = moveSidebarNavItem({ items, key: "schedules", direction: "down", previous: [] });
 
     expect(next.map((preference) => preference.key)).toEqual([
-      "new-workspace",
+      "new-project",
       "history",
       "search",
       "local-sessions",
@@ -257,7 +257,7 @@ describe("moveSidebarNavItem", () => {
   it("leaves the order alone at the boundaries", () => {
     const first = moveSidebarNavItem({
       items,
-      key: "new-workspace",
+      key: "new-project",
       direction: "up",
       previous: [],
     });
@@ -289,7 +289,7 @@ describe("moveSidebarNavItem", () => {
 
 describe("builtinSidebarNavShortcutAction", () => {
   it("maps only the builtins that have a keyboard shortcut", () => {
-    expect(builtinSidebarNavShortcutAction("new-workspace")).toBe("new-workspace");
+    expect(builtinSidebarNavShortcutAction("new-project")).toBeNull();
     expect(builtinSidebarNavShortcutAction("search")).toBe("toggle-command-center");
     expect(builtinSidebarNavShortcutAction("history")).toBeNull();
     expect(builtinSidebarNavShortcutAction("schedules")).toBeNull();
@@ -368,6 +368,44 @@ describe("footer section", () => {
       notesPreference,
       { key: syncKey, visible: true },
       { key: "usage", visible: true },
+    ]);
+  });
+});
+
+describe("project creation preference migration", () => {
+  it("preserves a hidden workspace entry's position when it becomes New project", () => {
+    const preferences = [
+      { key: "history", visible: true },
+      { key: "new-workspace", visible: false },
+    ];
+    const items = resolveSidebarNavItems({ section: "header", pluginGroups: [], preferences });
+    expect(items.slice(0, 2)).toEqual([
+      { kind: "builtin", key: "history", id: "history", visible: true },
+      { kind: "builtin", key: "new-project", id: "new-project", visible: false },
+    ]);
+    const saved = setSidebarNavItemVisible({
+      items,
+      key: "new-project",
+      visible: true,
+      previous: preferences,
+    });
+    expect(saved.slice(0, 2)).toEqual([
+      { key: "history", visible: true },
+      { key: "new-project", visible: true },
+    ]);
+    expect(saved.filter((item) => item.key === "new-workspace")).toEqual([]);
+  });
+  it("does not duplicate the creation button when old and new preference keys coexist", () => {
+    const items = resolveSidebarNavItems({
+      section: "header",
+      pluginGroups: [],
+      preferences: [
+        { key: "new-project", visible: false },
+        { key: "new-workspace", visible: true },
+      ],
+    });
+    expect(items.filter((item) => item.key === "new-project")).toEqual([
+      { kind: "builtin", key: "new-project", id: "new-project", visible: false },
     ]);
   });
 });

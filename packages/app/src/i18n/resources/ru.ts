@@ -106,11 +106,11 @@ export const ru: TranslationResources = {
       files: "Файлы",
       workspaces: "Рабочие пространства",
       agents: "Агенты",
-      newAgent: "Новый агент",
+      newAgent: "Новый сеанс агента",
       open: "Открыть {{name}}",
       openInSidePane: "Открыть {{name}} в боковой панели",
       openInFocusedPane: "Открыть {{name}} в активной области",
-      addProject: "Добавить проект",
+      addProject: "Новый проект",
       home: "Главная",
       groupByProject: "Группировать по проекту",
       groupByStatus: "Группировать по статусу",
@@ -669,7 +669,7 @@ export const ru: TranslationResources = {
       modified: "Несохранённые изменения",
       loadingAgentTitle: "Загрузка названия агента",
       fallback: {
-        newAgent: "Новый агент",
+        newAgent: "Новый сеанс агента",
         setup: "Настройка",
         workspaceSetup: "Настройка рабочего пространства",
         terminal: "Терминал",
@@ -703,7 +703,7 @@ export const ru: TranslationResources = {
       },
       actions: {
         newTab: "Новая вкладка",
-        newAgent: "Новый агент",
+        newAgent: "Новый сеанс агента",
         newTerminal: "Новый терминал",
         preparingTerminal: "Подготовка вкладки терминала",
         preparingTerminalTooltip: "Подготовка терминала...",
@@ -778,7 +778,7 @@ export const ru: TranslationResources = {
       actions: {
         workspaceActions: "Действия с рабочим пространством",
         workspaceActionsUnhealthy: "Действия с рабочим пространством, есть неисправный сервис",
-        newAgent: "Новый агент",
+        newAgent: "Новый сеанс агента",
         newTerminal: "Новый терминал",
         newBrowser: "Новая вкладка браузера",
         importSession: "Импортировать сессию",
@@ -1291,7 +1291,7 @@ export const ru: TranslationResources = {
       searchPlaceholder: "Поиск хостов...",
     },
     actions: {
-      addProject: "Добавить проект",
+      addProject: "Новый проект",
       newWorkspace: "Новое рабочее пространство",
       hosts: "Хосты",
       settings: "Настройки",
@@ -1313,6 +1313,8 @@ export const ru: TranslationResources = {
       appName: "Paseo",
     },
     sections: {
+      projects: "Проекты",
+      workspaces: "Рабочие области",
       sessions: "История",
       search: "Поиск",
       schedules: "Расписания",
@@ -1342,6 +1344,7 @@ export const ru: TranslationResources = {
         cancel: "Отмена",
       },
       toasts: {
+        added: "Проект добавлен: {{projectName}}",
         hostDisconnected: "Хост не подключён",
         removeFailed: "Не удалось удалить некоторые рабочие пространства.",
         updateHostToRemove: "Обновите хост, чтобы удалять проекты.",
@@ -1647,7 +1650,7 @@ export const ru: TranslationResources = {
   openProject: {
     tiles: {
       addProject: {
-        title: "Добавить проект",
+        title: "Новый проект",
         description: "Откройте папку на своем компьютере",
       },
       importSession: {
@@ -1754,7 +1757,7 @@ export const ru: TranslationResources = {
           label: "Проекты",
           title: "Добавьте проекты",
           description: "Где будут работать ваши агенты",
-          addProject: "Добавить проект",
+          addProject: "Новый проект",
           added: "Добавлено",
           suggestions: {
             loading: "Ищем папки, в которых вы работали",
@@ -2093,7 +2096,7 @@ export const ru: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "Новый агент",
+      newAgent: "Новый сеанс агента",
       creatingAgent: "Создание агента",
     },
     file: {

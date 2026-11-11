@@ -1,9 +1,9 @@
 import { useOverlayRegistration, type KeyboardInputEvent } from "@/keyboard";
 import { useAddHost } from "@/hosts/add-host";
 import { Modal } from "@/components/ui/modal";
-import { usePanelStore } from "@/stores/panel-store";
+import { useToast } from "@/contexts/toast-context";
+import { useTranslation } from "react-i18next";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
-import { router } from "expo-router";
 import type { WorkspaceProjectDescriptorPayload } from "@getpaseo/protocol/messages";
 import {
   ArrowLeft,
@@ -90,7 +90,6 @@ import { useRecommendedProjectPaths } from "@/stores/session-store-hooks";
 import type { AddProjectFlowRequest } from "@/stores/add-project-flow-store";
 import type { Theme } from "@/styles/theme";
 import { shortenPath } from "@/utils/shorten-path";
-import { buildNewWorkspaceRoute } from "@/utils/host-routes";
 
 interface AddProjectFlowProps {
   request: AddProjectFlowRequest;
@@ -202,12 +201,12 @@ function pageHostId(page: AddProjectPage): string | null {
   return page.kind === "host" ? null : page.hostId;
 }
 
-function pageTitle(page: AddProjectPage): string {
+function pageTitle(page: AddProjectPage, newProjectLabel: string): string {
   switch (page.kind) {
     case "host":
       return "Choose host";
     case "method":
-      return "Add project";
+      return newProjectLabel;
     case "directory-search":
       return "Search for directory";
     case "github-search":
@@ -323,6 +322,8 @@ function setPageStatus(
 // The product flow is intentionally one cohesive page-stack state machine.
 // eslint-disable-next-line complexity
 export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
+  const { t } = useTranslation();
+  const toast = useToast();
   const addHost = useAddHost();
   const hosts = useHosts();
   const hostIds = useMemo(() => hosts.map((host) => host.serverId), [hosts]);
@@ -462,20 +463,14 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     else onClose();
   }, [onClose, state]);
 
-  const openNewWorkspaceForProject = useCallback(
-    (serverId: string, project: WorkspaceProjectDescriptorPayload) => {
+  const finishProjectCreation = useCallback(
+    (project: WorkspaceProjectDescriptorPayload) => {
       onClose();
-      usePanelStore.getState().showMobileAgent();
-      router.push(
-        buildNewWorkspaceRoute({
-          serverId,
-          projectId: project.projectId,
-          sourceDirectory: project.projectRootPath,
-          displayName: project.projectDisplayName,
-        }),
-      );
+      toast.show(t("sidebar.project.toasts.added", { projectName: project.projectDisplayName }), {
+        variant: "success",
+      });
     },
-    [onClose],
+    [onClose, t, toast],
   );
 
   const openAddedProject = useCallback(
@@ -488,7 +483,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       try {
         const result = await openProject(path);
         if (result.ok) {
-          openNewWorkspaceForProject(hostId, result.project);
+          finishProjectCreation(result.project);
           return;
         }
         const reason = getOpenProjectFailureReason(result);
@@ -508,7 +503,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         submissionInFlightRef.current = false;
       }
     },
-    [hostId, openNewWorkspaceForProject, openProject],
+    [hostId, finishProjectCreation, openProject],
   );
 
   const browse = useCallback(async () => {
@@ -570,7 +565,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         );
         if (result.ok) {
           lastCloneParentByHost.set(locationPage.hostId, parentPath);
-          openNewWorkspaceForProject(locationPage.hostId, result.project);
+          finishProjectCreation(result.project);
           return;
         }
         setState((current) =>
@@ -590,7 +585,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         submissionInFlightRef.current = false;
       }
     },
-    [cloneGithubProject, openNewWorkspaceForProject],
+    [cloneGithubProject, finishProjectCreation],
   );
   const rows = useMemo<FlowRowOption[]>(() => {
     if (page.kind === "host") {
@@ -765,7 +760,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         upsertProject,
         setHasHydratedWorkspaces,
       });
-      openNewWorkspaceForProject(page.hostId, payload.project);
+      finishProjectCreation(payload.project);
     } catch {
       setState((current) =>
         setPageStatus(current, "new-directory-name", {
@@ -776,7 +771,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     } finally {
       submissionInFlightRef.current = false;
     }
-  }, [client, openNewWorkspaceForProject, page, setHasHydratedWorkspaces, upsertProject]);
+  }, [client, finishProjectCreation, page, setHasHydratedWorkspaces, upsertProject]);
 
   const submitActive = useCallback(() => {
     if (page.kind === "new-directory-name") {
@@ -862,14 +857,14 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
           ref={setOverlayScope}
           style={styles.panel}
           testID={`add-project-flow-page-${page.kind}`}
-          accessibilityLabel={`Add project: ${page.kind}`}
+          accessibilityLabel={t("sidebar.actions.addProject")}
         >
           <View style={styles.header}>
             <View style={styles.titleRow}>
               {state.pages.length > 1 ? <FlowBackButton onPress={handleBack} /> : null}
               <View style={styles.titleGroup} testID="add-project-flow-title">
                 <Text style={styles.title} numberOfLines={1}>
-                  {pageTitle(page)}
+                  {pageTitle(page, t("sidebar.actions.addProject"))}
                 </Text>
                 {host ? (
                   <Text style={styles.hostContext} numberOfLines={1}>
