@@ -15,6 +15,27 @@ report tested changes for separate deployment. Unrelated existing work in the
 original checkout must remain untouched. This is workflow isolation, not an
 OS security sandbox; arbitrary shell access is not confined by these rules.
 
+## Dependency preparation in every worktree
+
+Do not run `npm ci`/`npm install` or copy an existing `node_modules` merely to
+prepare another worktree. Electron and native dependencies must use verified
+independent copy-on-write reuse (physical blocks are shared until changed; logical
+`du` sizes can still look duplicated), never shared symlinks/hardlinks or full-copy
+fallback. First establish `.lab-config.json` with the actual protected runtime
+roots, then start from current main containing the helper, or invoke a current trusted
+checkout's script with `--root` (also works for older labs):
+
+```sh
+node /path/to/current/scripts/isolated-lab.mjs prepare-dependencies --root /path/to/lab --releases /path/to/releases --dependency-release VERIFIED_ID --dependency-digest VERIFIED_SHA256
+```
+
+This requires matching tracked install inputs, available donor Git history,
+empty dependency destinations and an 8 GiB reserve. It never runs an installer.
+On mismatch, insufficient space, unsupported CoW or partial previous preparation,
+stop and report; do not fall back to installation/copying or delete existing files.
+A necessary dependency change or first installation needs a separately reviewed
+plan. This is a workflow requirement, not an OS-level ban on arbitrary commands.
+
 # CLAUDE.md
 
 Paseo is a mobile app for monitoring and controlling your local AI coding agents from anywhere. Your dev environment, in your pocket. Connects directly to your actual development environment — your code stays on your machine.

@@ -3,7 +3,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
+import { prepareDependencies, isDependencyInput } from "./dev-update-dependencies.mjs";
 import { fileURLToPath } from "node:url";
 
 export function inside(root, candidate) {
@@ -110,12 +111,103 @@ export function freePort(port) {
     server.listen(port, "127.0.0.1", () => server.close(resolve));
   });
 }
-async function main() {
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+function releasePreparationLock(fd, lock) {
+  const owned = fs.fstatSync(fd);
+  try {
+    const current = fs.lstatSync(lock);
+    if (current.dev === owned.dev && current.ino === owned.ino) fs.unlinkSync(lock);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+export async function prepareLabDependencies(
+  { root, releases, donor, minFreeBytes = 8 * 1024 ** 3 },
+  { prepare = prepareDependencies } = {},
+) {
+  if (!donor?.id || !/^[a-f0-9]{64}$/.test(donor.digest ?? ""))
+    throw new Error("Explicit sealed donor id and digest required");
   const manifest = JSON.parse(fs.readFileSync(path.join(root, ".lab-config.json"), "utf8"));
   const plan = resolvePlan(root, manifest);
   assertLocalPaths(plan);
+  releases = fs.realpathSync(releases);
+  if (plan.root === releases || inside(releases, plan.root) || inside(plan.root, releases))
+    throw new Error("Lab overlaps release store");
+  if (!plan.protectedRoots.length) throw new Error("Explicit protected runtime roots required");
+  const lock = path.join(plan.root, ".dependency-preparation.lock");
+  const fd = fs.openSync(lock, "wx", 0o600);
+  try {
+    // Refuse partial/reclaimed installs and symlink aliases, not just collisions
+    // with donor files. Never delete or silently repair an existing dependency tree.
+    function inspect(dir) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if ([".git", ".lab"].includes(entry.name)) continue;
+        const file = path.join(dir, entry.name);
+        if (entry.name === "node_modules") {
+          if (!entry.isDirectory() || fs.readdirSync(file).length)
+            throw new Error("Dependency destinations must be empty real directories");
+        } else if (entry.isDirectory()) inspect(file);
+        else if (entry.isSymbolicLink() && !inside(plan.root, fs.realpathSync(file)))
+          throw new Error("Lab source symlink escapes before dependency preparation");
+      }
+    }
+    inspect(plan.root);
+    const untracked = execFileSync("git", ["ls-files", "--others", "-z"], {
+      cwd: plan.root,
+      encoding: "utf8",
+    });
+    if (untracked.split("\0").some(isDependencyInput))
+      throw new Error("Untracked dependency inputs must be reviewed and tracked first");
+    const result = await prepare({
+      source: plan.root,
+      releases,
+      donor,
+      allowInstall: false,
+      minFreeBytes,
+    });
+    if (result.mode !== "reuse") throw new Error("Lab dependencies require verified reuse");
+    return { mode: result.mode, donor: result.donor, root: plan.root };
+  } finally {
+    releasePreparationLock(fd, lock);
+  }
+}
+
+async function main() {
   const action = process.argv[2] ?? "check";
+  const options = {};
+  for (let i = 3; i < process.argv.length; i += 2) {
+    const key = process.argv[i];
+    if (
+      !["--root", "--releases", "--dependency-release", "--dependency-digest"].includes(key) ||
+      !process.argv[i + 1] ||
+      options[key]
+    )
+      throw new Error("Invalid or duplicate lab option");
+    options[key] = process.argv[i + 1];
+  }
+  const root = path.resolve(
+    options["--root"] ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
+  );
+  if (action === "prepare-dependencies") {
+    if (!options["--releases"]) throw new Error("Explicit --releases required");
+    console.log(
+      JSON.stringify(
+        await prepareLabDependencies({
+          root,
+          releases: options["--releases"],
+          donor: { id: options["--dependency-release"], digest: options["--dependency-digest"] },
+        }),
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, ".lab-config.json"), "utf8"));
+  const plan = resolvePlan(root, manifest);
+  assertLocalPaths(plan);
   if (action === "check") {
     console.log(
       JSON.stringify(

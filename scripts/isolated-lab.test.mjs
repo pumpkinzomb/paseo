@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resolvePlan, assertLocalPaths, labEnv } from "./isolated-lab.mjs";
+import { execFileSync } from "node:child_process";
+import { prepareLabDependencies, resolvePlan, assertLocalPaths, labEnv } from "./isolated-lab.mjs";
 function fixture(t) {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "paseo-boundary-"));
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));
@@ -72,4 +73,83 @@ test("reject live state symlink nested under lab", (t) => {
   fs.mkdirSync(path.join(f.root, ".lab"));
   fs.symlinkSync(f.live, path.join(f.root, ".lab/paseo-home"));
   assert.throws(() => assertLocalPaths(p), /escapes/);
+});
+
+function dependencyFixture(t) {
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.root, ".lab-config.json"), JSON.stringify(f.m));
+  execFileSync("git", ["init", "--quiet", f.root]);
+  return { ...f, releases: f.live, donor: { id: "sealed", digest: "a".repeat(64) } };
+}
+test("lab preparation uses explicit verified reuse only, including external target", async (t) => {
+  const f = dependencyFixture(t);
+  fs.writeFileSync(path.join(f.root, "CLAUDE.md"), "lab rules");
+  fs.symlinkSync("CLAUDE.md", path.join(f.root, "AGENTS.md"));
+  let calls = 0;
+  const result = await prepareLabDependencies(f, {
+    prepare: async (options) => {
+      calls++;
+      assert.equal(options.source, fs.realpathSync(f.root));
+      assert.equal(options.allowInstall, false);
+      assert.equal(options.minFreeBytes, 8 * 1024 ** 3);
+      assert.deepEqual(options.donor, f.donor);
+      return { mode: "reuse", donor: f.donor };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.mode, "reuse");
+  assert.equal(fs.existsSync(path.join(f.root, ".dependency-preparation.lock")), false);
+});
+test("lab preparation refuses existing dependencies without changing them", async (t) => {
+  const f = dependencyFixture(t);
+  fs.mkdirSync(path.join(f.root, "packages/app/node_modules"), { recursive: true });
+  const payload = path.join(f.root, "packages/app/node_modules/keep");
+  fs.writeFileSync(payload, "keep");
+  await assert.rejects(
+    prepareLabDependencies(f, { prepare: async () => assert.fail("must not clone") }),
+    /empty real/,
+  );
+  assert.equal(fs.readFileSync(payload, "utf8"), "keep");
+});
+test("lab preparation rejects missing donor, overlap, untracked inputs and concurrent owner", async (t) => {
+  const f = dependencyFixture(t);
+  const stub = { prepare: async () => assert.fail("must not clone") };
+  await assert.rejects(prepareLabDependencies({ ...f, donor: null }, stub), /donor/);
+  await assert.rejects(prepareLabDependencies({ ...f, releases: f.root }, stub), /overlaps/);
+  fs.writeFileSync(path.join(f.root, ".gitignore"), "package.json\n");
+  fs.writeFileSync(path.join(f.root, "package.json"), "{}");
+  await assert.rejects(prepareLabDependencies(f, stub), /Untracked/);
+  fs.unlinkSync(path.join(f.root, "package.json"));
+  const lock = path.join(f.root, ".dependency-preparation.lock");
+  fs.writeFileSync(lock, "owner");
+  await assert.rejects(prepareLabDependencies(f, stub), /EEXIST/);
+  assert.equal(fs.readFileSync(lock, "utf8"), "owner");
+});
+test("failed lab reuse never installs or retries and releases its lock", async (t) => {
+  const f = dependencyFixture(t);
+  let calls = 0;
+  await assert.rejects(
+    prepareLabDependencies(f, {
+      prepare: async () => {
+        calls++;
+        throw new Error("clone unavailable");
+      },
+    }),
+    /clone unavailable/,
+  );
+  assert.equal(calls, 1);
+  assert.equal(fs.existsSync(path.join(f.root, ".dependency-preparation.lock")), false);
+});
+
+test("lab preparation retains a replacement lock owned by someone else", async (t) => {
+  const f = dependencyFixture(t);
+  const lock = path.join(f.root, ".dependency-preparation.lock");
+  await prepareLabDependencies(f, {
+    prepare: async () => {
+      fs.unlinkSync(lock);
+      fs.writeFileSync(lock, "replacement owner");
+      return { mode: "reuse", donor: f.donor };
+    },
+  });
+  assert.equal(fs.readFileSync(lock, "utf8"), "replacement owner");
 });
