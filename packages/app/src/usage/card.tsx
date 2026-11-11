@@ -1,5 +1,7 @@
+import { getElectronHost } from "@/desktop/electron/host";
+import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { Plug, RotateCw } from "lucide-react-native";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View, type StyleProp, type TextStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -57,6 +59,27 @@ export function UsageCard({
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
   const { refresh, refreshState } = useReportRefresh(serverId, entry.id, agentId);
+  const isLocal = useIsLocalDaemon(serverId);
+  const [authPending, setAuthPending] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const canAuthenticate = isLocal && entry.sourceId === "cursor" && !!getElectronHost()?.usageAuth;
+  const reconnect = async () => {
+    if (authPending) return;
+    setAuthError(null);
+    if (!canAuthenticate) {
+      setAuthError(t("providerUsage.reconnectManual"));
+      return;
+    }
+    setAuthPending(true);
+    try {
+      await getElectronHost()!.usageAuth!.start(entry.sourceId);
+      refresh();
+    } catch {
+      setAuthError(t("providerUsage.reconnectFailed"));
+    } finally {
+      setAuthPending(false);
+    }
+  };
   // Where there is no hover the freshness is printed on the card; elsewhere the Refresh tooltip.
   const showsFreshnessInline = isNative || isCompact || !refreshable;
   const usage = entry.report;
@@ -107,12 +130,17 @@ export function UsageCard({
           <UsageReconnectButton
             sourceLabel={entry.sourceLabel}
             compact={isCompact}
-            refreshState={refreshState}
-            onRefresh={refresh}
+            refreshState={authPending ? "pending" : "idle"}
+            onRefresh={reconnect}
           />
         ) : null}
       </View>
 
+      {authError ? (
+        <Text style={styles.error} testID="usage-auth-error">
+          {authError}
+        </Text>
+      ) : null}
       {messages.length > 0 ? (
         <Text style={styles.error} testID="usage-login-error">
           {messages.join("\n")}
@@ -121,7 +149,9 @@ export function UsageCard({
 
       {needsUsageReconnect(entry) ? (
         <View style={styles.reconnect}>
-          <Text style={styles.footer}>{t("providerUsage.reconnectHint")}</Text>
+          <Text style={styles.footer}>
+            {t(canAuthenticate ? "providerUsage.reconnectHint" : "providerUsage.reconnectManual")}
+          </Text>
         </View>
       ) : null}
 
@@ -249,7 +279,11 @@ function CardWindowBar({
       pinnable={pinnable}
       pinned={display.isPinned(pin)}
       onTogglePin={toggle}
-      pinLabel={`${t("providerUsage.pin")} ${entry.sourceLabel} ${formatProviderUsageLabel(window.id, window.label, t)}`}
+      pinLabel={`${t("providerUsage.pin")} ${entry.sourceLabel} ${formatProviderUsageLabel(
+        window.id,
+        window.label,
+        t,
+      )}`}
       pinTestID={`usage-pin-${entry.sourceId}-${window.id}`}
     />
   );

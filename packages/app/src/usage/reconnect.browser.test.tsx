@@ -8,6 +8,7 @@ import type { UsageReportEntry } from "./types";
 
 const state = vi.hoisted(() => ({
   refresh: vi.fn(),
+  login: vi.fn().mockResolvedValue(undefined),
   refreshState: "idle" as "idle" | "pending",
 }));
 // Keep real tooltip and React Native text validation; only omit animation timing.
@@ -32,6 +33,12 @@ vi.mock("@/components/ui/floating", async (importOriginal) => {
     }),
   };
 });
+vi.mock("@/hooks/use-is-local-daemon", () => ({
+  useIsLocalDaemon: () => true,
+}));
+vi.mock("@/desktop/electron/host", () => ({
+  getElectronHost: () => ({ usageAuth: { start: state.login } }),
+}));
 vi.mock("./source-icon", () => ({ UsageSourceIcon: () => null }));
 vi.mock("./queries", () => ({ useReportRefresh: () => state }));
 const entry: UsageReportEntry = {
@@ -48,6 +55,7 @@ let container: HTMLDivElement;
 beforeEach(async () => {
   vi.stubGlobal("React", React);
   state.refresh.mockClear();
+  state.login.mockReset().mockResolvedValue(undefined);
   state.refreshState = "idle";
   await i18n.changeLanguage("en");
   container = document.createElement("div");
@@ -72,7 +80,7 @@ function render() {
     ),
   );
 }
-it("provides an explicit reconnect action and prevents duplicate attempts while pending", () => {
+it("starts sign-in, not a refresh of rejected credentials", async () => {
   render();
   const button = container.querySelector<HTMLElement>('[data-testid="usage-reconnect"]')!;
   expect(button).not.toBeNull();
@@ -80,12 +88,9 @@ it("provides an explicit reconnect action and prevents duplicate attempts while 
   expect(
     refreshButton.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
-  expect(container.textContent).toContain("This does not sign you in automatically.");
-  act(() => button.click());
-  expect(state.refresh).toHaveBeenCalledOnce();
-  state.refreshState = "pending";
-  render();
-  act(() => button.click());
+  expect(container.textContent).toContain("Complete the browser login");
+  await act(async () => button.click());
+  expect(state.login).toHaveBeenCalledWith("cursor");
   expect(state.refresh).toHaveBeenCalledOnce();
 });
 
@@ -104,7 +109,8 @@ it("renders the reconnect guidance tooltip as Text without raw text node warning
       expect(document.body.textContent?.split(hint).length).toBeGreaterThan(2);
     });
     expect(errors.mock.calls.flat().join(" ")).not.toContain("Unexpected text node");
-    act(() => button.click());
+    await act(async () => button.click());
+    expect(state.login).toHaveBeenCalledWith("cursor");
     expect(state.refresh).toHaveBeenCalledOnce();
     act(() => {
       button.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
@@ -114,4 +120,23 @@ it("renders the reconnect guidance tooltip as Text without raw text node warning
   } finally {
     errors.mockRestore();
   }
+});
+
+it("waits for authentication, disables duplicate clicks and shows cancellation failures", async () => {
+  let fail!: (reason: Error) => void;
+  state.login.mockImplementation(
+    () =>
+      new Promise<void>((_resolve, reject) => {
+        fail = reject;
+      }),
+  );
+  render();
+  const button = container.querySelector<HTMLElement>('[data-testid="usage-reconnect"]')!;
+  act(() => button.click());
+  expect(state.refresh).not.toHaveBeenCalled();
+  act(() => button.click());
+  expect(state.login).toHaveBeenCalledOnce();
+  await act(async () => fail(new Error("cancelled")));
+  expect(container.querySelector('[data-testid="usage-auth-error"]')).not.toBeNull();
+  expect(state.refresh).not.toHaveBeenCalled();
 });

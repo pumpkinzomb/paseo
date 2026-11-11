@@ -2275,8 +2275,9 @@ export const fr: TranslationResources = {
   },
   providerUsage: {
     reconnect: "Reconnecter",
-    reconnectHint:
-      "Reconnectez-vous dans l’application ou la CLI du fournisseur sur cet hôte, puis vérifiez l’utilisation ici. Ceci ne vous connecte pas automatiquement.",
+    reconnectHint: en.providerUsage.reconnectHint,
+    reconnectManual: en.providerUsage.reconnectManual,
+    reconnectFailed: en.providerUsage.reconnectFailed,
     checkUsage: "Vérifier l’utilisation",
     checkUsageHint: "S’applique à {{host}} sur tous les appareils",
     off: "L’utilisation est désactivée sur {{host}}.",

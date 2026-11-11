@@ -205,6 +205,7 @@ export interface DesktopMicrophoneBridge {
 }
 
 export interface DesktopHostBridge {
+  usageAuth?: { start(sourceId: string): Promise<void> };
   microphone?: DesktopMicrophoneBridge;
   devUpdate?: DesktopDevUpdateBridge;
   platform?: string;

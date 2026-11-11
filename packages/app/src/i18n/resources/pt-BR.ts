@@ -2256,8 +2256,9 @@ export const ptBR: TranslationResources = {
   },
   providerUsage: {
     reconnect: "Reconectar",
-    reconnectHint:
-      "Entre novamente no app ou CLI do provedor neste host e reconecte para verificar o uso. Isso não faz login automaticamente.",
+    reconnectHint: en.providerUsage.reconnectHint,
+    reconnectManual: en.providerUsage.reconnectManual,
+    reconnectFailed: en.providerUsage.reconnectFailed,
     checkUsage: "Consultar uso",
     checkUsageHint: "Aplica-se a {{host}} em todos os dispositivos",
     off: "O uso está desativado em {{host}}.",

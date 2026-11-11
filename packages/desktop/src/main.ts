@@ -1,3 +1,4 @@
+import { createUsageAuthenticator } from "./features/usage-auth.js";
 import { updateActivity } from "./dev-update/activity.js";
 import { createOpenWindowUpdate } from "./dev-update/open-window.js";
 import { installBrowserUpdateGuard, observeBrowserForUpdate } from "./dev-update/browser-guard.js";
@@ -1036,6 +1037,14 @@ async function bootstrap(): Promise<void> {
   registerNotificationHandlers();
   const openExternalUrl = createExternalUrlOpener({ open: shell.openExternal });
   ipcMain.handle("paseo:opener:openUrl", (_event, value: unknown) => openExternalUrl(value));
+  const authenticateUsage = createUsageAuthenticator();
+  ipcMain.handle("paseo:usage:authenticate", (event, sourceId: unknown) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    if (!owner || event.senderFrame !== event.sender.mainFrame) {
+      throw new Error("Authentication must start from the Paseo window.");
+    }
+    return authenticateUsage(sourceId);
+  });
   registerEditorTargetHandlers();
   registerBrowserAutomationIpc();
 

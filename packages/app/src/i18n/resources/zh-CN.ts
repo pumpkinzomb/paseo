@@ -2197,8 +2197,9 @@ export const zhCN: TranslationResources = {
   },
   providerUsage: {
     reconnect: "重新连接",
-    reconnectHint:
-      "请在此主机的提供商应用或 CLI 中重新登录，然后重新连接以检查用量。这不会自动登录。",
+    reconnectHint: en.providerUsage.reconnectHint,
+    reconnectManual: en.providerUsage.reconnectManual,
+    reconnectFailed: en.providerUsage.reconnectFailed,
     checkUsage: "检查用量",
     checkUsageHint: "在所有设备上应用于 {{host}}",
     off: "{{host}} 的用量检查已关闭。",

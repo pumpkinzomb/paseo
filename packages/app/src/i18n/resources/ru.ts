@@ -2263,8 +2263,9 @@ export const ru: TranslationResources = {
   },
   providerUsage: {
     reconnect: "Подключить снова",
-    reconnectHint:
-      "Войдите заново в приложение или CLI провайдера на этом хосте, затем проверьте использование здесь. Автоматический вход не выполняется.",
+    reconnectHint: en.providerUsage.reconnectHint,
+    reconnectManual: en.providerUsage.reconnectManual,
+    reconnectFailed: en.providerUsage.reconnectFailed,
     checkUsage: "Проверять использование",
     checkUsageHint: "Применяется к {{host}} на всех устройствах",
     off: "Проверка использования отключена на {{host}}.",

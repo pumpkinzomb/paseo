@@ -2385,8 +2385,11 @@ export const en = {
   },
   providerUsage: {
     reconnect: "Reconnect",
-    reconnectHint:
-      "Sign in again in the provider app or CLI on this host, then reconnect to check usage. This does not sign you in automatically.",
+    reconnectHint: "Start provider sign-in. Complete the browser login to reconnect usage.",
+    reconnectManual:
+      "Automatic sign-in is not supported for this provider/host yet. Sign in on that host, then use Refresh.",
+    reconnectFailed:
+      "Sign-in did not complete. Check that Cursor CLI is installed, then retry and finish the browser login.",
     checkUsage: "Check usage",
     checkUsageHint: "Applies to {{host}} on every device",
     off: "Usage is off on {{host}}.",

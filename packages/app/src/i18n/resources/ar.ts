@@ -2222,8 +2222,9 @@ export const ar: TranslationResources = {
   },
   providerUsage: {
     reconnect: "إعادة الاتصال",
-    reconnectHint:
-      "سجّل الدخول مجددًا في تطبيق المزوّد أو واجهة سطر الأوامر على هذا المضيف، ثم أعد الاتصال للتحقق من الاستخدام. لن يتم تسجيل الدخول تلقائيًا.",
+    reconnectHint: en.providerUsage.reconnectHint,
+    reconnectManual: en.providerUsage.reconnectManual,
+    reconnectFailed: en.providerUsage.reconnectFailed,
     checkUsage: "التحقق من الاستخدام",
     checkUsageHint: "ينطبق على {{host}} على جميع الأجهزة",
     off: "التحقق من الاستخدام متوقف على {{host}}.",

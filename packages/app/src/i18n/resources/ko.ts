@@ -2372,7 +2372,11 @@ export const ko: TranslationResources = {
   providerUsage: {
     reconnect: "다시 연결",
     reconnectHint:
-      "이 호스트의 공급자 앱 또는 CLI에서 다시 로그인한 뒤 눌러 사용량 연결을 확인하세요. 자동으로 로그인하는 기능은 아닙니다.",
+      "공급자 로그인을 시작합니다. 브라우저에서 로그인을 마치면 사용량을 다시 조회합니다.",
+    reconnectManual:
+      "이 공급자/호스트의 로그인 시작은 아직 지원하지 않습니다. 해당 호스트에서 로그인한 뒤 새로고침하세요.",
+    reconnectFailed:
+      "로그인이 완료되지 않았습니다. Cursor CLI 설치를 확인하고 다시 눌러 브라우저 로그인을 마쳐 주세요.",
     checkUsage: "사용량 확인",
     checkUsageHint: "모든 기기에서 {{host}}에 적용",
     off: "{{host}}의 사용량 확인이 꺼져 있습니다.",
