@@ -203,7 +203,12 @@ export function SupervisedUpdateCheckpoint() {
       )
         result.push("dialog-open");
       if (
-        hasUncheckpointedFormInput(document, unknownInputs, useBrowserStore.getState().browsersById)
+        hasUncheckpointedFormInput(
+          document,
+          unknownInputs,
+          useBrowserStore.getState().browsersById,
+          new Set(Object.values(useDraftStore.getState().drafts).map((draft) => draft.input.text)),
+        )
       )
         result.push("uncheckpointed-form-input");
       return result;

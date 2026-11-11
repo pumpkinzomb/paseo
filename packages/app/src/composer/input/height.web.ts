@@ -1,3 +1,4 @@
+import { registerComposerMeasurementMirror } from "./measurement-mirror";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { ComposerHeightResult } from "./height.types";
@@ -69,6 +70,7 @@ export function useComposerHeight({
       }
       mirror.style.width = `${sourceWidth}px`;
       mirror.value = text.endsWith("\n") ? `${text} ` : text;
+      registerComposerMeasurementMirror(mirror, source, text);
       const padding =
         parseFloat(computedStyle.paddingTop) + parseFloat(computedStyle.paddingBottom);
       const lineHeight = parseFloat(computedStyle.lineHeight);

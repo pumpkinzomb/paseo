@@ -39,3 +39,36 @@ it("never exempts other fields or an unknown browser ID", () => {
   input.removeAttribute("data-update-browser-id");
   expect(hasUncheckpointedFormInput(document, new Set(), browsers)).toBe(true);
 });
+
+it("accepts only a registered measurement mirror of a live managed persisted composer", async () => {
+  const { registerComposerMeasurementMirror } = await import("@/composer/input/measurement-mirror");
+  const root = document.createElement("div");
+  root.dataset.testid = "message-input-root";
+  const source = document.createElement("textarea");
+  source.value = "saved draft\n";
+  root.append(source);
+  const mirror = document.createElement("textarea");
+  mirror.readOnly = true;
+  mirror.setAttribute("aria-hidden", "true");
+  mirror.value = "saved draft\n ";
+  document.body.append(root, mirror);
+  const texts = new Set([source.value]);
+  expect(hasUncheckpointedFormInput(document, new Set(), {}, texts)).toBe(true);
+  registerComposerMeasurementMirror(mirror, source, source.value);
+  expect(hasUncheckpointedFormInput(document, new Set(), {}, texts)).toBe(false);
+  expect(hasUncheckpointedFormInput(document, new Set(), {}, new Set())).toBe(true);
+  mirror.value = "unowned new text";
+  expect(hasUncheckpointedFormInput(document, new Set(), {}, texts)).toBe(true);
+  mirror.value = "saved draft\n ";
+  source.remove();
+  expect(hasUncheckpointedFormInput(document, new Set(), {}, texts)).toBe(true);
+});
+
+it("keeps unknown readonly hidden fields blocked even when their text matches a saved draft", () => {
+  const field = document.createElement("textarea");
+  field.readOnly = true;
+  field.setAttribute("aria-hidden", "true");
+  field.value = "saved draft";
+  document.body.append(field);
+  expect(hasUncheckpointedFormInput(document, new Set(), {}, new Set([field.value]))).toBe(true);
+});
