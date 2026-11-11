@@ -1459,7 +1459,7 @@ export const en = {
       confirmations: {
         removeTitle: "Remove project?",
         removeMessage:
-          'Remove "{{projectName}}" from the sidebar?\n\nFiles on disk will not be changed.',
+          'Remove "{{projectName}}", its {{workspaceCount}} session groups and {{sessionCount}} agent sessions, including child sessions?\n\nPaseo conversation records will be permanently deleted and cannot be restored. Project files and original conversation records stored by the agent providers will not be deleted.',
         removeConfirm: "Remove",
         cancel: "Cancel",
       },

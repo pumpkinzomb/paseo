@@ -1309,7 +1309,8 @@ export const zhCN: TranslationResources = {
       },
       confirmations: {
         removeTitle: "移除 project？",
-        removeMessage: "从侧边栏移除「{{projectName}}」？\n\n磁盘上的文件不会被更改。",
+        removeMessage:
+          "移除“{{projectName}}”、其 {{workspaceCount}} 个会话组和 {{sessionCount}} 个代理会话（包含子会话）？\n\nPaseo 对话记录将被永久删除，无法恢复。项目文件和代理提供商保存的原始对话记录不会被删除。",
         removeConfirm: "移除",
         cancel: "取消",
       },

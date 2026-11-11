@@ -1319,7 +1319,7 @@ export const ar: TranslationResources = {
       confirmations: {
         removeTitle: "هل تريد إزالة المشروع؟",
         removeMessage:
-          'هل تريد إزالة "{{projectName}}" من الشريط الجانبي؟\n\n لن يتم تغيير الملفات الموجودة على القرص.',
+          'هل تريد إزالة "{{projectName}}" مع {{workspaceCount}} من مجموعات الجلسات و{{sessionCount}} من جلسات الوكلاء، بما فيها الجلسات الفرعية؟\n\nستُحذف سجلات محادثات Paseo نهائيًا ولا يمكن استعادتها. لن تُحذف ملفات المشروع أو سجلات المحادثات الأصلية المخزنة لدى موفري الوكلاء.',
         removeConfirm: "يزيل",
         cancel: "يلغي",
       },

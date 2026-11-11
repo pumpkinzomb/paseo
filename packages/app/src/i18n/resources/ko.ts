@@ -1459,7 +1459,7 @@ export const ko: TranslationResources = {
       confirmations: {
         removeTitle: "프로젝트를 제거할까요?",
         removeMessage:
-          '"{{projectName}}"을(를) 사이드바에서 제거할까요?\n\n디스크의 파일은 변경되지 않습니다.',
+          '"{{projectName}}"과 연결된 세션 그룹 {{workspaceCount}}개, 하위 세션을 포함한 에이전트 세션 {{sessionCount}}개를 제거할까요?\n\nPaseo의 대화 기록은 영구 삭제되며 복원할 수 없습니다. 프로젝트 파일과 각 에이전트 공급자가 보관한 원본 대화 기록은 삭제하지 않습니다.',
         removeConfirm: "제거",
         cancel: "취소",
       },

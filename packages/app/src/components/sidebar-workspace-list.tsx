@@ -143,6 +143,7 @@ import { openExternalUrl } from "@/utils/open-external-url";
 import { useWorkspaceArchive } from "@/workspace/use-workspace-archive";
 import {
   getCurrentProjectRemoveReadiness,
+  inspectProjectRemovalFromHosts,
   removeProjectFromHosts,
 } from "@/projects/project-remove";
 import {
@@ -1825,51 +1826,49 @@ function ProjectBlock({
       return;
     }
 
+    setIsRemovingProject(true);
     void (async () => {
+      const readiness = getCurrentProjectRemoveReadiness({ hosts: project.hosts });
+      if (readiness.kind === "needs_host_update") {
+        toast.error(t("sidebar.project.toasts.updateHostToRemove"));
+        return;
+      }
+      const targets = await inspectProjectRemovalFromHosts({
+        targets: readiness.targets,
+        getClient: (serverId) => getHostRuntimeStore().getClient(serverId),
+      });
       const confirmed = await confirmDialog({
         title: t("sidebar.project.confirmations.removeTitle"),
-        message: t("sidebar.project.confirmations.removeMessage", { projectName: displayName }),
+        message: t("sidebar.project.confirmations.removeMessage", {
+          projectName: displayName,
+          workspaceCount: targets.reduce(
+            (sum, target) => sum + target.deleteSessions.workspaceIds.length,
+            0,
+          ),
+          sessionCount: targets.reduce(
+            (sum, target) => sum + target.deleteSessions.agentIds.length,
+            0,
+          ),
+        }),
         confirmLabel: t("sidebar.project.confirmations.removeConfirm"),
         cancelLabel: t("sidebar.project.confirmations.cancel"),
         destructive: true,
       });
-      if (!confirmed) {
-        return;
-      }
-
-      setIsRemovingProject(true);
-      const readiness = getCurrentProjectRemoveReadiness({
-        hosts: project.hosts,
-      });
-      if (readiness.kind === "needs_host_update") {
-        toast.error(t("sidebar.project.toasts.updateHostToRemove"));
-        setIsRemovingProject(false);
-        return;
-      }
-
-      void removeProjectFromHosts({
-        targets: readiness.targets,
+      if (!confirmed) return;
+      const outcome = await removeProjectFromHosts({
+        targets,
         getClient: (serverId) => getHostRuntimeStore().getClient(serverId),
+      });
+      if (outcome.kind === "host_disconnected")
+        toast.error(t("sidebar.project.toasts.hostDisconnected"));
+      if (outcome.kind === "failed") toast.error(t("sidebar.project.toasts.removeFailed"));
+    })()
+      .catch((error) => {
+        toast.error(
+          error instanceof Error ? error.message : t("sidebar.project.toasts.removeFailed"),
+        );
       })
-        .then((outcome) => {
-          if (outcome.kind === "host_disconnected") {
-            toast.error(t("sidebar.project.toasts.hostDisconnected"));
-            return null;
-          }
-          if (outcome.kind === "failed") {
-            toast.error(t("sidebar.project.toasts.removeFailed"));
-          }
-          return null;
-        })
-        .catch((error) => {
-          toast.error(
-            error instanceof Error ? error.message : t("sidebar.project.toasts.removeFailed"),
-          );
-        })
-        .finally(() => {
-          setIsRemovingProject(false);
-        });
-    })();
+      .finally(() => setIsRemovingProject(false));
   }, [isRemovingProject, displayName, t, toast, project.hosts]);
 
   const handleToggleCollapsed = useCallback(() => {

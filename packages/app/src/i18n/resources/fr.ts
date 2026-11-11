@@ -1349,7 +1349,7 @@ export const fr: TranslationResources = {
       confirmations: {
         removeTitle: "Retirer le projet ?",
         removeMessage:
-          "Retirer « {{projectName}} » de la barre latérale ?\n\nLes fichiers sur le disque ne seront pas modifiés.",
+          "Supprimer « {{projectName}} », ses {{workspaceCount}} groupes de sessions et {{sessionCount}} sessions d’agents, y compris les sous-sessions ?\n\nLes conversations de Paseo seront définitivement supprimées et ne pourront pas être restaurées. Les fichiers du projet et les conversations originales conservées par les fournisseurs d’agents ne seront pas supprimés.",
         removeConfirm: "Retirer",
         cancel: "Annuler",
       },

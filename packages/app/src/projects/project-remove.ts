@@ -25,7 +25,33 @@ export type ProjectRemoveOutcome =
   | { kind: "host_disconnected"; serverIds: string[] }
   | { kind: "failed"; serverIds: string[] };
 
+export interface ProjectRemovalScope {
+  workspaceIds: string[];
+  agentIds: string[];
+}
+export interface InspectedProjectRemoveTarget extends ProjectRemoveTarget {
+  deleteSessions: ProjectRemovalScope;
+}
 type ProjectRemoveClient = Pick<DaemonClient, "removeProject">;
+
+/** Inspect every host before presenting a destructive confirmation. No mutations on failure. */
+export async function inspectProjectRemovalFromHosts(input: {
+  targets: readonly ProjectRemoveTarget[];
+  getClient: (serverId: string) => Pick<DaemonClient, "inspectProjectRemoval"> | null;
+}): Promise<InspectedProjectRemoveTarget[]> {
+  const clients = input.targets.map((target) => {
+    const client = input.getClient(target.serverId);
+    if (!client) throw new Error("Host is not connected");
+    return { target, client };
+  });
+  return Promise.all(
+    clients.map(async ({ target, client }) => ({
+      serverId: target.serverId,
+      projectId: target.projectId,
+      deleteSessions: await client.inspectProjectRemoval(target.projectId),
+    })),
+  );
+}
 
 export function getProjectRemoveReadiness(input: {
   project: ProjectRemoveProject;
@@ -58,15 +84,16 @@ export function getCurrentProjectRemoveReadiness(
   const sessionState = useSessionStore.getState();
   return getProjectRemoveReadiness({
     project,
-    supportsProjectRemove: (serverId) => selectHostFeature(sessionState, serverId, "projectRemove"),
+    supportsProjectRemove: (serverId) =>
+      selectHostFeature(sessionState, serverId, "projectRemoveSessions"),
   });
 }
 
 export async function removeProjectFromHosts(input: {
-  targets: readonly ProjectRemoveTarget[];
+  targets: readonly InspectedProjectRemoveTarget[];
   getClient: (serverId: string) => ProjectRemoveClient | null;
 }): Promise<ProjectRemoveOutcome> {
-  const clients: Array<{ serverId: string; projectId: string; client: ProjectRemoveClient }> = [];
+  const clients: Array<InspectedProjectRemoveTarget & { client: ProjectRemoveClient }> = [];
   const disconnectedServerIds: string[] = [];
 
   for (const target of input.targets) {
@@ -75,7 +102,7 @@ export async function removeProjectFromHosts(input: {
       disconnectedServerIds.push(target.serverId);
       continue;
     }
-    clients.push({ serverId: target.serverId, projectId: target.projectId, client });
+    clients.push({ ...target, client });
   }
 
   if (disconnectedServerIds.length > 0) {
@@ -83,8 +110,8 @@ export async function removeProjectFromHosts(input: {
   }
 
   const results = await Promise.allSettled(
-    clients.map(async ({ client, projectId }) => {
-      await client.removeProject(projectId);
+    clients.map(async ({ client, projectId, deleteSessions }) => {
+      await client.removeProject(projectId, undefined, deleteSessions);
     }),
   );
   const failedServerIds: string[] = [];

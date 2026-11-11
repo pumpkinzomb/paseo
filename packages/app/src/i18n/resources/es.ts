@@ -1355,7 +1355,7 @@ export const es: TranslationResources = {
       confirmations: {
         removeTitle: "¿Quitar proyecto?",
         removeMessage:
-          '¿Quitar "{{projectName}}" de la barra lateral?\n\nLos archivos en el disco no se cambiarán.',
+          '¿Eliminar "{{projectName}}", sus {{workspaceCount}} grupos de sesiones y {{sessionCount}} sesiones de agentes, incluidas las secundarias?\n\nLos registros de conversaciones de Paseo se borrarán permanentemente y no se podrán restaurar. No se borrarán los archivos del proyecto ni los registros originales almacenados por los proveedores de agentes.',
         removeConfirm: "Eliminar",
         cancel: "Cancelar",
       },
