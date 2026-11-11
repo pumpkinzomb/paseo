@@ -51,8 +51,9 @@ model isolation is a separate, still-unverified feature and is not enabled here.
 7. Keep previous release until rollback is no longer needed. A native provider
    migration or schema change may need a distinct rollback plan.
 
-No automatic promotion is implemented. Both the UI and daemon must consume
-independent runtime copies; separating only the recovery UI is insufficient.
+Both the UI and daemon must consume independent runtime copies; separating only
+the recovery UI is insufficient. The opt-in supervised development updater below
+automates relaunch, but never forces an active daemon or window to stop.
 
 ## Verification scope
 
@@ -103,8 +104,123 @@ by the launcher; policy changes require the approved promotion procedure above.
 local data, auth, or machine-specific paths. The installed copy must be updated
 only through the operator deployment path, not an agent development task.
 
-Current focused validation: 292 AgentManager/policy tests, 6 lab-launcher tests,
-server typecheck and lint pass. Native-provider behavior and OS confinement are
-not established by these tests. A minimal runtime policy patch can retain the
-previous approved backend artifacts so unfinished browser/provider isolation
-code is not accidentally included in the release.
+## Supervised development updates
+
+`scripts/dev-update.mjs` is an opt-in development-runtime launcher and updater.
+It is separate from the packaged Electron updater and does not patch Metro source
+in place. Installing it is a deliberate launcher change: existing launchers and
+running apps are not adopted or modified by `init`.
+
+The supported behavior is conservative:
+
+- A validated release can be queued while the application is in use.
+- If only renderer source/assets changed, the desktop automatically hands off
+  after every app window and browser guest has already closed. It retains the
+  daemon and verifies its identity across handoff. It never closes a window,
+  reloads a browser form, or assumes an unsent draft was saved.
+- Native, dependency, configuration or daemon changes wait for a normal app quit
+  and confirmed daemon exit. The supervisor then starts the new release without
+  another launch click. A surviving daemon, including `Keep running after quit`,
+  blocks full replacement. Active agents, terminals and background work are not
+  interrupted to make an update happen.
+- This is not transparent hot replacement while windows/work remain active.
+  Updates are explicitly queued local releases, not automatic Git polling or an
+  untrusted model-callable deployment endpoint.
+
+### Stage and validate
+
+Commit changes in an independent development lab. Stage with:
+
+```
+node scripts/dev-update.mjs stage --source /absolute/lab \
+  --releases /absolute/releases --id update-<commit> --state-preserving
+```
+
+The source commit is cloned without hardlinks into a new staging directory before
+validation. Dependencies are installed from the lockfile there. Server/app/desktop
+builds, repository typecheck/lint/format and focused updater tests run in that
+snapshot. The command refuses a dirty source tree and never copies live state,
+authentication, `.env` files or existing dependencies. A failed check leaves an
+unselected staging directory for diagnosis. Successful staging emits the release
+ID and manifest digest to pass to `init` or `queue`.
+
+`--state-preserving` is an operator assertion made after reviewing the changes:
+there must be no incompatible state migration. The updater cannot infer that from
+tests and does not support data/schema rollback. The complete staged tree is
+hashed, including dependencies, links and executable bits. Escaping symlinks and
+shared hardlinks are refused. Only Metro's `.expo` and dependency cache directories
+are mutable. Versioned releases must not be edited after registration.
+
+### First installation
+
+Create a configuration JSON outside the source/release/state directories:
+
+```
+{
+  "schemaVersion": 1,
+  "releases": "/absolute/releases",
+  "home": "/absolute/existing-paseo-home",
+  "userData": "/absolute/existing-electron-profile",
+  "serverId": "existing-server-id",
+  "daemonPort": 6768,
+  "metroPort": 8084,
+  "selfDevelopmentPolicy": {
+    "labRoot": "/absolute/lab",
+    "protectedRoots": ["/absolute/releases", "/absolute/control"]
+  }
+}
+```
+
+Use the same existing home/profile/server identity; do not copy sessions or auth.
+Choose non-overlapping, canonical absolute paths. The control directory must be
+owned by the user with mode 0700. `init` creates it with that mode if absent; it
+never changes permissions on an existing directory.
+
+```
+node scripts/dev-update.mjs init --control /absolute/control \
+  --config /absolute/config.json --release update-<commit> --digest <digest>
+node /absolute/control/controller/dev-update.mjs start --control /absolute/control
+```
+
+Before the **first start**, normally quit the previous app and stop its daemon
+through the existing supported flow when the user is ready. The new supervisor
+refuses an existing daemon or occupied Metro port, rather than guessing ownership
+or killing it. Repoint the user's launcher separately after startup verification.
+`start` launches a detached supervisor, so an updating agent can finish its turn
+without owning the restart process. A launch PID is not a success confirmation.
+
+### Queue and inspect
+
+```
+node /absolute/control/controller/dev-update.mjs queue --control /absolute/control \
+  --release update-<new-commit> --digest <new-digest>
+node /absolute/control/controller/dev-update.mjs status --control /absolute/control
+```
+
+One pending update is supported. Repeating the exact request is idempotent; a
+new request cannot overwrite a pending or interrupted deployment. Status reports
+waiting-for-windows, waiting-for-app-quit, waiting-for-daemon-stop or a recovery
+error. There is no in-app update banner yet; the command/status output is the
+operator feedback surface. The daemon's normal auto-start setting must be enabled
+for readiness to complete.
+
+### Failure and recovery
+
+The supervisor owns only its spawned Metro/Electron children. It never signals
+a discovered daemon, force-kills a timeout, or rolls stored messages/drafts back.
+Selection changes only after Electron's first document finishes loading,
+bootstrap completes, and the daemon reports the configured identity/listen address.
+This checks startup, not React rendering, provider behavior or the user's complete
+workspace state.
+
+A failed or uncertain launch retains the old committed selection and a durable
+transition/lock. An alive candidate is left for inspection instead of being killed
+for rollback. Never delete a lock based on its age or PID alone. Operator recovery
+must first reconcile the recorded generation/processes, normally close surviving
+owned windows and stop their daemon when safe, inspect the failure, then choose
+the retained previous or candidate release. Restore only code selection, never old
+user-data snapshots. There is no automatic force-clear or automatic data rollback.
+
+The implementation has focused filesystem and real child-process coverage; the
+desktop handoff is also exercised in the existing isolated Electron startup suite.
+A successful test does not install this controller or prove a live cutover.

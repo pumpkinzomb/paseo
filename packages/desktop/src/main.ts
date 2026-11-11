@@ -100,6 +100,8 @@ import {
   registerExternalQuitSignals,
   stopDesktopManagedDaemonOnQuitIfNeeded,
 } from "./daemon/quit-lifecycle.js";
+import { inheritSupervisedLoginShellEnv } from "./dev-update/environment.js";
+import { createDevUpdateHandoff } from "./dev-update/handoff.js";
 import { runDesktopStartup } from "./desktop-startup.js";
 import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.js";
 import { BrowserKeyboard } from "./features/browser-keyboard/index.js";
@@ -110,6 +112,17 @@ import {
   type AgentDeepLinkTarget,
 } from "@getpaseo/protocol/agent-deep-link";
 import { AgentNavigationInbox, parseAgentDeepLinkFromArgv } from "./agent-navigation.js";
+
+const devUpdateHandoff = createDevUpdateHandoff({
+  isPackaged: app.isPackaged,
+  directory: process.env.PASEO_DEV_UPDATE_CONTROL_DIR,
+  generation: process.env.PASEO_DEV_UPDATE_GENERATION,
+  windowCount: () => BrowserWindow.getAllWindows().length,
+  webContentsCount: () => webContents.getAllWebContents().length,
+  quit: () => app.quit(),
+  onError: (error) => log.error("[dev-update] handoff failed", error),
+});
+let initialRendererLoaded = false;
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
 const APP_SCHEME = "paseo";
@@ -667,7 +680,16 @@ function getWorkAreasPrimaryFirst(): Electron.Rectangle[] {
   return [primary, ...others].map((display) => display.workArea);
 }
 
-async function createWindow(
+async function createWindow(...args: Parameters<typeof createWindowImpl>): Promise<BrowserWindow> {
+  const finish = devUpdateHandoff.beginWindowCreation();
+  try {
+    return await createWindowImpl(...args);
+  } finally {
+    finish();
+  }
+}
+
+async function createWindowImpl(
   options: {
     initialRoute?: string | null;
     restoreWindowState?: boolean;
@@ -711,6 +733,12 @@ async function createWindow(
   });
   applyDesktopWindowChromeMode({ win: mainWindow, mode: DESKTOP_WINDOW_CHROME_MODE });
 
+  if (restoreWindowState) {
+    mainWindow.webContents.once("did-finish-load", () => {
+      initialRendererLoaded = true;
+      if (bootstrapIsComplete) devUpdateHandoff.markStarted();
+    });
+  }
   const webContentsId = mainWindow.webContents.id;
   options.onCreated?.(webContentsId);
   mainWindow.webContents.on("did-start-navigation", (_event, _url, isSameDocument, isMainFrame) => {
@@ -997,7 +1025,9 @@ async function bootstrap(): Promise<void> {
 
   // Protocol + IPC handlers and the first window now exist: release any
   // second-instance launches that arrived during cold start.
+  devUpdateHandoff.start();
   bootstrapIsComplete = true;
+  if (initialRendererLoaded) devUpdateHandoff.markStarted();
   resolveBootstrapComplete();
 
   if (pendingAgentNavigation) {
@@ -1016,7 +1046,12 @@ async function bootstrap(): Promise<void> {
 void runDesktopStartup({
   hasPendingGuiLaunchRequest: Boolean(pendingOpenProjectPath || pendingAgentNavigation),
   runCliPassthroughIfRequested,
-  inheritLoginShellEnv,
+  inheritLoginShellEnv: () =>
+    inheritSupervisedLoginShellEnv({
+      env: process.env,
+      isPackaged: app.isPackaged,
+      inherit: inheritLoginShellEnv,
+    }),
   bootstrapGui: bootstrap,
 }).catch((error) => {
   const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
@@ -1033,6 +1068,7 @@ function showDaemonShutdownDialog(): void {
 const quitLifecycle = createQuitLifecycle({
   app,
   closeTransportSessions: closeAllTransportSessions,
+  isDevUpdateCommitted: devUpdateHandoff.isCommitted,
   stopDesktopManagedDaemonIfNeeded: () =>
     stopDesktopManagedDaemonOnQuitIfNeeded({
       settingsStore: getDesktopSettingsStore(),
@@ -1062,6 +1098,7 @@ electronAutoUpdater.on("before-quit-for-update", () => {
   log.info("[auto-updater] before-quit-for-update", { currentVersion: app.getVersion() });
   quitLifecycle.handleBeforeQuitForUpdate();
 });
+app.on("before-quit", () => devUpdateHandoff.dispose());
 app.on("before-quit", quitLifecycle.handleBeforeQuit);
 registerExternalQuitSignals({ signals: process, quit: () => app.quit() });
 

@@ -1,3 +1,6 @@
+// Development update supervision is part of the daemon ownership contract.
+import { registerDevUpdateTests } from "./dev-update.test.mjs";
+registerDevUpdateTests();
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";

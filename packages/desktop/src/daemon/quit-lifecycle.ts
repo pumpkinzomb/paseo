@@ -94,6 +94,7 @@ function createDeferredUpdateQuit(): DeferredUpdateQuit {
 export function createQuitLifecycle({
   app,
   closeTransportSessions,
+  isDevUpdateCommitted = () => false,
   stopDesktopManagedDaemonIfNeeded,
   installAppUpdateOnQuit,
   createUpdateDeadlineSignal,
@@ -102,6 +103,7 @@ export function createQuitLifecycle({
 }: {
   app: BeforeQuitApp;
   closeTransportSessions: () => void;
+  isDevUpdateCommitted?: () => boolean;
   stopDesktopManagedDaemonIfNeeded: () => Promise<boolean>;
   installAppUpdateOnQuit: (signal: AbortSignal) => Promise<boolean>;
   createUpdateDeadlineSignal: () => AbortSignal;
@@ -117,6 +119,8 @@ export function createQuitLifecycle({
 
   function handleBeforeQuit(event: BeforeQuitEvent): void {
     closeTransportSessions();
+    // A committed supervisor UI restart retains the daemon and skips the packaged updater.
+    if (isDevUpdateCommitted()) return;
     if (quittingForUpdate) return;
     if (quitting) {
       // MacUpdater's no-relaunch path calls app.quit() without emitting
