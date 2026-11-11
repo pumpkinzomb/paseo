@@ -777,10 +777,12 @@ describe("checkout PR schemas", () => {
         serverId: "srv_test",
         features: {
           projectRemove: true,
+          projectRemoveSessions: true,
         },
       }).features,
     ).toEqual({
       projectRemove: true,
+      projectRemoveSessions: true,
     });
   });
 

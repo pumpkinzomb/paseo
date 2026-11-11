@@ -1070,8 +1070,17 @@ export const ProjectIconSetRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const ProjectRemoveInspectRequestSchema = z.object({
+  type: z.literal("project.remove.inspect.request"),
+  projectId: z.string(),
+  requestId: z.string(),
+});
+
 export const ProjectRemoveRequestSchema = z.object({
   type: z.literal("project.remove.request"),
+  deleteSessions: z
+    .object({ workspaceIds: z.array(z.string()), agentIds: z.array(z.string()) })
+    .optional(),
   projectId: z.string(),
   requestId: z.string(),
 });
@@ -2295,6 +2304,17 @@ export const ProjectRemoveResponsePayloadSchema = z.object({
   accepted: z.boolean(),
   removedWorkspaceIds: z.array(z.string()).default([]),
   error: z.string().nullable(),
+});
+
+export const ProjectRemoveInspectResponseSchema = z.object({
+  type: z.literal("project.remove.inspect.response"),
+  payload: z.object({
+    requestId: z.string(),
+    projectId: z.string(),
+    workspaceIds: z.array(z.string()),
+    agentIds: z.array(z.string()),
+    error: z.string().nullable(),
+  }),
 });
 
 export const ProjectRemoveResponseSchema = z.object({
@@ -3680,6 +3700,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProjectRenameRequestSchema,
   ProjectIconSetRequestSchema,
   ProjectRemoveRequestSchema,
+  ProjectRemoveInspectRequestSchema,
   WorkspaceTitleSetRequestSchema,
   AgentMetadataUpdateRequestSchema,
   WorkspaceMetadataUpdateRequestSchema,
@@ -4170,6 +4191,7 @@ export const ServerInfoStatusPayloadSchema = z
         workspaceMultiplicity: z.boolean().optional(),
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: z.boolean().optional(),
+        projectRemoveSessions: z.boolean().optional(),
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectAdd: z.boolean().optional(),
         // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97
@@ -7753,6 +7775,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProjectRenameResponseSchema,
   ProjectIconSetResponseSchema,
   ProjectRemoveResponseSchema,
+  ProjectRemoveInspectResponseSchema,
   WorkspaceTitleSetResponseSchema,
   AgentMetadataUpdateResponseSchema,
   WorkspaceMetadataUpdateResponseSchema,

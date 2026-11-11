@@ -3772,15 +3772,28 @@ export class DaemonClient {
     if (!payload.accepted) throw new Error(payload.error ?? "setProjectIcon rejected");
   }
 
+  async inspectProjectRemoval(
+    projectId: string,
+  ): Promise<{ workspaceIds: string[]; agentIds: string[] }> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"project.remove.inspect.response">({
+        message: { type: "project.remove.inspect.request", projectId },
+      });
+    if (payload.error) throw new Error(payload.error);
+    return { workspaceIds: payload.workspaceIds, agentIds: payload.agentIds };
+  }
+
   async removeProject(
     projectId: string,
     requestId?: string,
+    deleteSessions?: { workspaceIds: string[]; agentIds: string[] },
   ): Promise<{ removedWorkspaceIds: string[] }> {
     const payload = await this.sendNamespacedCorrelatedSessionRequest<"project.remove.response">({
       requestId,
       message: {
         type: "project.remove.request",
         projectId,
+        deleteSessions,
       },
     });
     if (!payload.accepted) {

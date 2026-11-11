@@ -2170,6 +2170,7 @@ export class VoiceAssistantWebSocketServer {
         workspaceMultiplicity: true,
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: true,
+        projectRemoveSessions: true,
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectAdd: true,
         // COMPAT(projectList): added in v0.2.4, drop the gate when floor >= v0.2.4.

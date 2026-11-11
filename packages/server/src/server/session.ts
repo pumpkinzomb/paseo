@@ -3533,6 +3533,8 @@ export class Session {
         return this.handleProjectGithubCloneRequest(msg);
       case "archive_workspace_request":
         return this.handleArchiveWorkspaceRequest(msg);
+      case "project.remove.inspect.request":
+        return this.handleProjectRemoveInspection(msg);
       case "project.remove.request":
         return this.handleProjectRemoveRequest(msg);
       case "workspace.title.set.request":
@@ -4252,6 +4254,152 @@ export class Session {
     }
   }
 
+  private async resolveProjectRemovalScope(projectId: string): Promise<string[]> {
+    const workspaces = await this.workspaceRegistry.listAll();
+    const ids = new Set(
+      workspaces
+        .filter((workspace) => workspace.projectId === projectId)
+        .map((workspace) => workspace.workspaceId),
+    );
+    for (let previousSize = -1; previousSize !== ids.size; ) {
+      previousSize = ids.size;
+      for (const workspace of workspaces) {
+        if (workspace.parentWorkspaceId && ids.has(workspace.parentWorkspaceId))
+          ids.add(workspace.workspaceId);
+      }
+    }
+    for (const workspace of workspaces.filter((entry) => ids.has(entry.workspaceId))) {
+      const visited = new Set<string>();
+      let current: typeof workspace | undefined = workspace;
+      while (current && ids.has(current.workspaceId)) {
+        if (visited.has(current.workspaceId))
+          throw new Error("Invalid cyclic session group relationship.");
+        visited.add(current.workspaceId);
+        current = workspaces.find((entry) => entry.workspaceId === current?.parentWorkspaceId);
+      }
+    }
+    return [...ids].sort();
+  }
+
+  private async inspectProjectRemovalRecords(
+    workspaceIds: string[],
+    expectedAgentIds?: string[],
+    apply?: (ids: string[]) => Promise<void>,
+  ): Promise<string[]> {
+    if (!workspaceIds.length) {
+      if (expectedAgentIds?.length)
+        throw new Error("Project sessions changed. Review removal again.");
+      return [];
+    }
+    return defaultAssistantSelection(this.agentManager, this.paseoHome).deleteWorkspaceSessions({
+      workspaceId: workspaceIds[0]!,
+      workspaceIds,
+      expectedAgentIds,
+      list: () => this.agentStorage.listAll(),
+      validate: (ids) =>
+        this.agentManager.validateAssistantConversationMutation(ids, "delete", null),
+      apply:
+        apply ??
+        (async () => {
+          throw new Error("Inspection cannot delete session records.");
+        }),
+    });
+  }
+
+  private async handleProjectRemoveInspection(
+    request: Extract<SessionInboundMessage, { type: "project.remove.inspect.request" }>,
+  ): Promise<void> {
+    try {
+      if (!(await this.projectRegistry.get(request.projectId)))
+        throw new Error("Project no longer exists.");
+      const workspaceIds = await this.resolveProjectRemovalScope(request.projectId);
+      const agentIds = await this.inspectProjectRemovalRecords(workspaceIds);
+      this.emit({
+        type: "project.remove.inspect.response",
+        payload: {
+          requestId: request.requestId,
+          projectId: request.projectId,
+          workspaceIds,
+          agentIds,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "project.remove.inspect.response",
+        payload: {
+          requestId: request.requestId,
+          projectId: request.projectId,
+          workspaceIds: [],
+          agentIds: [],
+          error: getErrorMessage(error),
+        },
+      });
+    }
+  }
+
+  private async removeProjectSessionRecords(
+    projectId: string,
+    confirmed: { workspaceIds: string[]; agentIds: string[] },
+  ): Promise<string[]> {
+    const workspaceIds = await this.resolveProjectRemovalScope(projectId);
+    const verifyScope = async () => {
+      if (
+        JSON.stringify(await this.resolveProjectRemovalScope(projectId)) !==
+        JSON.stringify([...new Set(confirmed.workspaceIds)].sort())
+      )
+        throw new Error("Project session groups changed. Review removal again.");
+    };
+    await verifyScope();
+    let mutationAttempted = false;
+    const execute = async () => {
+      await verifyScope();
+      await this.inspectProjectRemovalRecords(workspaceIds, confirmed.agentIds, async (ids) => {
+        await verifyScope();
+        mutationAttempted = ids.length > 0;
+        await this.agentManager.mutateAssistantConversationRecords(
+          ids,
+          "delete",
+          null,
+          workspaceIds,
+        );
+      });
+      await verifyScope();
+      if (
+        (await this.agentStorage.listAll()).some(
+          (record) => record.workspaceId && workspaceIds.includes(record.workspaceId),
+        )
+      )
+        throw new Error("Project sessions changed during deletion. Refresh before retrying.");
+      const deletedAt = new Date().toISOString();
+      for (const workspaceId of workspaceIds) {
+        await this.workspaceRegistry.update(workspaceId, (workspace) => ({
+          ...workspace,
+          archivedAt: deletedAt,
+          updatedAt: deletedAt,
+          metadata: { ...workspace.metadata, sessionRecordsDeletedAt: deletedAt },
+        }));
+      }
+    };
+    const locked = (index: number): Promise<void> =>
+      index === workspaceIds.length
+        ? execute()
+        : this.agentManager.withWorkspaceSessionDeletion(workspaceIds[index]!, () =>
+            locked(index + 1),
+          );
+    try {
+      await locked(0);
+    } catch (error) {
+      if (mutationAttempted)
+        throw new Error(
+          `Deletion may be partially completed. Refresh and review remaining records before any retry. ${getErrorMessage(error)}`,
+          { cause: error },
+        );
+      throw error;
+    }
+    return workspaceIds;
+  }
+
   private async handleProjectRemoveRequest(
     request: Extract<SessionInboundMessage, { type: "project.remove.request" }>,
   ): Promise<void> {
@@ -4261,6 +4409,34 @@ export class Session {
     try {
       const project = await this.projectRegistry.get(projectId);
       const resolvedProjectId = project?.projectId ?? projectId;
+      if (request.deleteSessions) {
+        if (!project) throw new Error("Project no longer exists.");
+        const removedWorkspaceIds = await this.removeProjectSessionRecords(
+          resolvedProjectId,
+          request.deleteSessions,
+        );
+        if (
+          JSON.stringify(await this.resolveProjectRemovalScope(resolvedProjectId)) !==
+          JSON.stringify(removedWorkspaceIds)
+        )
+          throw new Error(
+            "Deletion may be partially completed. Project groups changed. Refresh and review remaining records before any retry.",
+          );
+        await this.projectRegistry.remove(resolvedProjectId);
+        await removeProjectCustomIcon({
+          paseoHome: this.paseoHome,
+          projectId: resolvedProjectId,
+        }).catch(() => {});
+        await this.emitWorkspaceUpdatesForWorkspaceIds(
+          removedWorkspaceIds.length ? removedWorkspaceIds : [projectId],
+          { removedProjectId: projectId },
+        );
+        this.emit({
+          type: "project.remove.response",
+          payload: { requestId, projectId, accepted: true, removedWorkspaceIds, error: null },
+        });
+        return;
+      }
       const projectWorkspaces = (await this.workspaceRegistry.listActive()).filter(
         (workspace) => workspace.projectId === resolvedProjectId,
       );

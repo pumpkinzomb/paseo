@@ -597,6 +597,7 @@ function createSessionForWorkspaceTests(
     error: vi.fn(),
   };
   const agentManager = asAgentManager({
+    updateAdmission: { enter: () => () => {} },
     subscribe: () => () => {},
     listAgents: () => [],
     listProviderSubagentActivity: () => [],

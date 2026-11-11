@@ -487,3 +487,20 @@ The default-assistant state now persists logical conversations with ordered nati
 The first segment remains the app's stable tab/workspace anchor. Its panel resolves the active segment before exposing the composer, approvals, stop controls and current stream. Earlier segments are available as paginated read-only user/assistant history in the same pane; tools and attachments are not merged into that presentation. Native transcripts remain intact. This is a single app conversation container, not identical native state or invisible transfer of all context between models.
 
 Navigation consolidates native segment tabs in client layout only. It does not archive or delete agents. Legacy segments in other workspaces are not moved or hidden automatically. A second client can refresh the logical record after assistant events/focus; there is no cross-application native-session ownership lock.
+
+### Project removal with confirmed session deletion
+
+`project.remove.inspect.request` previews all registered workspaces in a project,
+including archived records, and their explicit `parentWorkspaceId` descendants.
+The client shows the workspace/session counts before sending the exact inventory
+as `project.remove.request.deleteSessions`. This opt-in path permanently removes Paseo session records and timelines using
+the same deletion path as session-group deletion; it has no in-app undo. It preserves provider-native
+history and project/worktree source files. Busy records, cycles, or inventory changes
+reject removal; an error after mutation explicitly requires refreshing and reviewing
+the partial result before retrying. Workspace mutation gates and repeated inventory
+checks protect the selected records; this is not a global project-creation transaction.
+
+Requests without `deleteSessions` keep the legacy remove-project behavior (archive
+active workspaces, then remove the project registry entry). Ordinary workspace/worktree
+archive and its filesystem reference-count/undo contracts are unchanged. An old daemon
+cannot mistake the new inspect endpoint for a destructive remove request.
