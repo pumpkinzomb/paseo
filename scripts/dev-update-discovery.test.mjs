@@ -9,6 +9,7 @@ import {
   INTENT_FILE,
   prepareReleaseIntent,
   inspectCandidate,
+  fetchCandidate,
   stageRendererRelease,
   createDiscovery,
   validateDiscoveryConfig,
@@ -356,5 +357,29 @@ test("default discovery queue atomically rejects a changed installed base", asyn
       { baseDigest: f.current.digest },
     ),
     /Another update/,
+  );
+});
+
+test("fetched installed revision does not depend on a stale local checkout", async (t) => {
+  const f = await fixture(t);
+  await f.git("branch", "-M", "main");
+  const fetched = await fetchCandidate(
+    {
+      ...f.config,
+      remoteUrl: f.repository,
+      sourceRepository: path.join(f.root, "no-longer-existing-source"),
+    },
+    f.base,
+  );
+  assert.equal(fetched.candidateRevision, f.base);
+  assert.equal(
+    (
+      await inspectCandidate({
+        repository: fetched.repository,
+        installedRevision: f.base,
+        candidateRevision: f.base,
+      })
+    ).state,
+    "current",
   );
 });

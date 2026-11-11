@@ -199,15 +199,6 @@ export async function fetchCandidate(config, installedRevision) {
   } catch {
     await git(config.cacheRoot, ["init", "--bare", repository]);
   }
-  if (config.sourceRepository && installedRevision) {
-    await git(repository, [
-      "fetch",
-      "--no-tags",
-      "--no-recurse-submodules",
-      await fs.realpath(config.sourceRepository),
-      revision(installedRevision),
-    ]);
-  }
   // Fixed refspec, no pull/reset, no working-tree mutation, no push operation.
   await git(repository, [
     "fetch",
@@ -216,6 +207,22 @@ export async function fetchCandidate(config, installedRevision) {
     config.remoteUrl,
     `+${config.ref}:refs/discovery/main`,
   ]);
+  // A later deployment may come from another local checkout. Prefer objects
+  // already fetched from the pinned channel; the local source is only a fallback.
+  if (installedRevision) {
+    try {
+      await git(repository, ["cat-file", "-e", `${revision(installedRevision)}^{commit}`]);
+    } catch {
+      if (!config.sourceRepository) throw new Error("Installed source revision is unavailable");
+      await git(repository, [
+        "fetch",
+        "--no-tags",
+        "--no-recurse-submodules",
+        await fs.realpath(config.sourceRepository),
+        revision(installedRevision),
+      ]);
+    }
+  }
   return {
     repository,
     candidateRevision: (await git(repository, ["rev-parse", "refs/discovery/main"])).trim(),
