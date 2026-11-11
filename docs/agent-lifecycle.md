@@ -424,6 +424,26 @@ A parent that spawns many subagents will see the panel's list grow; the pill onl
 
 Closing a subagent's tab on one client doesn't affect other clients' layouts. This is the expected behavior of decoupled tabs and is consistent with how layouts have always worked. Archive remains the global gesture for cross-client cleanup.
 
+## Completed workspace history and explicit session deletion
+
+A completed descendant workspace remains attached to its recorded `parentWorkspaceId`
+after project or worktree removal. The Done row opens a read-only timeline sheet,
+not a route requiring the old directory. The sheet subscribes to history explicitly;
+it cannot send messages, accept file drops, fork, or rewind. Provider history loading
+may create a short-lived history reader; it is not proof that no provider process starts.
+
+The row trash action explicitly deletes that workspace's Paseo session records.
+Only successful record removal sets `sessionRecordsDeletedAt` and hides the row;
+a missing project or directory alone does not hide retained history.
+
+New session-deletion clients preview the selected workspace and its explicit
+workspace descendants, then confirm both workspace and agent inventories. The server
+revalidates that scope before deletion, including empty newly added descendants,
+changed ancestry and busy agents. Cycles are rejected. Unrelated siblings are not
+included. An older client without descendant scope retains exact-workspace deletion.
+Provider-native history and source files are not deleted by this operation. This is
+separate from ordinary workspace archive and project/worktree filesystem removal.
+
 ## Storage
 
 ```
