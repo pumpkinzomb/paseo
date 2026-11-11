@@ -106,10 +106,16 @@ export function ToolbarButton({
     () => ({ disabled: Boolean(disabled), selected }),
     [disabled, selected],
   );
+  const tooltipContent = tooltipBody ?? label;
+  const isTextTooltip = typeof tooltipContent === "string" || typeof tooltipContent === "number";
   const tooltip = (
     <TooltipContent side={tooltipSide} align="center" offset={8}>
       <View style={styles.tooltipRow}>
-        {tooltipBody ?? <Text style={styles.tooltipText}>{label}</Text>}
+        {isTextTooltip ? (
+          <Text style={styles.tooltipText}>{tooltipContent}</Text>
+        ) : (
+          tooltipContent
+        )}
         {shortcut ? <Shortcut chord={shortcut} /> : null}
       </View>
     </TooltipContent>
