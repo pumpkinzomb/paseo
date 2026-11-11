@@ -2370,6 +2370,9 @@ export const ko: TranslationResources = {
     },
   },
   providerUsage: {
+    reconnect: "다시 연결",
+    reconnectHint:
+      "이 호스트의 공급자 앱 또는 CLI에서 다시 로그인한 뒤 눌러 사용량 연결을 확인하세요. 자동으로 로그인하는 기능은 아닙니다.",
     checkUsage: "사용량 확인",
     checkUsageHint: "모든 기기에서 {{host}}에 적용",
     off: "{{host}}의 사용량 확인이 꺼져 있습니다.",

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { i18n } from "@/i18n/i18next";
 import {
+  needsUsageReconnect,
   resolveUsageReport,
   displayPercent,
   resolveAgentUsageView,
@@ -416,4 +417,41 @@ it("disabled host shows off even with cached reports", () => {
       query: { data: [], error: null, isFetching: false },
     }),
   ).toMatchObject({ kind: "off" });
+});
+
+describe("needsUsageReconnect", () => {
+  it("offers reconnect for rejected credentials, including retained reports", () => {
+    const value = entry({});
+    value.report = { status: "unavailable", problem: { kind: "rejected", status: 401 } };
+    expect(needsUsageReconnect(value)).toBe(true);
+    const retained = entry({});
+    retained.loginErrors = [{ harness: "Cursor", report: value.report }];
+    expect(needsUsageReconnect(retained)).toBe(true);
+  });
+  it("handles expiry but does not offer reconnection for an exhausted quota", () => {
+    expect(
+      needsUsageReconnect({
+        ...entry({}),
+        report: {
+          status: "unavailable",
+          problem: { kind: "expired", expiresAt: "2026-01-01T00:00:00.000Z" },
+        },
+      }),
+    ).toBe(true);
+    expect(
+      needsUsageReconnect({
+        ...entry({}),
+        report: {
+          status: "unavailable",
+          problem: { kind: "no_quota", detail: "No remaining usage" },
+        },
+      }),
+    ).toBe(false);
+  });
+  it("does not call normal usage or transport errors an authentication failure", () => {
+    expect(needsUsageReconnect(entry({}))).toBe(false);
+    expect(
+      needsUsageReconnect({ ...entry({}), report: { status: "error", error: "offline" } }),
+    ).toBe(false);
+  });
 });

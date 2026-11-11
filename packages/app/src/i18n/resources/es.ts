@@ -2273,6 +2273,9 @@ export const es: TranslationResources = {
     },
   },
   providerUsage: {
+    reconnect: "Reconectar",
+    reconnectHint:
+      "Inicia sesión de nuevo en la app o CLI del proveedor en este host y vuelve a comprobar el uso aquí. Esto no inicia sesión automáticamente.",
     checkUsage: "Consultar uso",
     checkUsageHint: "Se aplica a {{host}} en todos los dispositivos",
     off: "El uso está desactivado en {{host}}.",

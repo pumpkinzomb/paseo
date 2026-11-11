@@ -8,6 +8,7 @@ import {
   iconButtonChromeGlyphSize,
   smallIconButtonChromeFrameSize,
 } from "@/components/ui/icon-button-chrome";
+import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ToolbarButton, paneContentToolbarIconSize } from "@/components/ui/pane-content-toolbar";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -17,7 +18,7 @@ import type { TFunction } from "i18next";
 import { UsageBalanceBar } from "./balance-bar";
 import type { UsageDisplay } from "./display";
 import { formatAgo, formatProviderUsageLabel } from "./format";
-import { resolveUsageReport, type UsageRefresh } from "./model";
+import { needsUsageReconnect, resolveUsageReport, type UsageRefresh } from "./model";
 import { useReportRefresh } from "./queries";
 import { UsageSourceIcon } from "./source-icon";
 import type { UsageReport, UsageReportEntry, UsageWindow } from "./types";
@@ -108,6 +109,22 @@ export function UsageCard({
         <Text style={styles.error} testID="usage-login-error">
           {messages.join("\n")}
         </Text>
+      ) : null}
+
+      {needsUsageReconnect(entry) ? (
+        <View style={styles.reconnect}>
+          <Text style={styles.footer}>{t("providerUsage.reconnectHint")}</Text>
+          <Button
+            testID="usage-reconnect"
+            size="sm"
+            variant="outline"
+            leftIcon={RotateCw}
+            loading={refreshState === "pending"}
+            onPress={refresh}
+          >
+            {t("providerUsage.reconnect")}
+          </Button>
+        </View>
       ) : null}
 
       {windows.length > 0 || balances.length > 0 ? (
@@ -288,6 +305,7 @@ function iconHitboxOverhang(compact: boolean) {
 }
 
 const styles = StyleSheet.create((theme) => ({
+  reconnect: { gap: theme.spacing[2], alignItems: "flex-start" },
   container: {
     gap: theme.spacing[3],
   },

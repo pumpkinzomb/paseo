@@ -2384,6 +2384,9 @@ export const en = {
     },
   },
   providerUsage: {
+    reconnect: "Reconnect",
+    reconnectHint:
+      "Sign in again in the provider app or CLI on this host, then reconnect to check usage. This does not sign you in automatically.",
     checkUsage: "Check usage",
     checkUsageHint: "Applies to {{host}} on every device",
     off: "Usage is off on {{host}}.",

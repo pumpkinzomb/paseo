@@ -2247,6 +2247,9 @@ export const ja: TranslationResources = {
     },
   },
   providerUsage: {
+    reconnect: "再接続",
+    reconnectHint:
+      "このホストのプロバイダーアプリまたはCLIで再ログインしてから、再接続して使用量を確認してください。自動ログインではありません。",
     checkUsage: "使用状況を確認",
     checkUsageHint: "すべてのデバイスで {{host}} に適用",
     off: "{{host}} の使用状況確認はオフです。",

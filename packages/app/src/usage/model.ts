@@ -243,3 +243,14 @@ function usageProblemText(report: UsageReport, t: TFunction): string {
   if (report.status === "unavailable") return usageCopy.problem(report.problem, new Date(), t);
   return "";
 }
+
+/** Only explicit authentication failures need a reconnect action, not quota/network errors. */
+export function needsUsageReconnect(entry: UsageReportEntry): boolean {
+  const isAuthFailure = (report: UsageReport) =>
+    report.status === "unavailable" &&
+    (report.problem.kind === "expired" || report.problem.kind === "rejected");
+  return (
+    isAuthFailure(entry.report) ||
+    (entry.loginErrors?.some(({ report }) => isAuthFailure(report)) ?? false)
+  );
+}
