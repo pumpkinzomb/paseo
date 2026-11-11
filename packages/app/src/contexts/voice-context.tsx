@@ -1,3 +1,4 @@
+import { shouldUseNativeVoice } from "@/voice/native-voice-routing";
 import { useVoiceUpdateBlocker } from "@/voice/voice-update-blocker";
 import { useToast } from "@/contexts/toast-context";
 import { nativeVoicePeerAvailable, startNativeVoicePeer } from "@/voice/native-voice-peer";
@@ -150,7 +151,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       supportsNativeVoice: (serverId, agentId) => {
         const session = useSessionStore.getState().getSession(serverId);
         const agent = session?.agentDetails.get(agentId) ?? session?.agents.get(agentId);
-        return nativeVoicePeerAvailable() && agent?.capabilities.supportsNativeVoice === true;
+        return shouldUseNativeVoice(agent, nativeVoicePeerAvailable());
       },
       startNativeVoice: (serverId, agentId, signal, callbacks) => {
         const client = getHostRuntimeStore().getClient(serverId);

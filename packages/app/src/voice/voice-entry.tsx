@@ -1,3 +1,4 @@
+import { shouldUseNativeVoice } from "@/voice/native-voice-routing";
 import { useUpdateTransientBlocker } from "@/desktop/dev-update/transient-state";
 import { nativeVoicePeerAvailable } from "./native-voice-peer";
 import {
@@ -42,7 +43,7 @@ export function VoiceEntryProvider({
     async (serverId: string, agentId: string) => {
       const session = useSessionStore.getState().getSession(serverId);
       const agent = session?.agentDetails.get(agentId) ?? session?.agents.get(agentId);
-      if (nativeVoicePeerAvailable() && agent?.capabilities.supportsNativeVoice) {
+      if (shouldUseNativeVoice(agent, nativeVoicePeerAvailable())) {
         await runtime.startVoice(serverId, agentId);
         return;
       }
