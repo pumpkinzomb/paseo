@@ -10,6 +10,7 @@ import {
   verifyDependencyEntries,
 } from "./dev-update-dependencies.mjs";
 import { inside, atomicJson } from "./dev-update-store.mjs";
+import { registerManagedDependencies } from "./managed-worktree-maintenance.mjs";
 const exec = promisify(execFile);
 const overlaps = (a, b) => a === b || inside(a, b) || inside(b, a);
 async function common(root) {
@@ -86,6 +87,7 @@ export async function prepareManagedWorktree(env = process.env, dependencies = {
           "Managed dependency inputs changed; explicit dependency update is required",
         );
       await verifyDependencyEntries(root, receipt.entries);
+      await registerManagedDependencies(context, root, receipt);
       return { mode: "already-prepared", root };
     }
     await assertEmptyDependencies(root);
@@ -98,14 +100,16 @@ export async function prepareManagedWorktree(env = process.env, dependencies = {
     });
     if (result.mode !== "reuse")
       throw new Error("Managed worktrees require independent verified reuse");
-    await atomicJson(receiptFile, {
+    const preparedReceipt = {
       schemaVersion: 1,
       root,
       donor: result.donor,
       inputs: await dependencyInputs(root),
       entries: result.entries,
       preparedAt: new Date().toISOString(),
-    });
+    };
+    await atomicJson(receiptFile, preparedReceipt);
+    await registerManagedDependencies(context, root, preparedReceipt);
     return { mode: result.mode, root };
   } finally {
     await lock.close();

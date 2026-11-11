@@ -1,0 +1,115 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import {
+  registerManagedDependencies,
+  inspectManagedCandidate,
+  runManagedMaintenance,
+} from "./managed-worktree-maintenance.mjs";
+import { hash } from "./dev-update-store.mjs";
+async function fixture(t) {
+  const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "managed-maintenance-")));
+  t.after(() => fs.rm(base, { recursive: true, force: true }));
+  const source = path.join(base, "source"),
+    root = path.join(base, "child"),
+    live = path.join(base, "live"),
+    registry = path.join(base, "registry");
+  await fs.mkdir(source);
+  await fs.mkdir(live);
+  const git = (...args) =>
+    execFileSync("git", args, { cwd: source, stdio: "pipe" }).toString().trim();
+  git("init", "-q", "-b", "main");
+  git("config", "user.name", "Test");
+  git("config", "user.email", "test@example.invalid");
+  git("config", "commit.gpgsign", "false");
+  await fs.writeFile(path.join(source, "source.txt"), "source");
+  await fs.writeFile(path.join(source, ".gitignore"), "node_modules\nhistory\n");
+  git("add", ".");
+  git("commit", "-qm", "base");
+  const revision = git("rev-parse", "HEAD");
+  git("worktree", "add", "-q", "--detach", root);
+  await fs.mkdir(path.join(root, "node_modules"));
+  await fs.writeFile(path.join(root, "node_modules", "keep"), "deps");
+  await fs.writeFile(path.join(root, "history"), "conversation");
+  const receipt = {
+    schemaVersion: 1,
+    root,
+    entries: { "node_modules/keep": { sha256: hash("deps"), executable: false } },
+  };
+  await fs.writeFile(path.join(root, ".managed-dependencies.json"), JSON.stringify(receipt));
+  await registerManagedDependencies(
+    { maintenanceRegistry: registry, releases: live, protectedRoots: [live], sourceRoot: source },
+    root,
+    receipt,
+  );
+  const record = JSON.parse(await fs.readFile(path.join(registry, `${hash(root)}.json`), "utf8"));
+  return {
+    source,
+    root,
+    live,
+    registry,
+    record,
+    git,
+    evidence: { sourceRevision: revision, releaseDigest: "a".repeat(64) },
+  };
+}
+test("merged and deployed candidate is recorded but no lease means no deletion, repeatedly", async (t) => {
+  const f = await fixture(t);
+  const first = await runManagedMaintenance(f),
+    second = await runManagedMaintenance(f);
+  assert.deepEqual(first, second);
+  assert.equal(first[0].candidate, true);
+  assert.equal(first[0].reason, "exclusive-maintenance-lease-unavailable");
+  assert.equal(await fs.readFile(path.join(f.root, "node_modules/keep"), "utf8"), "deps");
+  assert.equal(await fs.readFile(path.join(f.root, "history"), "utf8"), "conversation");
+});
+test("dirty, altered receipt, forged root and symlink ancestor are rejected", async (t) => {
+  const f = await fixture(t);
+  await fs.writeFile(path.join(f.root, "source.txt"), "changed");
+  await assert.rejects(inspectManagedCandidate(f.record, f.evidence), /dirty/);
+  await fs.writeFile(path.join(f.root, "source.txt"), "source");
+  await fs.writeFile(path.join(f.root, ".managed-dependencies.json"), "{}");
+  await assert.rejects(inspectManagedCandidate(f.record, f.evidence), /receipt-changed/);
+  await assert.rejects(
+    inspectManagedCandidate({ ...f.record, root: f.live }, f.evidence),
+    /identity-changed/,
+  );
+  const alias = path.join(path.dirname(f.root), "alias");
+  await fs.symlink(path.dirname(f.root), alias);
+  await assert.rejects(
+    inspectManagedCandidate({ ...f.record, root: path.join(alias, "child") }, f.evidence),
+    /path-alias/,
+  );
+});
+test("worktree commit must be in both main and the running release", async (t) => {
+  const f = await fixture(t);
+  execFileSync("git", ["-C", f.root, "commit", "--allow-empty", "-qm", "child"]);
+  await assert.rejects(inspectManagedCandidate(f.record, f.evidence), /not-merged-to-main/);
+  const head = execFileSync("git", ["-C", f.root, "rev-parse", "HEAD"]).toString().trim();
+  f.git("merge", "--ff-only", head);
+  await assert.rejects(inspectManagedCandidate(f.record, f.evidence), /not-in-running-release/);
+  assert.equal(
+    (await inspectManagedCandidate(f.record, { ...f.evidence, sourceRevision: head })).candidate,
+    true,
+  );
+});
+test("registry aliases and malformed records yield skip reports", async (t) => {
+  const f = await fixture(t),
+    name = `${"b".repeat(64)}.json`;
+  await fs.symlink(path.join(f.registry, `${hash(f.root)}.json`), path.join(f.registry, name));
+  const results = await runManagedMaintenance(f);
+  assert.equal(results.find((x) => x.reason === "registry-file-alias").candidate, false);
+});
+
+test("missing deployment evidence skips without changing contents", async (t) => {
+  const f = await fixture(t);
+  const results = await runManagedMaintenance({ ...f, evidence: {} });
+  assert.equal(results[0].reason, "missing-release-evidence");
+  const report = JSON.parse(await fs.readFile(path.join(f.registry, "last-result.json"), "utf8"));
+  assert.equal(report.inspectionOnly, true);
+  assert.equal(report.automaticReclamation, false);
+  assert.equal(await fs.readFile(path.join(f.root, "node_modules/keep"), "utf8"), "deps");
+});

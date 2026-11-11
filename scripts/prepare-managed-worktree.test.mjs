@@ -32,6 +32,7 @@ async function fixture(t) {
   git("worktree", "add", "-q", "--detach", root);
   const context = {
     releases: live,
+    maintenanceRegistry: path.join(live, "managed-worktrees"),
     donor: { id: "release", digest: "a".repeat(64) },
     protectedRoots: [live],
     sourceRoot: source,
@@ -60,6 +61,7 @@ test("separate managed worktree reuses dependencies without installing or seedin
   });
   assert.equal(result.mode, "reuse");
   assert.equal(calls, 1);
+  assert.equal((await fs.readdir(f.context.maintenanceRegistry)).length, 1);
   assert.equal((await prepareManagedWorktree(f.env)).mode, "already-prepared");
   await assert.rejects(fs.stat(path.join(f.root, ".dev")), { code: "ENOENT" });
 });

@@ -303,12 +303,18 @@ export function registerDevUpdateTests() {
   }
   test("renderer update exits owned child then relaunches and commits while preserving daemon", async (t) => {
     const f = await initialized(t, { "packages/app/src/view.ts": "new" });
+    await atomicJson(path.join(f.control, "config.json"), {
+      ...f.config,
+      selfDevelopmentPolicy: { labRoot: f.root },
+    });
+    const maintenance = [];
     let inspected = false;
     const launches = [],
       daemon = { pid: 987, startedAt: "fixture", serverId: "stable" };
     await queueRelease(f.control, selection(f.after));
     await runSupervisor(f.control, {
       pollMs: 5,
+      runMaintenance: async (request) => maintenance.push(request),
       inspectDaemon: async () => {
         const value = inspected ? daemon : null;
         inspected = true;
@@ -326,6 +332,10 @@ export function registerDevUpdateTests() {
         });
       },
     });
+    assert.deepEqual(
+      maintenance.map((x) => x.evidence.releaseDigest),
+      [f.before.digest, f.after.digest],
+    );
     assert.deepEqual(launches, [f.before.root, f.after.root]);
     assert.deepEqual(await readJson(path.join(f.control, "state.json")), {
       schemaVersion: 1,
@@ -506,11 +516,17 @@ export function registerDevUpdateTests() {
   });
   test("lost readiness leaves a durable transition and never rolls user data backward", async (t) => {
     const f = await initialized(t, { "packages/app/src/view.ts": "new" });
+    await atomicJson(path.join(f.control, "config.json"), {
+      ...f.config,
+      selfDevelopmentPolicy: { labRoot: f.root },
+    });
+    const maintenance = [];
     await queueRelease(f.control, selection(f.after));
     let launches = 0;
     await assert.rejects(
       runSupervisor(f.control, {
         pollMs: 5,
+        runMaintenance: async (request) => maintenance.push(request),
         inspectDaemon: async () => null,
         launch: async () => {
           launches++;
@@ -523,6 +539,10 @@ export function registerDevUpdateTests() {
         },
       }),
       /no ready/,
+    );
+    assert.deepEqual(
+      maintenance.map((x) => x.evidence.releaseDigest),
+      [f.before.digest],
     );
     const state = await readJson(path.join(f.control, "state.json"));
     assert.equal(state.current.id, "old");

@@ -16,6 +16,7 @@ import {
   changeState,
   manifestDigest,
 } from "./dev-update-store.mjs";
+import { runManagedMaintenance } from "./managed-worktree-maintenance.mjs";
 import { AutomaticUpdateController } from "./dev-update-automatic.mjs";
 import { createDaemonUpdateLease } from "./dev-update-lease.mjs";
 
@@ -188,6 +189,25 @@ class Supervisor {
     this.config = config;
     this.deps = deps;
   }
+  queueManagedMaintenance() {
+    if (!this.config.selfDevelopmentPolicy) return;
+    const request = {
+      registry: path.join(this.control, "managed-worktrees"),
+      evidence: {
+        sourceRevision: this.release.manifest.sourceRevision,
+        releaseDigest: this.selection.digest,
+      },
+    };
+    this.maintenance = (this.maintenance ?? Promise.resolve())
+      .then(() => this.deps.runMaintenance(request))
+      .catch(async (error) => {
+        await atomicJson(path.join(this.control, "maintenance-error.json"), {
+          message: error.message,
+          checkedAt: new Date().toISOString(),
+        });
+      })
+      .catch(() => {});
+  }
   async status(value) {
     const key = JSON.stringify(value);
     if (key === this.lastStatus) return;
@@ -238,6 +258,7 @@ class Supervisor {
         return remaining;
       });
     await this.status({ state: "running", releaseId: this.selection.id });
+    this.queueManagedMaintenance();
     if (this.config.automaticUpdates?.enabled) {
       await privateDirectory(path.join(this.control, "daemon-control"));
       this.automatic = await this.deps.createAutomatic(this);
@@ -356,6 +377,7 @@ class Supervisor {
     this.release = candidate;
     this.handoff = null;
     await this.status({ state: "running", releaseId: this.selection.id, updated: true });
+    this.queueManagedMaintenance();
     return false;
   }
   async tick() {
@@ -417,6 +439,7 @@ export async function runSupervisor(
   control,
   {
     launch = launchRuntime,
+    runMaintenance = runManagedMaintenance,
     inspectDaemon = daemonSnapshot,
     pollMs = 1_000,
     createAutomatic = (supervisor) =>
@@ -436,6 +459,7 @@ export async function runSupervisor(
     inspectDaemon,
     pollMs,
     createAutomatic,
+    runMaintenance,
   });
   let safeToUnlock = true;
   try {
@@ -449,6 +473,7 @@ export async function runSupervisor(
     await supervisor.status({ state: "recovery-required", message: error.message }).catch(() => {});
     throw error;
   } finally {
+    await supervisor.maintenance;
     if (safeToUnlock) await unlock();
   }
 }
@@ -517,6 +542,7 @@ export function managedWorktreeEnvironment(config, root, control, manifest) {
       donor: { id: manifest.id, digest: manifestDigest(manifest) },
       protectedRoots: [root, config.home, config.userData, control],
       sourceRoot: config.selfDevelopmentPolicy.labRoot,
+      maintenanceRegistry: path.join(control, "managed-worktrees"),
     }),
     PASEO_WORKTREE_SETUP_HELPER: path.join(root, "scripts", "prepare-managed-worktree.mjs"),
   };
