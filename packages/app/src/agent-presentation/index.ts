@@ -11,6 +11,19 @@ function isAssistantAgent(agent: Agent | null): boolean {
   return agent?.labels?.["paseo.role"] === "assistant";
 }
 
+// Titles the daemon stores for the lead agent: DEFAULT_ASSISTANT_DISPLAY_NAME in
+// packages/server/src/server/default-assistant/index.ts and its pre-rename value.
+// Stored titles are not localized, so the client shows its own translation instead.
+const DEFAULT_ASSISTANT_STORED_TITLES = new Set(["Lead agent", "Assistant"]);
+
+/** Localized lead agent name unless the user gave the conversation its own title. */
+export function resolveAssistantTitle(title: string | null | undefined): string {
+  const label = resolveAgentLabel(title);
+  return label === null || DEFAULT_ASSISTANT_STORED_TITLES.has(label)
+    ? i18n.t("defaultAssistant.title")
+    : label;
+}
+
 function formatProviderLabel(provider: Agent["provider"]): string {
   if (!provider) {
     return "Agent";
@@ -62,6 +75,9 @@ export function useAgentDescriptor(
   const icon = useProviderIcon(descriptorState.provider, context.serverId);
   const descriptor = buildAgentDescriptor({
     ...descriptorState,
+    title: descriptorState.isAssistant
+      ? resolveAssistantTitle(descriptorState.title)
+      : descriptorState.title,
     icon: descriptorState.isAssistant ? MessageCircle : icon,
   });
   return descriptorState.isAssistant

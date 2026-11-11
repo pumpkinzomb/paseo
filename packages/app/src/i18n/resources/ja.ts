@@ -8,7 +8,7 @@ export const ja: TranslationResources = {
   localSessions: en.localSessions,
   sessionRecordDeletion: en.sessionRecordDeletion,
   assistantLifecycle: en.assistantLifecycle,
-  defaultAssistant: en.defaultAssistant,
+  defaultAssistant: { ...en.defaultAssistant, title: "リードエージェント" },
   pluginCombobox: {
     searching: "検索中…",
     empty: "結果がありません",

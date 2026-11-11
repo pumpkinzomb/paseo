@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildAgentDescriptor, resolveAgentLabel } from "@/agent-presentation";
+import {
+  buildAgentDescriptor,
+  resolveAgentLabel,
+  resolveAssistantTitle,
+} from "@/agent-presentation";
 import { i18n } from "@/i18n/i18next";
 import { buildDraftPanelDescriptor } from "@/panels/draft-panel-descriptor";
 
@@ -142,5 +146,23 @@ describe("shared agent descriptor", () => {
     expect(describeAgent({ requiresAttention: true, attentionReason }).statusBucket).toBe(
       statusBucket,
     );
+  });
+});
+
+describe("lead agent title", () => {
+  it.each([null, "Assistant", "Lead agent", " Lead agent "])(
+    "shows the localized name for the stored default: %s",
+    async (title) => {
+      expect(resolveAssistantTitle(title)).toBe("Lead agent");
+      await i18n.changeLanguage("ko");
+      expect(resolveAssistantTitle(title)).toBe("상위 에이전트");
+      await i18n.changeLanguage("en");
+    },
+  );
+
+  it("keeps a title the user chose", async () => {
+    await i18n.changeLanguage("ko");
+    expect(resolveAssistantTitle("Release planning")).toBe("Release planning");
+    await i18n.changeLanguage("en");
   });
 });

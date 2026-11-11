@@ -42,7 +42,8 @@ export const ko: TranslationResources = {
     archive: "대화 보관",
     restore: "대화 복원",
     delete: "영구 삭제",
-    scope: "모든 공급자 구간을 포함한 상위 대화 전체에 적용됩니다. 닫기는 화면만 닫습니다.",
+    scope:
+      "모든 공급자 구간을 포함한 상위 에이전트 대화 전체에 적용됩니다. 닫기는 화면만 닫습니다.",
     busy: "실행 중인 작업이 끝난 뒤 보관하거나 삭제하세요.",
     archiveConfirm:
       "이 대화의 모든 구간을 보관할까요? 세션 기록에서 복원할 수 있으며 기본 대화로 자동 재진입하지 않습니다.",
@@ -84,11 +85,11 @@ export const ko: TranslationResources = {
       "포함 {{included}}건 · 제외 {{omitted}}건 · 민감정보 의심 제외 {{sensitive}}건 · 기록 일부 생략: {{truncated}}",
     handoffWaitIdle: "현재 작업이 끝나고 대기 중인 승인이 해결된 뒤 모델을 변경해주세요.",
     managerModelTitle: "상위 에이전트 모델",
-    switchProvider: "기본 에이전트 공급자·모델 변경 (새 대화)",
+    switchProvider: "상위 에이전트 공급자·모델 변경 (새 대화)",
     chooseModel: "모델을 골라 새 대화",
     providerDefault: "제공자 기본값",
     modelSelectionNotice:
-      "선택한 모델로 새 관리자 대화를 시작해요. 기존 대화는 보존되며, 대화 맥락이 자동 전달되지는 않아요.",
+      "선택한 모델로 새 상위 에이전트 대화를 시작해요. 기존 대화는 보존되며, 대화 맥락이 자동 전달되지는 않아요.",
     modelShortlistNotice:
       "사용 가능한 모델을 모두 표시합니다. OpenCode는 요금이 명시적으로 0인 모델만 제외하며, 요금이 없거나 불완전한 모델은 미확인 표시로 선택할 수 있습니다.",
     loadingModels: "제공자 모델을 불러오는 중…",
@@ -97,12 +98,12 @@ export const ko: TranslationResources = {
       "목록 표시는 로그인·구독 권한·잔액을 보장하지 않아요. 메시지를 보내기 전에는 모델 대화를 실행하지 않아요.",
     refreshModels: "목록 새로고침",
     startWithModel: "새 대화 시작",
-    title: "기본 에이전트",
+    title: "상위 에이전트",
     newConversation: "새 대화",
-    connecting: "에이전트 호스트에 연결하는 중…",
+    connecting: "상위 에이전트 호스트에 연결하는 중…",
     opening: "마지막 대화를 이어 여는 중…",
     updateHost:
-      "이 호스트를 기본 에이전트를 지원하는 개발본으로 업데이트해 주세요. 기존 프로젝트는 계속 열 수 있어요.",
+      "이 호스트를 상위 에이전트를 지원하는 개발본으로 업데이트해 주세요. 기존 프로젝트는 계속 열 수 있어요.",
     providers: "에이전트 설정",
     projects: "프로젝트 열기",
   },

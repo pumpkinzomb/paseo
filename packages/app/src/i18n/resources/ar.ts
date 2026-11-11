@@ -8,7 +8,7 @@ export const ar: TranslationResources = {
   localSessions: en.localSessions,
   sessionRecordDeletion: en.sessionRecordDeletion,
   assistantLifecycle: en.assistantLifecycle,
-  defaultAssistant: en.defaultAssistant,
+  defaultAssistant: { ...en.defaultAssistant, title: "الوكيل الرئيسي" },
   pluginCombobox: {
     searching: "جارٍ البحث…",
     empty: "لا توجد نتائج",

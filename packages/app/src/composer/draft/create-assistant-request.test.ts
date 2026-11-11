@@ -27,7 +27,7 @@ const agent: AgentSnapshotPayload = {
   availableModes: [],
   pendingPermissions: [],
   persistence: null,
-  title: "Assistant",
+  title: "Lead agent",
   labels: { "paseo.role": "assistant" },
 };
 const request: CreateAgentRequestOptions = {

@@ -210,6 +210,14 @@ describe("translation resources", () => {
     }
   });
 
+  it("names the lead agent in every supported language", () => {
+    expect(en.defaultAssistant.title).toBe("Lead agent");
+    expect(ko.defaultAssistant.title).toBe("상위 에이전트");
+    for (const resource of [ar, es, fr, ja, ptBR, ru, zhCN]) {
+      expect(resource.defaultAssistant.title).not.toBe(en.defaultAssistant.title);
+    }
+  });
+
   it("preserves interpolation placeholders in every language", () => {
     expect(findInterpolationMismatches(ar)).toEqual([]);
     expect(findInterpolationMismatches(es)).toEqual([]);

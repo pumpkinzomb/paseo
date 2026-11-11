@@ -8,7 +8,7 @@ export const ru: TranslationResources = {
   localSessions: en.localSessions,
   sessionRecordDeletion: en.sessionRecordDeletion,
   assistantLifecycle: en.assistantLifecycle,
-  defaultAssistant: en.defaultAssistant,
+  defaultAssistant: { ...en.defaultAssistant, title: "Ведущий агент" },
   pluginCombobox: {
     searching: "Поиск…",
     empty: "Нет результатов",

@@ -8,7 +8,7 @@ export const ptBR: TranslationResources = {
   localSessions: en.localSessions,
   sessionRecordDeletion: en.sessionRecordDeletion,
   assistantLifecycle: en.assistantLifecycle,
-  defaultAssistant: en.defaultAssistant,
+  defaultAssistant: { ...en.defaultAssistant, title: "Agente principal" },
   pluginCombobox: {
     searching: "Pesquisando…",
     empty: "Nenhum resultado",

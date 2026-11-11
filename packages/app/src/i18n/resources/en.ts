@@ -40,7 +40,7 @@ export const en = {
     restore: "Restore conversation",
     delete: "Permanently delete",
     scope:
-      "Applies to the whole assistant conversation, including all provider segments. Closing only hides this view.",
+      "Applies to the whole lead agent conversation, including all provider segments. Closing only hides this view.",
     busy: "Wait for active work to finish before archiving or deleting.",
     archiveConfirm:
       "Archive all segments of this conversation? You can restore it from session history. It will no longer reopen as the default conversation.",
@@ -67,7 +67,7 @@ export const en = {
       "This is a new session carrying only the reviewed handoff. The full history remains in the previous conversation.",
     handoffOpenSource: "View previous conversation",
     managerModelNotice:
-      "This selects the upper-level assistant only, not its workers. Within the same provider, the model changes in the current conversation. For another provider, review and edit a context handoff before creating a separate conversation.",
+      "This selects the lead agent only, not its workers. Within the same provider, the model changes in the current conversation. For another provider, review and edit a context handoff before creating a separate conversation.",
     handoffTitle: "Review context handoff",
     handoffNotice:
       "Destination: {{provider}} / {{model}}. Review exactly what will be shared. Approval creates a separate conversation with the selected provider and preserves the original. No model turn runs now; the approved handoff is stored in that session and becomes reference context on your next message.",
@@ -82,12 +82,12 @@ export const en = {
       "Included: {{included}} · Omitted: {{omitted}} · Sensitive-message exclusions: {{sensitive}} · Truncated: {{truncated}}",
     handoffWaitIdle:
       "Wait for this conversation to finish and resolve pending approvals before changing models.",
-    managerModelTitle: "Manager model",
-    switchProvider: "Change assistant provider / model (new conversation)",
+    managerModelTitle: "Lead agent model",
+    switchProvider: "Change lead agent provider / model (new conversation)",
     chooseModel: "New conversation with model",
     providerDefault: "Provider default",
     modelSelectionNotice:
-      "Starts a new assistant conversation. Previous conversations are preserved; their context is not transferred automatically.",
+      "Starts a new lead agent conversation. Previous conversations are preserved; their context is not transferred automatically.",
     modelShortlistNotice:
       "All available models are shown. OpenCode models with explicit zero pricing are excluded; missing or incomplete prices remain selectable and are marked unknown.",
     loadingModels: "Loading provider models…",
@@ -97,12 +97,12 @@ export const en = {
       "A listed model does not guarantee sign-in, subscription access or credits. No conversation turn is started until you send a message.",
     refreshModels: "Refresh models",
     startWithModel: "Start new conversation",
-    title: "Assistant",
+    title: "Lead agent",
     newConversation: "New conversation",
-    connecting: "Connecting to your assistant host…",
+    connecting: "Connecting to your lead agent host…",
     opening: "Opening your latest conversation…",
     updateHost:
-      "Update this host to a build that supports the default assistant. Your projects are still available.",
+      "Update this host to a build that supports the lead agent. Your projects are still available.",
     providers: "Agent settings",
     projects: "Open projects",
   },
