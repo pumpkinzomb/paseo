@@ -562,7 +562,7 @@ export async function launchRuntime(config, root, control, { daemonHandoff = nul
   const generation = crypto.randomUUID();
   const generationDirectory = path.join(control, `generation-${generation}`);
   await privateDirectory(generationDirectory);
-  if (config.automaticUpdates?.enabled)
+  if (config.automaticUpdates?.enabled || config.selfDevelopmentPolicy)
     await privateDirectory(path.join(control, "daemon-control"));
   const env = runtimeEnvironment(config, generationDirectory, generation);
   if (config.selfDevelopmentPolicy)
