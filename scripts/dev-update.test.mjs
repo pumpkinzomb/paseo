@@ -12,6 +12,7 @@ import {
   acquireLock,
   privateDirectory,
   scanRelease,
+  detachStagingHardlinks,
   manifestDigest,
   verifyRelease,
   isRendererOnly,
@@ -104,6 +105,22 @@ export function registerDevUpdateTests() {
       path.join(r.root, "shared.js"),
     );
     await assert.rejects(scanRelease(r.root), /Shared hardlink/);
+  });
+  test("staging detaches npm hardlinks without changing shared source data", async (t) => {
+    const f = await fixture(t),
+      r = await release(f.releases, "one");
+    const source = path.join(f.root, "external-binary");
+    const staged = path.join(r.root, "binary");
+    await fs.writeFile(source, "original", { mode: 0o755 });
+    await fs.link(source, staged);
+    await fs.link(staged, path.join(r.root, "binary-alias"));
+    assert.equal(await detachStagingHardlinks(r.root), 2);
+    assert.equal((await fs.stat(staged)).nlink, 1);
+    assert.equal((await fs.stat(staged)).mode & 0o777, 0o755);
+    await fs.writeFile(staged, "changed");
+    assert.equal(await fs.readFile(source, "utf8"), "original");
+    assert.equal(await fs.readFile(path.join(r.root, "binary-alias"), "utf8"), "original");
+    await scanRelease(r.root);
   });
   test("renderer-only classification includes removed and added backend files and dependencies", async (t) => {
     const f = await fixture(t),

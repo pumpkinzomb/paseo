@@ -147,8 +147,8 @@ ID and manifest digest to pass to `init` or `queue`.
 `--state-preserving` is an operator assertion made after reviewing the changes:
 there must be no incompatible state migration. The updater cannot infer that from
 tests and does not support data/schema rollback. The complete staged tree is
-hashed, including dependencies, links and executable bits. Escaping symlinks and
-shared hardlinks are refused. Only Metro's `.expo` and dependency cache directories
+hashed, including dependencies, links and executable bits. npm-created hardlinks are detached into independent files before hashing.
+Escaping symlinks and any remaining shared hardlinks are refused. Only Metro's `.expo` and dependency cache directories
 are mutable. Versioned releases must not be edited after registration.
 
 ### First installation

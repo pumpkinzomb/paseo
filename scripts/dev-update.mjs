@@ -14,6 +14,7 @@ import {
   readJson,
   readOptionalJson,
   scanRelease,
+  detachStagingHardlinks,
   manifestDigest,
   verifyRelease,
   queueRelease,
@@ -120,6 +121,7 @@ export async function stageRelease({ source, releases, id, statePreserving }) {
   // original Git repository, running runtime and user state are never touched.
   for (const relative of [".git", ".lab", ".lab-config.json"])
     await fs.rm(path.join(staging, relative), { recursive: true, force: true });
+  await detachStagingHardlinks(staging);
   const manifest = {
     schemaVersion: 1,
     id,

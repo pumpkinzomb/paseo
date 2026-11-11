@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { constants } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 
@@ -85,6 +86,32 @@ const mutable = (relative) =>
   relative === "release.json" ||
   relative === "packages/app/.expo" ||
   relative === "node_modules/.cache";
+// npm packages can install aliases as hardlinks (for example workerd). Break
+// those links in the private staging tree, never by modifying a shared inode.
+export async function detachStagingHardlinks(root) {
+  let detached = 0;
+  async function walk(directory) {
+    for (const name of await fs.readdir(directory)) {
+      const file = path.join(directory, name);
+      const info = await fs.lstat(file);
+      if (info.isDirectory()) await walk(file);
+      else if (info.isFile() && info.nlink > 1) {
+        const temporary = `${file}.independent-${crypto.randomUUID()}`;
+        try {
+          await fs.copyFile(file, temporary, constants.COPYFILE_FICLONE | constants.COPYFILE_EXCL);
+          await fs.chmod(temporary, info.mode & 0o777);
+          await fs.rename(temporary, file);
+          detached++;
+        } finally {
+          await fs.rm(temporary, { force: true });
+        }
+      }
+    }
+  }
+  await walk(root);
+  return detached;
+}
+
 export async function scanRelease(root) {
   const canonical = await fs.realpath(root);
   if (canonical !== path.resolve(root)) throw new Error("Release root must not be an alias");
