@@ -7,6 +7,8 @@ await import("./dev-update-discovery.test.mjs");
 await import("./dev-update-full-stage.test.mjs");
 await import("./dev-update-validation.test.mjs");
 await import("./dev-update-watch.test.mjs");
+await import("./dev-update-dependencies.test.mjs");
+await import("./dev-update-cleanup.test.mjs");
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
