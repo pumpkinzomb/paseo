@@ -105,6 +105,21 @@ describe("two phase open-window update", () => {
     expect((await work).state).toBe("blocked");
     await expect(updateActivity.run("new-work", async () => true)).resolves.toBe(true);
   });
+  it("preserves the first cancellation cause while a checkpoint is still completing", async () => {
+    const controller = createOpenWindowUpdate();
+    const send = mock.windows[0].webContents.send;
+    mock.windows[0].webContents.send = (channel: string, payload: any) => {
+      if (channel.endsWith(":prepare")) {
+        updateActivity.activity("renderer-layout-changed");
+        updateActivity.activity("panel-changed");
+      }
+      send(channel, payload);
+    };
+    expect(await controller.handle(request)).toMatchObject({
+      state: "blocked",
+      blockers: ["renderer-layout-changed"],
+    });
+  });
   it("blocks opaque guests and multiple/minimized/unfocused windows", async () => {
     const controller = createOpenWindowUpdate();
     mock.blockers = ["browser-state-not-restorable"];

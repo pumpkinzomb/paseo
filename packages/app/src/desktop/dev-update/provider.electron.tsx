@@ -142,19 +142,17 @@ export function SupervisedUpdateCheckpoint() {
       persistentSource(useWorkspaceBrowserStore),
     ];
     const stores = [
-      useDraftStore,
-      useWorkspaceLayoutStore,
-      useBrowserStore,
-      useWorkspaceBrowserStore,
-      useCreateFlowStore,
-      useWorkspaceDraftSubmissionStore,
-      useWorkspaceAttachmentsStore,
-      useAddProjectFlowStore,
-      useWorkspaceSetupStore,
-    ];
-    const unsubscribes = stores.map((store) =>
-      store.subscribe(() => invalidate("renderer-state-changed")),
-    );
+      [useDraftStore, "renderer-drafts-changed"],
+      [useWorkspaceLayoutStore, "renderer-layout-changed"],
+      [useBrowserStore, "renderer-browser-changed"],
+      [useWorkspaceBrowserStore, "renderer-workspace-browser-changed"],
+      [useCreateFlowStore, "renderer-create-flow-changed"],
+      [useWorkspaceDraftSubmissionStore, "renderer-submission-changed"],
+      [useWorkspaceAttachmentsStore, "renderer-attachments-changed"],
+      [useAddProjectFlowStore, "renderer-add-project-changed"],
+      [useWorkspaceSetupStore, "renderer-setup-changed"],
+    ] as const;
+    const unsubscribes = stores.map(([store, reason]) => store.subscribe(() => invalidate(reason)));
     unsubscribes.push(
       subscribeLastWorkspaceSelection(() => invalidate("workspace-selection-changed")),
       subscribeAllPanelInstanceAttributes(() => invalidate("panel-changed")),

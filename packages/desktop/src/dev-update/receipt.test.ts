@@ -18,3 +18,26 @@ it("never forwards arbitrary blocker text or oversized lists", () => {
   expect(safeBlockers(Array(65).fill("modified-panel"))).toEqual(["unknown-checkpoint-blocker"]);
   expect(safeReceipt({ ...valid, plaintext: "secret" }, 7)).toEqual(valid);
 });
+it("retains finite internal activity sources without exposing values", () => {
+  expect(
+    safeBlockers([
+      "renderer-browser-changed",
+      "renderer-drafts-changed",
+      "panel-changed",
+      "transient-state-changed",
+      "trusted-input",
+      "browser-navigation",
+      "browser-capture:finished",
+      "renderer-browser-changed:private-url",
+    ]),
+  ).toEqual([
+    "renderer-browser-changed",
+    "renderer-drafts-changed",
+    "panel-changed",
+    "transient-state-changed",
+    "trusted-input",
+    "browser-navigation",
+    "browser-capture:finished",
+    "unknown-checkpoint-blocker",
+  ]);
+});

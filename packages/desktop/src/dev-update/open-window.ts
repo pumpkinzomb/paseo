@@ -35,6 +35,9 @@ export function createOpenWindowUpdate() {
       window.webContents.send("paseo:dev-update:status", value);
   }
   function abort(reason: string) {
+    // Keep the event that invalidated the checkpoint; its completion and cleanup
+    // can emit more activity but must not replace the first cause.
+    if (cancelled) return;
     cancelled = true;
     commitSealed = false;
     prepared = undefined;
@@ -117,7 +120,7 @@ export function createOpenWindowUpdate() {
       receipts: receipts.map((r) => r.receipt),
     };
   }
-  const blockerReason = (blockers: string[]) => blockers.join(",") || "activity";
+  const blockerReason = (blockers: string[]) => blockers.join(",") || "activity-changed";
   function matchesPrepared(request: OpenUpdateRequest): boolean {
     return Boolean(
       current &&
