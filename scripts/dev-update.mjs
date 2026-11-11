@@ -341,6 +341,7 @@ async function main() {
       "dev-update-dependencies.mjs",
       "dev-update-cleanup.mjs",
       "managed-worktree-maintenance.mjs",
+      "managed-worktree-retirement.mjs",
       "dev-update-validation.mjs",
       "isolated-lab.mjs",
     ])

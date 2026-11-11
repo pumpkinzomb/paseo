@@ -29,6 +29,7 @@ export async function registerManagedDependencies(context, root, receipt) {
     rootIdentity: identity(await canonical(root)),
     commonDir: await common(root),
     sourceRoot: await fs.realpath(context.sourceRoot),
+    releases: context.releases,
     receiptDigest: hash(JSON.stringify(receipt)),
     protectedRoots: [...context.protectedRoots, context.releases, registry],
     registeredAt: new Date().toISOString(),
@@ -96,10 +97,14 @@ export async function inspectManagedCandidate(record, evidence) {
     reason: "exclusive-maintenance-lease-unavailable",
   };
 }
-export async function runManagedMaintenance({ registry, evidence }) {
+export async function runManagedMaintenance({ registry, evidence, reclaim }) {
   await privateDirectory(registry);
   await canonical(registry);
   const results = [];
+  // Only committed detached transactions are resumable; source trees are never touched here.
+  const retiredPurges = reclaim
+    ? await (await import("./managed-worktree-retirement.mjs")).resumeRetiredPurges(registry)
+    : [];
   for (const name of await fs.readdir(registry)) {
     if (!/^[a-f0-9]{64}\.json$/.test(name)) continue;
     let record;
@@ -108,7 +113,30 @@ export async function runManagedMaintenance({ registry, evidence }) {
       if (!(await fs.lstat(file)).isFile()) throw new Error("registry-file-alias");
       record = JSON.parse(await fs.readFile(file, "utf8"));
       if (name !== `${hash(record.root)}.json`) throw new Error("registry-identity-mismatch");
-      results.push({ root: record.root, ...(await inspectManagedCandidate(record, evidence)) });
+      const candidate = await inspectManagedCandidate(record, evidence);
+      if (!reclaim) results.push({ root: record.root, ...candidate });
+      else {
+        try {
+          const outcome = await reclaim(name.slice(0, -5), evidence);
+          results.push({
+            root: record.root,
+            candidate: true,
+            state: outcome?.detached ? "retired" : "skipped",
+            ...outcome,
+          });
+        } catch (error) {
+          const blocked =
+            error.message.startsWith("Dependency reclamation blocked:") ||
+            error.message.startsWith("Daemon does not support");
+          results.push({
+            root: record.root,
+            candidate: true,
+            state: blocked ? "skipped" : "outcome-unknown",
+            reason: error.message,
+            ...(blocked ? {} : { retry: false }),
+          });
+        }
+      }
     } catch (error) {
       results.push({
         root: record?.root,
@@ -120,9 +148,10 @@ export async function runManagedMaintenance({ registry, evidence }) {
   }
   await atomicJson(path.join(registry, "last-result.json"), {
     checkedAt: new Date().toISOString(),
-    inspectionOnly: true,
-    automaticReclamation: false,
+    inspectionOnly: !reclaim,
+    automaticReclamation: Boolean(reclaim),
     evidence,
+    retiredPurges,
     results,
   });
   return results;

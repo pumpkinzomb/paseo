@@ -113,3 +113,42 @@ test("missing deployment evidence skips without changing contents", async (t) =>
   assert.equal(report.automaticReclamation, false);
   assert.equal(await fs.readFile(path.join(f.root, "node_modules/keep"), "utf8"), "deps");
 });
+
+test("eligible reclaim uses only registry ID and reports outcome without automatic retry", async (t) => {
+  const f = await fixture(t);
+  let calls = 0;
+  const results = await runManagedMaintenance({
+    ...f,
+    reclaim: async (id, evidence) => {
+      calls++;
+      assert.equal(id, hash(f.root));
+      assert.deepEqual(evidence, f.evidence);
+      return { detached: true, transactionId: "fixture", purgePending: true };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(results[0].state, "retired");
+  calls = 0;
+  const unknown = await runManagedMaintenance({
+    ...f,
+    reclaim: async () => {
+      calls++;
+      throw new Error("timed out");
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(unknown[0].state, "outcome-unknown");
+  assert.equal(unknown[0].retry, false);
+});
+
+test("known daemon busy refusal is skipped, not uncertain", async (t) => {
+  const f = await fixture(t);
+  const results = await runManagedMaintenance({
+    ...f,
+    reclaim: async () => {
+      throw new Error("Dependency reclamation blocked: active session");
+    },
+  });
+  assert.equal(results[0].state, "skipped");
+  assert.equal(results[0].retry, undefined);
+});

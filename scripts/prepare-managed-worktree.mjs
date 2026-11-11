@@ -86,15 +86,19 @@ export async function prepareManagedWorktree(env = process.env, dependencies = {
         throw new Error(
           "Managed dependency inputs changed; explicit dependency update is required",
         );
-      await verifyDependencyEntries(root, receipt.entries);
-      await registerManagedDependencies(context, root, receipt);
-      return { mode: "already-prepared", root };
+      if (receipt.state && !["prepared", "retired"].includes(receipt.state))
+        throw new Error("Retirement recovery is required before dependency preparation");
+      if (receipt.state !== "retired") {
+        await verifyDependencyEntries(root, receipt.entries);
+        await registerManagedDependencies(context, root, receipt);
+        return { mode: "already-prepared", root };
+      }
     }
     await assertEmptyDependencies(root);
     const result = await prepare({
       source: root,
       releases: context.releases,
-      donor: context.donor,
+      donor: receipt?.state === "retired" ? receipt.donor : context.donor,
       allowInstall: false,
       minFreeBytes: 8 * 1024 ** 3,
     });

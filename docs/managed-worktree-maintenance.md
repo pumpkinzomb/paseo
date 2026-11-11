@@ -1,33 +1,54 @@
-# Managed worktree maintenance inspection
+# Managed worktree dependency reclamation
 
-Managed setup registers the canonical worktree identity and a digest of its
-preparation receipt in the supervisor's `managed-worktrees` registry. Existing
-managed worktrees are registered on the next successful setup reuse; arbitrary
-old checkouts are not discovered or adopted.
+Managed setup registers the canonical worktree identity and its preparation
+receipt in the supervisor's `managed-worktrees` registry. Existing prepared
+worktrees register on their next successful setup reuse. Arbitrary old checkouts
+are not adopted or deleted.
 
-After normal supervisor startup or a successful update, the supervisor queues a
-read-only inspection. A failed replacement does not inspect the failed release.
-Inspection is independent of runtime status and failures do not stop the app.
+After normal startup or a successful update, the supervisor checks registered
+candidates. A failed replacement does not use the failed release as evidence.
+The inspector verifies Git worktree membership, root identity, protected paths,
+symlink aliases, a clean checkout, and HEAD ancestry in both local main and the
+running release. Squash-equivalent but non-ancestor branches are skipped. Only
+the managed receipt and setup lock are excluded from the dirty check.
 
-The inspector checks Git worktree membership, root identity, protected paths,
-symlink aliases, uncommitted changes, and whether HEAD is an ancestor of both
-local main and the running release's source revision. Patch-equivalent squash
-merges are conservatively skipped. Only the managed receipt and setup lock are
-excluded from the untracked-file check; other unknown files prevent eligibility.
+When the daemon advertises reclamation support, a registry ID and deployment
+evidence are sent through its verified local control channel. The daemon loads
+the trusted helper and independently verifies the current sealed release, the
+retained dependency donor, tracked installation inputs and the exact dependency
+tree. Changed or unregistered dependency files prevent reclamation.
 
-`managed-worktrees/last-result.json` reports each candidate or skip reason and
-explicitly sets `inspectionOnly: true` and `automaticReclamation: false`.
-`maintenance-error.json` records a registry/inspection failure separately from
-runtime health. It is a historical error record, not the current app status.
+The final daemon gate requires no live agent runtime, running turn or terminal;
+a quiet-looking chat is not sufficient. Final validation and dependency-root
+rename happen synchronously under the daemon's admission fence. A durable
+recovery marker is written before the first rename; partial failures roll back,
+or leave a blocked recovery state if rollback cannot finish. No build outputs
+are reclaimed: only receipt-registered dependency roots are eligible.
 
-**No files are reclaimed by this implementation.** Even an eligible candidate
-reports `exclusive-maintenance-lease-unavailable`. A quiet session snapshot is
-not an exclusive lease: sessions, terminals, scheduled tasks and builds must all
-be prevented from starting against a worktree while reclamation is underway.
-The current daemon does not provide that complete admission gate.
+Detached dependencies go to a private same-volume retired transaction folder.
+Purge runs in a separate Node subprocess, not the app's event loop. It validates
+the donor and detached tree again and unlinks only registered artifacts; it never
+recursively deletes the source worktree. Normal startup/update maintenance also
+retries committed `retired`/`purging` transactions. A private PID/token writer lock
+prevents concurrent purges; dead-owner takeover is serialized. An ambiguous
+owner or interrupted takeover lock is retained for operator inspection. `prepared`, rolled-back or
+recovery-required transactions are not automatically purged. Uncertain mailbox
+outcomes are reported without immediately retrying the detach request.
 
-A later reclamation phase must add that gate, recheck all evidence under the
-lease, preserve source and conversation history, restrict removal to registered
-reproducible artifacts, and implement dependency restoration on resume. Neither
-agent completion nor removing a completed task card authorizes filesystem
-cleanup. This inspection does not enforce restrictions on arbitrary shell use.
+Source, Git data and conversation history stay in place. Before an agent or
+terminal reuses a retired workspace, the admission hook runs the trusted setup
+helper. It restores from the receipt's retained verified donor using independent
+copy-on-write reuse, with no installer fallback. If the donor is missing, inputs
+changed or recovery is required, the operation remains blocked with an error.
+History-only inspection does not prepare dependencies.
+
+`managed-worktrees/last-result.json` records candidates, results and skip reasons.
+Without a reclaim callback it explicitly reports inspection-only mode. A detached
+result with `purgePending` does not prove disk cleanup finished; the transaction's
+`purged` state is the completion evidence. Reported `logicalBytes` are file sizes,
+not measured free-space gains: APFS copy-on-write blocks may still be shared.
+
+This is a managed-workflow boundary, not OS sandbox enforcement. Arbitrary external
+shell processes can still access files outside daemon admission. Metadata and
+path checks detect many changes but cannot make hostile simultaneous filesystem
+mutation impossible. All destructive validation tests use temporary fixtures.
