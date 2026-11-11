@@ -249,6 +249,8 @@ async function main() {
       "dev-update.mjs",
       "dev-update-store.mjs",
       "dev-update-runtime.mjs",
+      "dev-update-automatic.mjs",
+      "dev-update-lease.mjs",
       "dev-update-watch.mjs",
       "dev-update-discovery.mjs",
       "dev-update-full-stage.mjs",
@@ -281,7 +283,7 @@ async function main() {
     await verifyRelease(config.releases, id, digest);
     await queueRelease(control, { id, digest });
     console.log(
-      "Update queued. The supervisor automatically relaunches after a safe handoff or a normal quit. Active windows and daemon work are not interrupted.",
+      "Update queued. The supervisor automatically relaunches after a safe handoff or a normal quit. Work is not force-stopped; unsafe updates remain pending.",
     );
   } else if (action === "status") {
     console.log(
@@ -292,6 +294,9 @@ async function main() {
           supervisor: await readOptionalJson(path.join(control, "supervisor.lock")),
           discovery: await readOptionalJson(path.join(control, "discovery.json")),
           discoveryWatcher: await readOptionalJson(path.join(control, "discovery-watcher.lock")),
+          automaticSuppression: await readOptionalJson(
+            path.join(control, "automatic-suppression.json"),
+          ),
           note: "Recorded state only. A lock is not proof that a supervisor is still alive.",
         },
         null,

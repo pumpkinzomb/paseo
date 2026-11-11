@@ -15,6 +15,8 @@ import {
   acquireLock,
   changeState,
 } from "./dev-update-store.mjs";
+import { AutomaticUpdateController } from "./dev-update-automatic.mjs";
+import { createDaemonUpdateLease } from "./dev-update-lease.mjs";
 
 export function runtimeEnvironment(
   config,
@@ -40,10 +42,25 @@ export function runtimeEnvironment(
     PASEO_DEV_UPDATE_CONTROL_DIR: generationDirectory,
     PASEO_DEV_UPDATE_GENERATION: generation,
   });
+  if (config.automaticUpdates?.enabled === true)
+    env.PASEO_DEV_UPDATE_DAEMON_CONTROL = path.join(
+      path.dirname(generationDirectory),
+      "daemon-control",
+    );
   if (config.enableLocalInspection === true) env.PASEO_ELECTRON_FLAGS = "--remote-debugging-port=0";
   if (config.selfDevelopmentPolicy)
     env.PASEO_SELF_DEVELOPMENT_POLICY = JSON.stringify(config.selfDevelopmentPolicy);
   return env;
+}
+function validateAutomaticConfig(automatic) {
+  if (automatic !== undefined) {
+    if (!automatic || typeof automatic.enabled !== "boolean")
+      throw new Error("Invalid automatic update configuration");
+    if (automatic.mode !== undefined && automatic.mode !== "renderer")
+      throw new Error("Automatic daemon replacement is not supported; use renderer mode");
+    if (automatic.discovery !== undefined)
+      throw new Error("Configure source discovery separately in update-discovery.json");
+  }
 }
 export function validateConfig(config) {
   if (config.schemaVersion !== 1) throw new Error("Unsupported supervisor configuration");
@@ -59,6 +76,7 @@ export function validateConfig(config) {
     typeof config.enableLocalInspection !== "boolean"
   )
     throw new Error("Invalid local inspection option");
+  validateAutomaticConfig(config.automaticUpdates);
   if (typeof config.serverId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(config.serverId))
     throw new Error("Expected existing daemon serverId is required");
 }
@@ -162,6 +180,7 @@ class Supervisor {
   pendingCache = null;
   handoff = null;
   lastStatus = null;
+  automatic = null;
 
   constructor(control, config, deps) {
     this.control = control;
@@ -218,8 +237,17 @@ class Supervisor {
         return remaining;
       });
     await this.status({ state: "running", releaseId: this.selection.id });
+    if (this.config.automaticUpdates?.enabled) {
+      await privateDirectory(path.join(this.control, "daemon-control"));
+      this.automatic = await this.deps.createAutomatic(this);
+      const suppression = await readOptionalJson(
+        path.join(this.control, "automatic-suppression.json"),
+      );
+      if (suppression?.digest) this.automatic.suppressed.add(suppression.digest);
+    }
   }
   async stopAfterExit(status) {
+    await this.automatic?.abort?.("desktop-exited");
     await this.runtime.stopMetro();
     this.runtime = null;
     if (status) await this.status(status);
@@ -258,6 +286,22 @@ class Supervisor {
         message: "Desktop did not quit normally; update remains pending.",
       });
     const daemonBefore = await this.inspectDaemon();
+    const attempt = this.automatic?.current;
+    let automaticExit = false;
+    if (attempt) {
+      const receipt = await this.runtime.automaticHandoffResult(
+        attempt.request.requestId,
+        pending.digest,
+      );
+      automaticExit = await this.automatic.validateExit({ receipt, instance: daemonBefore });
+      if (!automaticExit && daemonBefore)
+        return this.stopAfterExit({
+          state: "recovery-required",
+          pendingReleaseId: pending.id,
+          message:
+            "Desktop exited without a valid automatic handoff; retained daemon and pending release.",
+        });
+    }
     await this.validateExitHandoff(daemonBefore);
     if (!uiOnly && daemonBefore)
       return this.stopAfterExit({
@@ -287,9 +331,12 @@ class Supervisor {
     await verifyRelease(this.config.releases, pending.id, pending.digest);
     if (!sameDaemon(daemonBefore, await this.inspectDaemon()))
       throw new Error("Daemon identity changed during handoff");
+    if (automaticExit) await this.automatic.assertHeld();
     await this.launch(candidate.root, uiOnly ? daemonBefore : null);
+    if (automaticExit) await this.automatic.assertHeld();
     if (uiOnly && daemonBefore && !sameDaemon(daemonBefore, await this.inspectDaemon()))
       throw new Error("UI-only update changed daemon identity");
+    if (automaticExit) await this.automatic.complete();
     await changeState(this.control, (current) => {
       if (
         current.transition?.to.digest !== pending.digest ||
@@ -341,20 +388,54 @@ class Supervisor {
     const candidate = this.pendingCache.release;
     const uiOnly = isRendererOnly(this.release.manifest, candidate.manifest);
     if (outcome) return this.applyAfterExit(outcome.exit, pending, candidate, uiOnly);
-    await this.waitForHandoff(pending, uiOnly);
+    if (this.automatic && uiOnly) {
+      const automatic =
+        this.runtime.supportsAutomaticHandoff === true
+          ? await this.automatic.advance({
+              runtime: this.runtime,
+              pending,
+              instance: await this.inspectDaemon(),
+              mode: "renderer",
+            })
+          : { state: "unsupported", reason: "native-open-window-capability-unavailable" };
+      if (automatic.suppressDigest)
+        await atomicJson(path.join(this.control, "automatic-suppression.json"), {
+          digest: automatic.suppressDigest,
+        });
+      await this.status({
+        state: "automatic-update",
+        releaseId: this.selection.id,
+        pendingReleaseId: pending.id,
+        automatic,
+      });
+    } else await this.waitForHandoff(pending, uiOnly);
     return false;
   }
 }
 export async function runSupervisor(
   control,
-  { launch = launchRuntime, inspectDaemon = daemonSnapshot, pollMs = 1_000 } = {},
+  {
+    launch = launchRuntime,
+    inspectDaemon = daemonSnapshot,
+    pollMs = 1_000,
+    createAutomatic = (supervisor) =>
+      new AutomaticUpdateController({
+        createLease: (options) =>
+          createDaemonUpdateLease({ control: supervisor.control, ...options }),
+      }),
+  } = {},
 ) {
   await privateDirectory(control);
   const config = await readJson(path.join(control, "config.json"));
   validateConfig(config);
   await validateRuntimePaths(config, control);
   const unlock = await acquireLock(control, "supervisor.lock");
-  const supervisor = new Supervisor(control, config, { launch, inspectDaemon, pollMs });
+  const supervisor = new Supervisor(control, config, {
+    launch,
+    inspectDaemon,
+    pollMs,
+    createAutomatic,
+  });
   let safeToUnlock = true;
   try {
     await supervisor.initialize();
@@ -434,6 +515,8 @@ export async function launchRuntime(config, root, control, { daemonHandoff = nul
   const generation = crypto.randomUUID();
   const generationDirectory = path.join(control, `generation-${generation}`);
   await privateDirectory(generationDirectory);
+  if (config.automaticUpdates?.enabled)
+    await privateDirectory(path.join(control, "daemon-control"));
   const env = runtimeEnvironment(config, generationDirectory, generation);
   if (daemonHandoff)
     await atomicJson(path.join(generationDirectory, "daemon-handoff.json"), {
@@ -469,6 +552,7 @@ export async function launchRuntime(config, root, control, { daemonHandoff = nul
   } finally {
     await log.close();
   }
+  let supportsAutomaticHandoff = false;
   async function ownershipAcknowledged() {
     if (!daemonHandoff) return true;
     const ownership = await readOptionalJson(path.join(generationDirectory, "daemon-owned.json"));
@@ -478,6 +562,10 @@ export async function launchRuntime(config, root, control, { daemonHandoff = nul
     return true;
   }
   return {
+    generation,
+    get supportsAutomaticHandoff() {
+      return supportsAutomaticHandoff;
+    },
     exited: desktop.closed,
     failure: metro.closed.then(() => ({
       failure: "Metro exited while supervised desktop was running",
@@ -485,6 +573,26 @@ export async function launchRuntime(config, root, control, { daemonHandoff = nul
     isExited: () => desktop.closedAlready && metro.closedAlready,
     stopMetro: () => stopOwned(metro, "Metro"),
     requestQuit: () => stopOwned(desktop, "Desktop"),
+    async requestAutomaticHandoff(request) {
+      if (
+        request.schemaVersion !== 2 ||
+        !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/.test(request.requestId) ||
+        !/^[a-f0-9]{64}$/.test(request.releaseDigest) ||
+        !["prepare", "commit", "abort"].includes(request.phase) ||
+        !["renderer", "full"].includes(request.mode)
+      )
+        throw new Error("Invalid automatic handoff request");
+      await atomicJson(path.join(generationDirectory, "request.json"), { ...request, generation });
+    },
+    async automaticHandoffResult(requestId, releaseDigest) {
+      const receipt = await readOptionalJson(path.join(generationDirectory, "result.json"));
+      return receipt?.schemaVersion === 2 &&
+        receipt.generation === generation &&
+        receipt.requestId === requestId &&
+        receipt.releaseDigest === releaseDigest
+        ? receipt
+        : null;
+    },
     async requestHandoff(requestId) {
       const file = path.join(generationDirectory, "request.json");
       const existing = await readOptionalJson(file);
@@ -519,8 +627,10 @@ export async function launchRuntime(config, root, control, { daemonHandoff = nul
             daemon?.serverId === config.serverId &&
             daemon.listen === `127.0.0.1:${config.daemonPort}` &&
             (await ownershipAcknowledged())
-          )
+          ) {
+            supportsAutomaticHandoff = health.features?.automaticOpenWindow === true;
             return;
+          }
         }
         await delay(250);
       }

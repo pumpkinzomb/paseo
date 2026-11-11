@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { AutomaticUpdateController } from "./dev-update-automatic.mjs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -333,6 +334,123 @@ export function registerDevUpdateTests() {
       pending: null,
       transition: null,
     });
+  });
+  test("automatic renderer handoff holds authoritative lease until replacement readiness", async (t) => {
+    const f = await initialized(t, { "packages/app/src/view.ts": "new" });
+    await atomicJson(path.join(f.control, "config.json"), {
+      ...f.config,
+      automaticUpdates: { enabled: true },
+    });
+    await queueRelease(f.control, selection(f.after));
+    const daemon = {
+      pid: 456,
+      startedAt: "fixture",
+      uid: 501,
+      hostname: "fixture",
+      serverId: "stable",
+      desktopManaged: true,
+      listen: "127.0.0.1:16781",
+    };
+    const events = [];
+    let launches = 0;
+    await runSupervisor(f.control, {
+      pollMs: 5,
+      inspectDaemon: async () => (launches ? daemon : null),
+      createAutomatic: () =>
+        new AutomaticUpdateController({
+          createLease: async () => ({
+            identity: "fixture",
+            check: async () => true,
+            commit: async () => {
+              events.push("lease-commit");
+            },
+            release: async () => {
+              events.push("lease-release");
+            },
+          }),
+        }),
+      launch: async (_config, _root, _control, options) => {
+        launches++;
+        const currentLaunch = launches;
+        let ownedChild, receipt;
+        const runtime = await childRuntime(t, {
+          ready: (owned) => {
+            ownedChild = owned;
+            if (currentLaunch === 2) {
+              assert.deepEqual(options.daemonHandoff, daemon);
+              assert.equal(events.includes("lease-release"), false);
+              events.push("replacement-ready");
+              owned.child.send("quit");
+            }
+          },
+          handoff: () => assert.fail("no voluntary-close legacy path"),
+        });
+        return {
+          ...runtime,
+          generation: `generation-${currentLaunch}`,
+          supportsAutomaticHandoff: true,
+          requestAutomaticHandoff: async (request) => {
+            receipt = {
+              ...request,
+              generation: `generation-${currentLaunch}`,
+              state: request.phase === "prepare" ? "prepared" : "ready",
+              prepareToken: "token",
+              activityEpoch: 1,
+            };
+            if (request.phase === "commit") {
+              events.push("native-commit");
+              ownedChild.child.send("quit");
+            }
+          },
+          automaticHandoffResult: async () => receipt,
+        };
+      },
+    });
+    assert.equal(launches, 2);
+    assert.deepEqual(events, [
+      "lease-commit",
+      "native-commit",
+      "replacement-ready",
+      "lease-release",
+    ]);
+    assert.equal((await readJson(path.join(f.control, "state.json"))).current.id, "new");
+  });
+  test("automatic updates require explicit opt-in and reject daemon mode", () => {
+    const config = {
+      schemaVersion: 1,
+      releases: "/r",
+      home: "/h",
+      userData: "/u",
+      serverId: "s",
+      daemonPort: 19001,
+      metroPort: 19002,
+    };
+    validateConfig(config);
+    validateConfig({ ...config, automaticUpdates: { enabled: true, mode: "renderer" } });
+    assert.throws(
+      () => validateConfig({ ...config, automaticUpdates: { enabled: true, mode: "full" } }),
+      /not supported/,
+    );
+    assert.throws(
+      () =>
+        validateConfig({
+          ...config,
+          automaticUpdates: { enabled: false, discovery: { enabled: true } },
+        }),
+      /separately/,
+    );
+    assert.equal(
+      runtimeEnvironment(
+        { ...config, automaticUpdates: { enabled: true } },
+        "/control/generation-one",
+        "one",
+      ).PASEO_DEV_UPDATE_DAEMON_CONTROL,
+      "/control/daemon-control",
+    );
+    assert.equal(
+      runtimeEnvironment(config, "/control/generation-one", "one").PASEO_DEV_UPDATE_DAEMON_CONTROL,
+      undefined,
+    );
   });
   test("full update does not request handoff and relaunches only after normal quit with no daemon", async (t) => {
     const f = await initialized(t, { "packages/server/dist/index.js": "new server" });

@@ -80,8 +80,8 @@ the policy for its daemon; setting it only in the lab does not protect agents
 running in the stable application. Autonomous promotion remains a separate
 approved operation with complete work checks, backup and hash-verified rollback.
 Local cutover scripts are one-shot operations, not general deployment commands.
-No automatic promotion is implemented. This feature does not provide OS-level
-write/process restrictions.
+The opt-in update supervisor below can promote validated renderer releases.
+This development policy itself does not provide OS-level write/process restrictions.
 
 Explicit user operations, including restart, are evaluated against their scope
 and effects rather than refused by the autonomous-development default. Check
@@ -123,8 +123,10 @@ The supported behavior is conservative:
   another launch click. A surviving daemon, including `Keep running after quit`,
   blocks full replacement. Active agents, terminals and background work are not
   interrupted to make an update happen.
-- This is not transparent hot replacement while windows/work remain active.
-  Local releases can be queued explicitly or by the opt-in discovery watcher below.
+- The default remains update-on-exit. An additional renderer-only opt-in below
+  can automatically restart safe open windows while retaining the same daemon.
+  Full daemon/native/dependency replacement still requires normal quit.
+  Local releases can be queued explicitly or by the independent discovery watcher.
   There is no model-callable deployment endpoint.
 
 ### Stage and validate
@@ -208,10 +210,48 @@ or killing it. Repoint the user's launcher separately after startup verification
 `start` launches a detached supervisor, so an updating agent can finish its turn
 without owning the restart process. A launch PID is not a success confirmation.
 
+### Safe automatic renderer restart
+
+After installing a matching controller, desktop, renderer and daemon, opt in with
+`"automaticUpdates": {"enabled": true, "mode": "renderer"}` in the private
+supervisor configuration. Installing only an app release does not upgrade the
+external controller or add a lease capability to an already-running older daemon.
+The first adoption therefore needs one reviewed normal quit/start. The control
+path and existing home/profile stay unchanged; do not copy credentials or state.
+
+A compatible renderer-only queued release can then restart automatically, without
+asking the user to close the window. Before normal UI quit, it requires all of:
+
+- An authoritative short-lived lease from the same daemon generation. Active or
+  unknown agent/provider work, pending deliveries, uploads and other mutations
+  defer the update. The lease is renewed across restart; the daemon is not killed.
+- A focused, restorable workspace with strictly persisted draft and selection
+  checkpoints. Recent input, pending UI operations and unsaved/unknown form state
+  defer it. A five-second native countdown supports cancellation, and final input
+  sealing closes the gap between saving drafts and committing the restart.
+- Fresh browser-frame evidence with no editing surface, capture, media, download
+  or automation in progress. Static browser pages can restore; arbitrary forms,
+  including search pages and unknown frames, are deliberately not treated as safe.
+- Matching generation/digest/prepare-token receipts and the same retained daemon
+  before and after replacement startup. Unsupported capability, uncertainty or
+  timeout never becomes a force-stop fallback.
+
+Cancellation suppresses that exact pending digest across supervisor restarts.
+The release remains pending and can still apply after the user's normal quit.
+Unsafe open-window updates remain pending and are retried with a cooldown, not
+forced. Native, server, configuration and dependency changes use the normal-quit
+path even when this option is on. `mode: "full"` is rejected.
+
+This is a bounded safe renderer restart, not seamless active-job migration or
+preservation of arbitrary browser forms. It does not claim full daemon hot swap.
+A failed or uncertain relaunch follows the recovery procedure below and preserves
+both the selection history and current user data.
+
 ### Opt-in update discovery
 
-The separate watcher adds source detection and validation, without changing the
-existing safe quit/relaunch policy. It does not close a window or stop a daemon.
+The separate watcher adds source detection and validation. It only queues a
+release; the supervisor applies the configured normal-quit or safe-renderer policy.
+The watcher itself does not close a window or stop a daemon.
 Create private `control/update-discovery.json` after reviewing the source channel:
 
 ```json
@@ -241,7 +281,7 @@ with a reviewed content-bound preservation declaration after validation. See
 [the release declaration workflow](dev-update-discovery.md). Arbitrary main
 commits, diverged history, missing declarations and failed validation stay unapplied.
 
-Queued changes use the same normal-close/quit behavior below. The watcher does
+Queued changes use the configured supervisor policy above. The watcher does
 not install an OS login service, force an open app to exit, or implement full-daemon
 hot replacement. Its lock is not automatically cleared after an uncertain exit.
 
@@ -255,9 +295,10 @@ node /absolute/control/controller/dev-update.mjs status --control /absolute/cont
 
 One pending update is supported. Repeating the exact request is idempotent; a
 new request cannot overwrite a pending or interrupted deployment. Status reports
-waiting-for-windows, waiting-for-app-quit, waiting-for-daemon-stop or a recovery
-error. There is no in-app update banner yet; the command/status output is the
-operator feedback surface. The daemon's normal auto-start setting must be enabled
+waiting-for-windows, waiting-for-app-quit, waiting-for-daemon-stop, automatic-update
+(with preparation, cancellation or blocker details), or a recovery error. The
+command/status output is the operator feedback surface; the native automatic
+restart countdown is not a general discovery/build progress UI. The daemon's normal auto-start setting must be enabled
 for readiness to complete.
 
 ### Failure and recovery

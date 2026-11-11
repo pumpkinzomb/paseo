@@ -1,6 +1,8 @@
 // Development update supervision is part of the daemon ownership contract.
 import { registerDevUpdateTests } from "./dev-update.test.mjs";
 registerDevUpdateTests();
+await import("./dev-update-automatic.test.mjs");
+await import("./dev-update-lease.test.mjs");
 await import("./dev-update-discovery.test.mjs");
 await import("./dev-update-full-stage.test.mjs");
 await import("./dev-update-validation.test.mjs");
