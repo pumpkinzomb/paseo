@@ -37,6 +37,7 @@ function restoreEnv(name: string, value: string | undefined): void {
 }
 
 function makeSubsystem(overrides: {
+  listConnectedClients?: ConstructorParameters<typeof DaemonSession>[0]["listConnectedClients"];
   serverId?: string;
   daemonVersion?: string;
   daemonRuntimeConfig?: DaemonRuntimeConfig;
@@ -60,6 +61,7 @@ function makeSubsystem(overrides: {
     daemonVersion: overrides.daemonVersion,
     daemonRuntimeConfig: overrides.daemonRuntimeConfig,
     listAgents: () => [],
+    listConnectedClients: overrides.listConnectedClients,
     listProjects: async () => [],
     listWorkspaces: async () => [],
     listProviderAvailability: overrides.listProviderAvailability ?? (async () => []),
@@ -78,6 +80,37 @@ function makeSubsystem(overrides: {
 }
 
 describe("DaemonSession", () => {
+  test("status identifies the requesting app and distinguishes unsupported lists", async () => {
+    const entry = {
+      clientId: "client-1",
+      clientType: "browser",
+      label: "Desktop",
+      appVersion: "1",
+      connectedAt: "2026-11-11T00:00:00Z",
+    };
+    const { subsystem, emitted } = makeSubsystem({
+      listConnectedClients: () => [entry, { ...entry, clientId: "phone" }],
+    });
+    await subsystem.handleGetStatusRequest({
+      type: "daemon.get_status.request",
+      requestId: "devices",
+    });
+    expect(emitted[0]).toMatchObject({
+      payload: {
+        connectedClients: [
+          { clientId: "client-1", isCurrentClient: true },
+          { clientId: "phone", isCurrentClient: false },
+        ],
+      },
+    });
+    const legacy = makeSubsystem({});
+    await legacy.subsystem.handleGetStatusRequest({
+      type: "daemon.get_status.request",
+      requestId: "legacy",
+    });
+    expect(legacy.emitted[0]).not.toHaveProperty("payload.connectedClients");
+  });
+
   test("config reload returns the daemon-owned classification", async () => {
     const { subsystem, emitted } = makeSubsystem({
       reloadConfig: async () => ({

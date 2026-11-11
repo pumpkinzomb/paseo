@@ -1,3 +1,4 @@
+import type { ConnectedClient } from "@getpaseo/protocol/messages";
 import type pino from "pino";
 import type { ProviderAvailability } from "../../agent/agent-manager.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
@@ -48,6 +49,7 @@ export interface DaemonSessionOptions {
   daemonVersion: string | undefined;
   daemonRuntimeConfig: DaemonRuntimeConfig | undefined;
   listAgents: () => ManagedAgent[];
+  listConnectedClients?: () => Omit<ConnectedClient, "isCurrentClient">[];
   listProjects: () => Promise<PersistedProjectRecord[]>;
   listWorkspaces: () => Promise<PersistedWorkspaceRecord[]>;
   listProviderAvailability: () => Promise<ProviderAvailability[]>;
@@ -75,6 +77,7 @@ export class DaemonSession {
   private readonly daemonVersion: string | undefined;
   private readonly daemonRuntimeConfig: DaemonRuntimeConfig | undefined;
   private readonly listAgents: () => ManagedAgent[];
+  private readonly listConnectedClients: DaemonSessionOptions["listConnectedClients"];
   private readonly listProjects: () => Promise<PersistedProjectRecord[]>;
   private readonly listWorkspaces: () => Promise<PersistedWorkspaceRecord[]>;
   private readonly listProviderAvailability: () => Promise<ProviderAvailability[]>;
@@ -94,6 +97,7 @@ export class DaemonSession {
     this.daemonVersion = options.daemonVersion;
     this.daemonRuntimeConfig = options.daemonRuntimeConfig;
     this.listAgents = options.listAgents;
+    this.listConnectedClients = options.listConnectedClients;
     this.listProjects = options.listProjects;
     this.listWorkspaces = options.listWorkspaces;
     this.listProviderAvailability = options.listProviderAvailability;
@@ -185,6 +189,14 @@ export class DaemonSession {
       ({ pid, role, reason, detail }) => ({ pid, role, reason, detail }),
     );
     const terminalsUnavailable = this.getTerminalsUnavailable();
+    const connectedClients = this.listConnectedClients?.().map((client) => ({
+      clientId: client.clientId,
+      clientType: client.clientType,
+      label: client.label,
+      appVersion: client.appVersion,
+      connectedAt: client.connectedAt,
+      isCurrentClient: client.clientId === this.clientId,
+    }));
     try {
       const pidInfo = await getPidLockInfo(this.paseoHome);
       const providers = (await this.listProviderAvailability()).map((p) => ({
@@ -205,6 +217,7 @@ export class DaemonSession {
           relay: this.daemonRuntimeConfig?.getRelayConfig() ?? null,
           providers,
           terminalCleanupUnconfirmed,
+          ...(connectedClients ? { connectedClients } : {}),
           ...(terminalsUnavailable ? { terminalsUnavailable } : {}),
         },
       });
@@ -223,6 +236,7 @@ export class DaemonSession {
           relay: null,
           providers: [],
           terminalCleanupUnconfirmed,
+          ...(connectedClients ? { connectedClients } : {}),
           ...(terminalsUnavailable ? { terminalsUnavailable } : {}),
         },
       });

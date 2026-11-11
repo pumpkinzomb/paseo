@@ -220,7 +220,11 @@ import {
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
-import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
+import {
+  DaemonSession,
+  type DaemonRuntimeConfig,
+  type DaemonSessionOptions,
+} from "./session/daemon/daemon-session.js";
 import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
 import type { HubRelationshipManagement } from "./hub/relationship-controller.js";
 import { HubExecutionController } from "./hub/execution-controller.js";
@@ -627,6 +631,7 @@ export interface SessionOptions {
   daemonVersion?: string;
   daemonRuntimeConfig?: DaemonRuntimeConfig;
   getWebSocketRuntimeMetrics?: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
+  listConnectedClients?: DaemonSessionOptions["listConnectedClients"];
 }
 
 export type SessionLifecycleIntent =
@@ -954,6 +959,7 @@ export class Session {
       daemonVersion,
       daemonRuntimeConfig,
       getWebSocketRuntimeMetrics,
+      listConnectedClients,
     } = options;
     this.browserToolsBroker = options.browserToolsBroker;
     this.clientId = clientId;
@@ -1167,6 +1173,7 @@ export class Session {
       daemonVersion,
       daemonRuntimeConfig,
       getWebSocketRuntimeMetrics,
+      listConnectedClients,
       getObservationMetrics: () => ({
         Registrations: this.delivery.registrationCount,
         "Source registrations": this.delivery.sourceRegistrationCount(),

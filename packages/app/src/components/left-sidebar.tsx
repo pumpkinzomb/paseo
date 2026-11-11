@@ -1,3 +1,4 @@
+import { SidebarConnectedDevicesMenu } from "./sidebar/sidebar-connected-devices";
 import { SidebarViewSlot } from "@/plugins/sidebar-view";
 import { useAddHost } from "@/hosts/add-host";
 import { router } from "expo-router";
@@ -494,6 +495,7 @@ function SidebarFooter({
               onOpenHostSettings={handleOpenHostSettings}
             />
           ) : null}
+          {isInline("devices") ? <SidebarConnectedDevicesMenu /> : null}
           <View style={styles.footerSpacer} />
           {isInline("help") ? <SidebarHelpMenu /> : null}
           {overflow.length > 0 ? (

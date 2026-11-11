@@ -5579,6 +5579,16 @@ export const GetDaemonConfigResponseMessageSchema = z.object({
     .passthrough(),
 });
 
+export const ConnectedClientSchema = z.object({
+  clientId: z.string(),
+  clientType: z.string(),
+  label: z.string().nullable(),
+  appVersion: z.string().nullable(),
+  connectedAt: z.string(),
+  isCurrentClient: z.boolean(),
+});
+export type ConnectedClient = z.infer<typeof ConnectedClientSchema>;
+
 export const DaemonGetStatusResponseSchema = z.object({
   type: z.literal("daemon.get_status.response"),
   payload: z
@@ -5600,6 +5610,8 @@ export const DaemonGetStatusResponseSchema = z.object({
         })
         .nullable()
         .optional(),
+      // Omitted by older daemons; absence is not an empty connection list.
+      connectedClients: z.array(ConnectedClientSchema).optional(),
       providers: z.array(
         z.object({
           provider: z.string(),

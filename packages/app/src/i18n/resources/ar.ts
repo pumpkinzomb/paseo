@@ -4,6 +4,7 @@ import { pluginSettings } from "./plugin-settings";
 export const ar: TranslationResources = {
   workspaceSessionDeletion: en.workspaceSessionDeletion,
   browserDock: en.browserDock,
+  connectedDevices: en.connectedDevices,
   localSessions: en.localSessions,
   sessionRecordDeletion: en.sessionRecordDeletion,
   assistantLifecycle: en.assistantLifecycle,

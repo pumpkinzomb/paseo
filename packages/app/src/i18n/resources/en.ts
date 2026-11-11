@@ -226,6 +226,18 @@ export const en = {
     newPage: "New browser tab",
     closePage: "Close {{title}}",
   },
+  connectedDevices: {
+    title: "Connected devices",
+    description:
+      "Active app and tool connections to each host. Multiple app sessions on one device may appear separately.",
+    offline: "Host offline",
+    failed: "Could not load connections. Close and reopen to retry.",
+    loading: "Loading…",
+    unsupported: "Update this host to view connected devices.",
+    empty: "No active connections",
+    thisClient: "This app",
+    noHosts: "No hosts configured",
+  },
   composer: {
     placeholders: {
       desktop: "Message the agent, tag @files, or use /commands and /skills",

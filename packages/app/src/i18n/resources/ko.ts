@@ -226,6 +226,18 @@ export const ko: TranslationResources = {
     newPage: "새 브라우저 탭",
     closePage: "{{title}} 닫기",
   },
+  connectedDevices: {
+    title: "연결된 기기",
+    description:
+      "호스트별 앱·도구 접속 목록입니다. 같은 기기의 여러 앱 세션은 따로 표시될 수 있어요.",
+    offline: "호스트 오프라인",
+    failed: "접속 목록을 불러오지 못했어요. 닫았다가 다시 열어주세요.",
+    loading: "불러오는 중…",
+    unsupported: "연결 기기를 확인하려면 호스트를 업데이트해주세요.",
+    empty: "현재 접속 없음",
+    thisClient: "이 앱",
+    noHosts: "등록된 호스트 없음",
+  },
   composer: {
     placeholders: {
       desktop: "에이전트에게 메시지를 보내거나 @files 태그, /commands, /skills를 사용하세요",

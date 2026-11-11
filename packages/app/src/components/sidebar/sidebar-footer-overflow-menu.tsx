@@ -1,3 +1,4 @@
+import { SidebarConnectedDevicesContent } from "./sidebar-connected-devices";
 import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -94,11 +95,18 @@ export function SidebarFooterOverflowMenu({
         content: <HostsPage onAddHost={onAddHost} onOpenHostSettings={onOpenHostSettings} />,
       });
     }
+    if (actions.includes("devices")) {
+      result.push({
+        id: "devices",
+        title: t("connectedDevices.title"),
+        content: <SidebarConnectedDevicesContent active={open} />,
+      });
+    }
     if (actions.includes("help")) {
       result.push({ id: HELP_PAGE_ID, title: helpLabel, content: <SidebarHelpMenuItems /> });
     }
     return result;
-  }, [actions, helpLabel, labels.hosts, onAddHost, onOpenHostSettings]);
+  }, [actions, helpLabel, labels.hosts, onAddHost, onOpenHostSettings, open, t]);
 
   function renderAction(action: SidebarFooterAction): ReactElement {
     switch (action) {
@@ -134,6 +142,12 @@ export function SidebarFooterOverflowMenu({
             leading={hostsLeading}
           >
             {labels.hosts}
+          </DropdownMenuSubTrigger>
+        );
+      case "devices":
+        return (
+          <DropdownMenuSubTrigger key={action} id="devices" testID="sidebar-devices-trigger">
+            {t("connectedDevices.title")}
           </DropdownMenuSubTrigger>
         );
       case "help":
