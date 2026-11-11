@@ -1,3 +1,4 @@
+import { UpdateBlocked, type UpdateAdmissionFence } from "../../update-quiescence.js";
 import { setTimeout as pause } from "node:timers/promises";
 import { HostObservationError } from "../host-operations/index.js";
 import { randomUUID } from "node:crypto";
@@ -34,6 +35,7 @@ export interface FinishObservation {
   open(subscription: FinishSubscription, signal: AbortSignal): Promise<FinishObservationSession>;
 }
 interface Dependencies extends FinishObservation {
+  updateAdmission?: UpdateAdmissionFence;
   store: FinishSubscriptionStore;
   messages(): AgentMessageDelivery;
   callerIsActive(agentId: string): Promise<boolean>;
@@ -48,6 +50,7 @@ export interface FinishRegistration {
   reject(): Promise<void>;
 }
 export interface FinishSubscriptions {
+  getUpdateBlockers(): string[];
   start(): Promise<void>;
   /** Pending notification intent, including registration, recovery and unacknowledged delivery. */
   hasPendingForCaller(agentId: string): boolean;
@@ -71,14 +74,21 @@ function key(record: FinishSubscription): string {
 
 /** Owns durable intent, live observation, supersession, and dispatch acknowledgment. */
 export function createFinishSubscriptions(deps: Dependencies): FinishSubscriptions {
+  function assertUpdateOpen(): void {
+    deps.updateAdmission?.assertOpen();
+  }
   const tasks = new Set<Promise<void>>();
   const watches = new Map<string, Set<Watch>>();
   let closed = false;
   let recovering = true;
   const registering = new Map<string, number>();
   let mutations = Promise.resolve();
+  let pendingMutations = 0;
   function serialize<T>(action: () => Promise<T>): Promise<T> {
-    const result = mutations.then(action);
+    pendingMutations++;
+    const result = mutations.then(action).finally(() => {
+      pendingMutations--;
+    });
     mutations = result.then(
       () => undefined,
       () => undefined,
@@ -173,6 +183,7 @@ export function createFinishSubscriptions(deps: Dependencies): FinishSubscriptio
     permissions: Set<string>,
     signal: AbortSignal,
   ): Promise<boolean> {
+    assertUpdateOpen();
     const requests = result.final?.pendingPermissions ?? [];
     const reason = reasonFor(result);
     for (const id of permissions)
@@ -256,7 +267,9 @@ export function createFinishSubscriptions(deps: Dependencies): FinishSubscriptio
     try {
       while (!signal.aborted) {
         try {
+          assertUpdateOpen();
           if (await suppressed(record)) {
+            assertUpdateOpen();
             await remove(watch);
             stop(watch, group);
             return;
@@ -269,13 +282,16 @@ export function createFinishSubscriptions(deps: Dependencies): FinishSubscriptio
           if (signal.aborted) return;
           await decisions(group);
           if (signal.aborted) return;
+          assertUpdateOpen();
           if (await suppressed(record, pending)) {
+            assertUpdateOpen();
             await remove(watch);
             stop(watch, group);
             return;
           }
           if (!acknowledged) acknowledged = await deliver(record, pending, permissions, signal);
           if (acknowledged) {
+            assertUpdateOpen();
             // A removal failure retries only the commit, never the already accepted callback.
             await remove(watch);
             stop(watch, group);
@@ -304,6 +320,11 @@ export function createFinishSubscriptions(deps: Dependencies): FinishSubscriptio
   }
 
   return {
+    getUpdateBlockers: () => [
+      ...(recovering ? ["finish-subscriptions-recovering"] : []),
+      ...(registering.size || pendingMutations ? ["finish-subscriptions-mutating"] : []),
+      ...(watches.size || tasks.size ? ["finish-subscriptions-pending"] : []),
+    ],
     hasPendingForCaller(agentId) {
       if (recovering || registering.has(agentId)) return true;
       for (const group of watches.values()) {
@@ -311,8 +332,11 @@ export function createFinishSubscriptions(deps: Dependencies): FinishSubscriptio
       }
       return false;
     },
-    start: () =>
-      serialize(async () => {
+    start: () => {
+      const release = deps.updateAdmission?.enter();
+      if (deps.updateAdmission && !release)
+        return Promise.reject(new UpdateBlocked("update_in_progress"));
+      return serialize(async () => {
         const groups = new Map<string, FinishSubscription[]>();
         for (const record of await deps.store.list()) {
           const records = groups.get(key(record)) ?? [];
@@ -321,8 +345,12 @@ export function createFinishSubscriptions(deps: Dependencies): FinishSubscriptio
         }
         for (const records of groups.values()) attach(records, false);
         recovering = false;
-      }),
+      }).finally(() => release?.());
+    },
     register: (input, pendingDispatch = false) => {
+      const release = deps.updateAdmission?.enter();
+      if (deps.updateAdmission && !release)
+        return Promise.reject(new UpdateBlocked("update_in_progress"));
       registering.set(input.callerAgentId, (registering.get(input.callerAgentId) ?? 0) + 1);
       return serialize(async () => {
         if (closed) throw new Error("Finish subscriptions are closed");
@@ -357,12 +385,14 @@ export function createFinishSubscriptions(deps: Dependencies): FinishSubscriptio
         if (!pendingDispatch) registration.accept();
         return registration;
       }).finally(() => {
+        release?.();
         const remaining = registering.get(input.callerAgentId)! - 1;
         if (remaining) registering.set(input.callerAgentId, remaining);
         else registering.delete(input.callerAgentId);
       });
     },
     async close() {
+      assertUpdateOpen();
       closed = true;
       await mutations;
       for (const group of watches.values())

@@ -1,3 +1,4 @@
+import { UpdateAdmissionFence } from "../update-quiescence.js";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -335,6 +336,54 @@ describe("ScheduleService", () => {
     // ENOTEMPTY races when AgentManager flushes a snapshot mid-cleanup.
     await agentStorage.flush();
     await rm(tempDir, { recursive: true, force: true });
+  });
+
+  test("update admission defers due schedules unchanged and tracks admitted execution", async () => {
+    const updateAdmission = new UpdateAdmissionFence();
+    let finish!: () => void;
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const wait = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      updateAdmission,
+      runner: async () => {
+        started();
+        await wait;
+        return { agentId: "00000000-0000-0000-0000-000000000001", output: "finished" };
+      },
+    });
+    const created = await service.create({
+      prompt: "retained",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+    });
+    now = new Date("2026-01-01T00:01:00.000Z");
+    updateAdmission.close();
+    await service.tick();
+    expect(await service.inspect(created.id)).toEqual(created);
+    expect(service.getUpdateBlockers()).toEqual([]);
+    expect(updateAdmission.pending).toBe(0);
+    await expect(service.runOnce(created.id)).rejects.toThrow("update_in_progress");
+    updateAdmission.open();
+    const tick = service.tick();
+    await running;
+    expect(updateAdmission.pending).toBe(1);
+    expect(service.getUpdateBlockers()).toEqual(["schedules-running"]);
+    finish();
+    await tick;
+    expect(updateAdmission.pending).toBe(0);
+    expect(service.getUpdateBlockers()).toEqual([]);
+    expect((await service.inspect(created.id)).runs).toHaveLength(1);
   });
 
   test("ticks due schedules and records run history on disk", async () => {

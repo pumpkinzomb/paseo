@@ -1,3 +1,4 @@
+import { UpdateBlocked, type UpdateAdmissionFence } from "../update-quiescence.js";
 import { formatSystemNotificationPrompt } from "../agent/agent-messages/index.js";
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
@@ -251,6 +252,7 @@ interface ScheduleWorkspaceCreateInput {
 }
 
 export interface ScheduleServiceOptions {
+  updateAdmission?: UpdateAdmissionFence;
   paseoHome: string;
   logger: Logger;
   agentManager: ScheduleAgentManager;
@@ -268,6 +270,7 @@ export interface ScheduleServiceOptions {
 }
 
 export class ScheduleService {
+  private readonly updateAdmission?: UpdateAdmissionFence;
   private readonly store: ScheduleStore;
   private readonly logger: Logger;
   private readonly agentManager: ScheduleAgentManager;
@@ -289,6 +292,7 @@ export class ScheduleService {
   private tickTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: ScheduleServiceOptions) {
+    this.updateAdmission = options.updateAdmission;
     this.logger = options.logger.child({ module: "schedule-service" });
     this.store = new ScheduleStore(join(options.paseoHome, "schedules"), this.logger);
     this.agentManager = options.agentManager;
@@ -301,19 +305,29 @@ export class ScheduleService {
     this.runner = options.runner ?? ((schedule, runId) => this.executeSchedule(schedule, runId));
   }
 
+  getUpdateBlockers(): string[] {
+    return this.runningScheduleIds.size ? ["schedules-running"] : [];
+  }
+
   async start(): Promise<void> {
-    await this.recoverInterruptedRuns();
-    await this.sweepOrphanedSchedules();
-    if (this.tickTimer) {
-      return;
+    const release = this.updateAdmission?.enter();
+    if (this.updateAdmission && !release) throw new UpdateBlocked("update_in_progress");
+    try {
+      await this.recoverInterruptedRuns();
+      await this.sweepOrphanedSchedules();
+      if (this.tickTimer) {
+        return;
+      }
+      const timer = setInterval(() => {
+        void this.tick().catch((error) => {
+          this.logger.error({ err: error }, "Failed to process schedule tick");
+        });
+      }, SCHEDULE_TICK_INTERVAL_MS);
+      (timer as unknown as { unref?: () => void }).unref?.();
+      this.tickTimer = timer;
+    } finally {
+      release?.();
     }
-    const timer = setInterval(() => {
-      void this.tick().catch((error) => {
-        this.logger.error({ err: error }, "Failed to process schedule tick");
-      });
-    }, SCHEDULE_TICK_INTERVAL_MS);
-    (timer as unknown as { unref?: () => void }).unref?.();
-    this.tickTimer = timer;
   }
 
   async stop(): Promise<void> {
@@ -557,35 +571,47 @@ export class ScheduleService {
   }
 
   async runOnce(id: string): Promise<StoredSchedule> {
-    const schedule = await this.inspect(id);
-    if (schedule.status === "completed") {
-      throw new ScheduleStateConflictError(`Schedule ${id} is already completed`);
+    const release = this.updateAdmission?.enter();
+    if (this.updateAdmission && !release) throw new UpdateBlocked("update_in_progress");
+    try {
+      const schedule = await this.inspect(id);
+      if (schedule.status === "completed") {
+        throw new ScheduleStateConflictError(`Schedule ${id} is already completed`);
+      }
+      if (this.runningScheduleIds.has(id)) {
+        throw new ScheduleStateConflictError(`Schedule ${id} is already running`);
+      }
+      await this.runSchedule(schedule, this.now(), { manual: true });
+      return this.inspect(id);
+    } finally {
+      release?.();
     }
-    if (this.runningScheduleIds.has(id)) {
-      throw new ScheduleStateConflictError(`Schedule ${id} is already running`);
-    }
-    await this.runSchedule(schedule, this.now(), { manual: true });
-    return this.inspect(id);
   }
 
   async tick(): Promise<void> {
-    const now = this.now();
-    const schedules = await this.store.list();
-    for (const schedule of schedules) {
-      if (schedule.status !== "active" || !schedule.nextRunAt) {
-        continue;
+    const release = this.updateAdmission?.enter();
+    if (this.updateAdmission && !release) return;
+    try {
+      const now = this.now();
+      const schedules = await this.store.list();
+      for (const schedule of schedules) {
+        if (schedule.status !== "active" || !schedule.nextRunAt) {
+          continue;
+        }
+        if (this.runningScheduleIds.has(schedule.id)) {
+          continue;
+        }
+        if (shouldCompleteSchedule(schedule, now)) {
+          await this.completeScheduleIfDue(schedule.id, now);
+          continue;
+        }
+        if (new Date(schedule.nextRunAt).getTime() > now.getTime()) {
+          continue;
+        }
+        await this.runSchedule(schedule, now);
       }
-      if (this.runningScheduleIds.has(schedule.id)) {
-        continue;
-      }
-      if (shouldCompleteSchedule(schedule, now)) {
-        await this.completeScheduleIfDue(schedule.id, now);
-        continue;
-      }
-      if (new Date(schedule.nextRunAt).getTime() > now.getTime()) {
-        continue;
-      }
-      await this.runSchedule(schedule, now);
+    } finally {
+      release?.();
     }
   }
 

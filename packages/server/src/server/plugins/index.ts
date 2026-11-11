@@ -45,6 +45,7 @@ interface PluginRuntimePort {
   detachTools?: PluginRuntime["detachTools"];
   emit?: PluginLifecycle["emit"];
   drainEvents?: PluginRuntime["drainEvents"];
+  getUpdateBlockers?: PluginRuntime["getUpdateBlockers"];
   before?: PluginLifecycle["before"];
   wait?: PluginLifecycle["wait"];
   catalog: PluginRuntime["catalog"];
@@ -175,6 +176,10 @@ export class PluginService {
     await this.runtime.wait?.(name, payload);
   };
 
+  getUpdateBlockers(): string[] {
+    return this.runtime.getUpdateBlockers?.() ?? ["plugin update safety unknown"];
+  }
+
   async drainEvents(): Promise<void> {
     await this.runtime.drainEvents?.();
   }
@@ -277,7 +282,9 @@ export class PluginService {
           ?.describe(id, source.path)
           .catch(() => undefined);
         if (!this.managedSources)
-          item.installation = { identity: { kind: "directory", path: path.resolve(source.path) } };
+          item.installation = {
+            identity: { kind: "directory", path: path.resolve(source.path) },
+          };
         if (item.installation?.identity.kind === "git") {
           item.source = "git";
           item.remote = item.installation.identity.remote;
@@ -306,7 +313,11 @@ export class PluginService {
     return this.enqueue(async () => {
       const directory = path.resolve(input.path);
       const manifest = await readPluginManifest(directory);
-      assertPluginCompatibility({ ...manifest, version: this.daemonVersion, runtime: "daemon" });
+      assertPluginCompatibility({
+        ...manifest,
+        version: this.daemonVersion,
+        runtime: "daemon",
+      });
       const pluginId = PluginIdSchema.parse(input.id ?? manifest.id);
       if (this.builtinPluginIds.has(pluginId)) {
         throw new Error(`Plugin ID "${pluginId}" is reserved for a built-in plugin`);
@@ -316,7 +327,11 @@ export class PluginService {
           `Plugin ID "${pluginId}" is already configured; choose another ID with --id`,
         );
       }
-      await this.patchSource(pluginId, { source: "directory", path: directory, enabled: true });
+      await this.patchSource(pluginId, {
+        source: "directory",
+        path: directory,
+        enabled: true,
+      });
       if (this.canPublish(pluginId)) await this.startConfigured(pluginId);
       this.notify(pluginId);
       const installed = await this.requireItem(pluginId);
@@ -477,7 +492,10 @@ export class PluginService {
   }
 
   async enablePlugin(pluginId: string): Promise<PluginListItem> {
-    await this.patchSource(pluginId, (source) => ({ ...source, enabled: true }));
+    await this.patchSource(pluginId, (source) => ({
+      ...source,
+      enabled: true,
+    }));
     this.errors.delete(pluginId);
     return this.enqueue(async () => {
       // Cancellation persistence uses the store queue, so it never waits behind a blocked start.
@@ -494,7 +512,10 @@ export class PluginService {
   async disablePlugin(pluginId: string): Promise<PluginListItem> {
     const operation = {
       kind: "disable",
-      completion: this.patchSource(pluginId, (source) => ({ ...source, enabled: false })),
+      completion: this.patchSource(pluginId, (source) => ({
+        ...source,
+        enabled: false,
+      })),
     } as const;
     this.pendingOperations.set(pluginId, operation);
     try {
@@ -514,7 +535,10 @@ export class PluginService {
 
   async removePlugin(pluginId: string): Promise<void> {
     this.requireSource(pluginId);
-    const operation = { kind: "remove", completion: this.removeSource(pluginId) } as const;
+    const operation = {
+      kind: "remove",
+      completion: this.removeSource(pluginId),
+    } as const;
     this.pendingOperations.set(pluginId, operation);
     try {
       await operation.completion;
@@ -764,7 +788,11 @@ export class PluginService {
 
   private async checkRequirements(directory: string): Promise<void> {
     const manifest = await readPluginManifest(directory);
-    assertPluginCompatibility({ ...manifest, version: this.daemonVersion, runtime: "daemon" });
+    assertPluginCompatibility({
+      ...manifest,
+      version: this.daemonVersion,
+      runtime: "daemon",
+    });
   }
 
   private async updateSource(proposal: PluginUpdateProposal): Promise<PluginUpdateResult> {
@@ -806,7 +834,11 @@ export class PluginService {
         }
         if (recoveryError)
           throw new Error(
-            `Update failed: ${error instanceof Error ? error.message : String(error)}; restoring previous plugin also failed: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`,
+            `Update failed: ${
+              error instanceof Error ? error.message : String(error)
+            }; restoring previous plugin also failed: ${
+              recoveryError instanceof Error ? recoveryError.message : String(recoveryError)
+            }`,
             { cause: error },
           );
         throw error;
@@ -828,7 +860,9 @@ export class PluginService {
     try {
       await managedSources.removeVersion(pluginId, source.path);
     } catch (error) {
-      warning = `Plugin updated, but previous installation cleanup failed: ${error instanceof Error ? error.message : String(error)}`;
+      warning = `Plugin updated, but previous installation cleanup failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
     }
     return {
       id: pluginId,

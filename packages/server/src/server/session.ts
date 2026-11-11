@@ -68,7 +68,7 @@ import type {
 } from "../terminal/terminal-manager.js";
 import { TerminalSessionController } from "../terminal/terminal-session-controller.js";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
-import type { BinaryFrame } from "@getpaseo/protocol/binary-frames/index";
+import { TerminalStreamOpcode, type BinaryFrame } from "@getpaseo/protocol/binary-frames/index";
 import {
   encodePluginEventFrame,
   encodePluginOutputFrame,
@@ -2425,7 +2425,82 @@ export class Session {
     return this.delivery.request(source, msg, () => this.handleRequest(msg, source));
   }
 
+  private admitUpdateRequest(msg: SessionInboundMessage): (() => void) | null | undefined {
+    let releaseUpdateAdmission: (() => void) | null | undefined;
+    const updateReadOnly =
+      new Set<string>([
+        "ping",
+        "client_heartbeat",
+        "fetch_agents_request",
+        "fetch_agent_request",
+        "fetch_agent_history_request",
+        "fetch_agent_timeline_request",
+        "get_daemon_config_request",
+        "session.events.set_subscription.request",
+        "agent.timeline.set_subscription.request",
+        "agent.provider_subagents.list.request",
+        "agent.background_work.list.request",
+        "agent.timeline.search.request",
+        "agent.timeline.list_prompts.request",
+        "assistant.conversation.get.request",
+        "daemon.get_status.request",
+        "fetch_workspaces_request",
+        "project.list.request",
+        "workspace.label.list.request",
+        "read_project_config_request",
+        "checkout_status_request",
+        "diff.subscribe.request",
+        "diff.unsubscribe.request",
+        "checkout.diff.get.request",
+        "subscribe_checkout_diff_request",
+        "unsubscribe_checkout_diff_request",
+        "file_explorer_request",
+        "fs.file.subscribe.request",
+        "fs.file.unsubscribe.request",
+        "browser.host.register.request",
+        "browser.host.unregister.request",
+        "browser.automation.execute.response",
+        "subscribe_terminals_request",
+        "unsubscribe_terminals_request",
+        "list_terminals_request",
+        "subscribe_terminal_request",
+        "unsubscribe_terminal_request",
+        "capture_terminal_request",
+      ]).has(msg.type) ||
+      (msg.type === "terminal_input" && msg.message.type === "resize");
+    if (!updateReadOnly && this.agentManager.updateAdmission) {
+      releaseUpdateAdmission = this.agentManager.updateAdmission.enter();
+      if (!releaseUpdateAdmission) {
+        const requestId = sessionRequestId(msg);
+        // One-way terminal/audio input has no retry/ack protocol. Never drop it.
+        // Urgent cancellation/permission replies must also remain usable.
+        // Interrupting revokes this renderer-only lease before admitting the work.
+        if (
+          !requestId ||
+          msg.type === "cancel_agent_request" ||
+          msg.type === "agent_permission_response"
+        ) {
+          this.agentManager.updateAdmission.interrupt();
+          releaseUpdateAdmission = this.agentManager.updateAdmission.enter();
+        } else {
+          this.emit({
+            type: "rpc_error",
+            payload: {
+              requestId,
+              requestType: msg.type,
+              code: "update_in_progress",
+              error: "A safe renderer update is in progress. Retry this request after it finishes.",
+            },
+          });
+          return null;
+        }
+      }
+    }
+    return releaseUpdateAdmission;
+  }
+
   private async handleRequest(msg: SessionInboundMessage, source?: object): Promise<void> {
+    let releaseUpdateAdmission: (() => void) | null = null;
     this.inflightRequests++;
     if (this.inflightRequests > this.peakInflightRequests) {
       this.peakInflightRequests = this.inflightRequests;
@@ -2455,6 +2530,9 @@ export class Session {
         }
         return;
       }
+      const admitted = this.admitUpdateRequest(msg);
+      if (admitted === null) return;
+      releaseUpdateAdmission = admitted ?? null;
       try {
         await this.dispatchInboundMessage(msg, source);
       } catch (error) {
@@ -2490,6 +2568,7 @@ export class Session {
         });
       }
     } finally {
+      releaseUpdateAdmission?.();
       this.inflightRequests--;
     }
   }
@@ -2515,6 +2594,13 @@ export class Session {
           ),
         );
     }
+  }
+
+  public getUpdateBlockers(): string[] {
+    return [
+      ...(this.connectedHostSession?.hasActiveRoutes() ? ["connected-host routes active"] : []),
+      ...(this.delivery.pendingOperationCount ? ["retained session operations pending"] : []),
+    ];
   }
 
   public getPermissions(): DaemonPermission[] {
@@ -3646,10 +3732,14 @@ export class Session {
       return;
     }
     if (binaryFrame.kind === "file_transfer") {
+      this.agentManager.updateAdmission?.interrupt();
       await this.workspaceFilesSession.handleFileTransferFrame(binaryFrame.frame, source);
       return;
     }
     if (binaryFrame.kind === "terminal") {
+      // Renderer restoration resizes retained PTYs; only input revokes its lease.
+      if (binaryFrame.frame.opcode === TerminalStreamOpcode.Input)
+        this.agentManager.updateAdmission?.interrupt();
       this.terminalController.handleBinaryFrame(binaryFrame.frame, source);
     }
   }

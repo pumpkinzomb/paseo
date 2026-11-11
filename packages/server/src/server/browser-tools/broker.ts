@@ -1,3 +1,4 @@
+import type { UpdateAdmissionFence } from "../update-quiescence.js";
 import { randomUUID } from "node:crypto";
 import {
   BrowserAutomationExecuteRequestSchema,
@@ -39,6 +40,7 @@ interface RegisteredBrowserHost {
 }
 
 export interface BrowserToolsBrokerOptions {
+  updateAdmission?: UpdateAdmissionFence;
   defaultTimeoutMs?: number;
   createRequestId?: () => string;
 }
@@ -54,7 +56,10 @@ export class BrowserToolsBroker {
   private readonly strandedBrowserHostByBrowserId = new Map<string, string>();
   private registrationSequence = 0;
 
+  private readonly updateAdmission?: UpdateAdmissionFence;
+
   public constructor(options: BrowserToolsBrokerOptions) {
+    this.updateAdmission = options.updateAdmission;
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? DEFAULT_BROWSER_TOOLS_TIMEOUT_MS;
     this.createRequestId = options.createRequestId ?? (() => `browser_${randomUUID()}`);
   }
@@ -111,6 +116,24 @@ export class BrowserToolsBroker {
   }
 
   public async execute(input: BrowserToolsExecuteInput): Promise<BrowserToolsResponsePayload> {
+    const release = this.updateAdmission?.enter();
+    if (this.updateAdmission && !release)
+      return browserToolsFailure({
+        requestId: input.requestId ?? this.createRequestId(),
+        code: "browser_unknown_error",
+        message: "update_in_progress: retry after renderer update",
+        retryable: true,
+      });
+    try {
+      return await this.executeAdmitted(input);
+    } finally {
+      release?.();
+    }
+  }
+
+  private async executeAdmitted(
+    input: BrowserToolsExecuteInput,
+  ): Promise<BrowserToolsResponsePayload> {
     const requestId = input.requestId ?? this.createRequestId();
 
     const request = BrowserAutomationExecuteRequestSchema.safeParse({

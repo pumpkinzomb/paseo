@@ -151,6 +151,11 @@ export class SessionDelivery {
       .map((owner) => owner.id);
   }
 
+  /** Includes cancellation cleanup until its stop promise settles. */
+  get pendingOperationCount(): number {
+    return [...this.sources.values()].reduce((count, source) => count + source.operations.size, 0);
+  }
+
   get registrationCount(): number {
     return [...this.sources.values()].reduce(
       (count, source) => count + source.subscriptions.size + source.operations.size,

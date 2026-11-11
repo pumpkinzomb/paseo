@@ -1,3 +1,4 @@
+import { UpdateAdmissionFence } from "../../update-quiescence.js";
 import { expect, test } from "vitest";
 import { createAgentMessageDelivery, parseAgentMessages } from "./index.js";
 import type { AgentPromptInput } from "../agent-sdk-types.js";
@@ -312,4 +313,57 @@ test("runtime safety sees queued messages until provider dispatch settles", asyn
   release();
   await delivery.close();
   expect(delivery.hasPending("parent")).toBe(false);
+});
+
+test("update admission retains queued receipts while fenced and tracks dispatch acknowledgment", async () => {
+  const updateAdmission = new UpdateAdmissionFence();
+  const clock = createClock();
+  let finish!: () => void;
+  let started!: () => void;
+  const running = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const wait = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let sent = 0;
+  const delivery = createAgentMessageDelivery({
+    updateAdmission,
+    schedule: clock.schedule,
+    dispatch: async () => {
+      sent++;
+      started();
+      await wait;
+      return "steered";
+    },
+    onError: (error) => {
+      throw error;
+    },
+  });
+  updateAdmission.close();
+  const epoch = updateAdmission.epoch;
+  const receipt = delivery.enqueue({
+    recipientId: "parent",
+    messageId: "keep",
+    prompt: "retained",
+    source: { kind: "agent-message", agentId: "child" },
+  });
+  expect(updateAdmission.epoch).toBe(epoch + 1);
+  clock.advance(2000);
+  expect(sent).toBe(0);
+  expect(delivery.getUpdateBlockers()).toEqual(["agent-messages-queued"]);
+  expect(() => delivery.close()).toThrow("update_in_progress");
+  expect(delivery.hasPending("parent")).toBe(true);
+  updateAdmission.open();
+  clock.advance(250);
+  await running;
+  expect(updateAdmission.pending).toBe(1);
+  expect(delivery.getUpdateBlockers()).toEqual(["agent-messages-dispatching"]);
+  finish();
+  await expect(receipt.dispatched).resolves.toBe("steered");
+  await delivery.close();
+  await Promise.resolve();
+  expect(sent).toBe(1);
+  expect(updateAdmission.pending).toBe(0);
+  expect(delivery.getUpdateBlockers()).toEqual([]);
 });

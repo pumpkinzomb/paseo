@@ -1,3 +1,4 @@
+import { UpdateAdmissionFence } from "../../update-quiescence.js";
 import { createIdleRuntimeCleanup } from "../idle-runtime-cleanup/index.js";
 import { HostObservationError } from "../host-operations/index.js";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -47,6 +48,9 @@ class Observation implements FinishObservation {
   }
 }
 class Delivery implements AgentMessageDelivery {
+  getUpdateBlockers() {
+    return [];
+  }
   prompts: string[] = [];
   acknowledgments: Array<ReturnType<typeof deferred<"steered">>> = [];
   enqueue(message: Parameters<AgentMessageDelivery["enqueue"]>[0]) {
@@ -68,7 +72,12 @@ afterEach(async () => {
   for (const service of services.splice(0)) await service.close();
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
 });
-async function scenario(directory?: string, removalFailures = 0, retryDelayMs = 1) {
+async function scenario(
+  directory?: string,
+  removalFailures = 0,
+  retryDelayMs = 1,
+  updateAdmission?: UpdateAdmissionFence,
+) {
   const home = directory ?? (await mkdtemp(join(tmpdir(), "finish-recovery-")));
   if (!directory) homes.push(home);
   const durableStore = createJsonFinishSubscriptionStore(home);
@@ -86,6 +95,7 @@ async function scenario(directory?: string, removalFailures = 0, retryDelayMs = 
   const delivery = new Delivery();
   let active = true;
   const service = createFinishSubscriptions({
+    updateAdmission,
     store,
     messages: () => delivery,
     open: observation.open.bind(observation),
@@ -497,4 +507,30 @@ test("finish recovery protects callers before durable intent has loaded", async 
   await starting;
   expect(recovered.hasPendingForCaller("parent")).toBe(true);
   expect(recovered.hasPendingForCaller("unrelated")).toBe(false);
+});
+
+test("update admission rejects new registrations reversibly and exposes durable watch intent", async () => {
+  const updateAdmission = new UpdateAdmissionFence();
+  const state = await scenario(undefined, 0, 1, updateAdmission);
+  expect(state.service.getUpdateBlockers()).toEqual([]);
+  updateAdmission.close();
+  await expect(state.service.register(intent)).rejects.toThrow("update_in_progress");
+  expect(await state.store.list()).toEqual([]);
+  await expect(state.service.close()).rejects.toThrow("update_in_progress");
+  updateAdmission.open();
+  await state.service.register(intent);
+  await until(() => state.observation.waits.length === 1);
+  expect(state.service.getUpdateBlockers()).toEqual(["finish-subscriptions-pending"]);
+  expect(await state.store.list()).toHaveLength(1);
+  expect(updateAdmission.pending).toBe(0);
+  updateAdmission.close();
+  state.observation.waits[0]!.result.resolve(outcome());
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(state.delivery.prompts).toEqual([]);
+  expect(await state.store.list()).toHaveLength(1);
+  updateAdmission.open();
+  await until(() => state.delivery.prompts.length === 1);
+  state.delivery.acknowledgments[0]!.resolve("steered");
+  await until(() => state.service.getUpdateBlockers().length === 0);
+  expect(await state.store.list()).toEqual([]);
 });

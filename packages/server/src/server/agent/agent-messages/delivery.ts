@@ -1,3 +1,4 @@
+import type { UpdateAdmissionFence } from "../../update-quiescence.js";
 import type { PromptDispatchDisposition } from "../agent-prompt.js";
 import { randomUUID } from "node:crypto";
 import type { AgentPromptInput, AgentPromptContentBlock } from "../agent-sdk-types.js";
@@ -36,12 +37,14 @@ interface DispatchRequest {
   onDispatch(disposition: PromptDispatchDisposition): void;
 }
 interface Dependencies {
+  updateAdmission?: UpdateAdmissionFence;
   dispatch(request: DispatchRequest): Promise<PromptDispatchDisposition>;
   onError(error: unknown, request: DispatchRequest): void;
   /** Return a cancellation function. Production uses the daemon's event loop. */
   schedule?: (delayMs: number, callback: () => void) => () => void;
 }
 export interface AgentMessageDelivery {
+  getUpdateBlockers(): string[];
   enqueue(message: Message): Receipt;
   /** Queued messages and provider dispatches still owned by this recipient. */
   hasPending(recipientId: string): boolean;
@@ -64,7 +67,7 @@ export function createAgentMessageDelivery(dependencies: Dependencies): AgentMes
   let closed = false;
   let closing: Promise<void> | undefined;
 
-  function dispatch(recipientId: string, messages: Admitted[]): void {
+  function dispatch(recipientId: string, messages: Admitted[]): Promise<void> {
     const prompts = messages.map(
       (message) =>
         prepareAgentMessage(message.prompt, message.source, message.receipt.messageId).prompt,
@@ -113,11 +116,19 @@ export function createAgentMessageDelivery(dependencies: Dependencies): AgentMes
         if (dispatching.get(recipientId) === dispatched) dispatching.delete(recipientId);
       })
       .catch(() => undefined);
+    return dispatched;
   }
 
   function flush(recipientId: string): void {
     const entry = pending.get(recipientId);
     if (!entry) return;
+    const release = dependencies.updateAdmission?.enter();
+    if (dependencies.updateAdmission && !release) {
+      entry.cancel();
+      entry.cancel = schedule(250, () => flush(recipientId));
+      return;
+    }
+    const batches: Promise<void>[] = [];
     pending.delete(recipientId);
     entry.cancel();
     let group: Admitted[] = [];
@@ -129,20 +140,30 @@ export function createAgentMessageDelivery(dependencies: Dependencies): AgentMes
         ((message.activeTurnBehavior ?? "steer") !== (group[0]!.activeTurnBehavior ?? "steer") ||
           (mode && message.sessionMode && mode !== message.sessionMode))
       ) {
-        dispatch(recipientId, group);
+        batches.push(dispatch(recipientId, group));
         group = [];
         mode = undefined;
       }
       group.push(message);
       mode ??= message.sessionMode;
     }
-    if (group.length) dispatch(recipientId, group);
+    if (group.length) batches.push(dispatch(recipientId, group));
+    void Promise.allSettled(batches).then(() => {
+      release?.();
+      return undefined;
+    });
   }
 
   return {
+    getUpdateBlockers: () => [
+      ...(pending.size ? ["agent-messages-queued"] : []),
+      ...(dispatching.size ? ["agent-messages-dispatching"] : []),
+    ],
     hasPending: (recipientId) => pending.has(recipientId) || dispatching.has(recipientId),
     enqueue(message) {
       if (closed) throw new Error("Agent message delivery is closed");
+      // Preserve incoming intent, but revoke any prepared checkpoint immediately.
+      dependencies.updateAdmission?.invalidate();
       let resolve!: Admitted["resolve"];
       let reject!: Admitted["reject"];
       const dispatched = new Promise<PromptDispatchDisposition>((accepted, failed) => {
@@ -182,6 +203,7 @@ export function createAgentMessageDelivery(dependencies: Dependencies): AgentMes
     },
     close() {
       if (closing) return closing;
+      dependencies.updateAdmission?.assertOpen();
       closed = true;
       for (const recipientId of pending.keys()) flush(recipientId);
       // Each failure is reported and rejects its receipts; shutdown still drains other recipients.

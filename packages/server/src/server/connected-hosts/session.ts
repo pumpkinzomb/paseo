@@ -35,6 +35,10 @@ export class ConnectedHostSession {
     private readonly originSessionId: string,
     private readonly bufferedAmount: (source: object) => number | null,
   ) {}
+  hasActiveRoutes(): boolean {
+    return this.routes.size > 0;
+  }
+
   binary(frame: HostRouteFrame, source: object): void {
     const route = this.routes.get(frame.routeId);
     if (!route || route.source !== source) return;
@@ -97,7 +101,10 @@ export class ConnectedHostSession {
     });
   }
   private async execute(message: SessionInboundMessage): Promise<void> {
-    const actor = { ...this.actor, manageSources: this.permissions().includes("access.manage") };
+    const actor = {
+      ...this.actor,
+      manageSources: this.permissions().includes("access.manage"),
+    };
     switch (message.type) {
       case "hosts.list.request":
         return this.list(message);
@@ -121,7 +128,10 @@ export class ConnectedHostSession {
         return;
       case "hosts.remove.request":
         await this.hosts.remove(message.registrationId, actor);
-        this.emit({ type: "hosts.remove.response", payload: { requestId: message.requestId } });
+        this.emit({
+          type: "hosts.remove.response",
+          payload: { requestId: message.requestId },
+        });
         return;
       case "hosts.route.open.request":
         return this.open(message);
@@ -148,7 +158,10 @@ export class ConnectedHostSession {
     if (!message.observe) {
       this.emit({
         type: "hosts.list.response",
-        payload: { requestId: message.requestId, directory: await this.hosts.list() },
+        payload: {
+          requestId: message.requestId,
+          directory: await this.hosts.list(),
+        },
       });
       return;
     }
@@ -159,7 +172,10 @@ export class ConnectedHostSession {
         void this.hosts
           .list()
           .then((directory) => {
-            owner.emit({ type: "hosts.changed", payload: { subscriptionId: owner.id, directory } });
+            owner.emit({
+              type: "hosts.changed",
+              payload: { subscriptionId: owner.id, directory },
+            });
             return undefined;
           })
           .catch(() => owner.release());

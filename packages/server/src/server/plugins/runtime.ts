@@ -406,7 +406,12 @@ export class PluginRuntime {
   fetchUsage(pluginId: string, sourceId: string, input: unknown): Promise<unknown> {
     const loaded = this.plugins.get(pluginId);
     if (!loaded) throw new Error(`Plugin is not available: ${pluginId}`);
-    return this.request(loaded, { type: "usage.fetch", requestId: randomUUID(), sourceId, input });
+    return this.request(loaded, {
+      type: "usage.fetch",
+      requestId: randomUUID(),
+      sourceId,
+      input,
+    });
   }
 
   discoverUsage(pluginId: string, sourceId: string, scope: UsageScope): Promise<unknown> {
@@ -517,7 +522,12 @@ export class PluginRuntime {
     if (!loaded) throw new Error(`Plugin is not available: ${pluginId}`);
     if (!loaded.methods.has(method))
       throw new Error(`Plugin ${pluginId} does not contribute RPC ${method}`);
-    return this.request(loaded, { type: "invoke", requestId: randomUUID(), method, input });
+    return this.request(loaded, {
+      type: "invoke",
+      requestId: randomUUID(),
+      method,
+      input,
+    });
   }
 
   /** Starts one subscriber's handler in the plugin process. */
@@ -549,7 +559,10 @@ export class PluginRuntime {
         subscription.released();
         if (!loaded.subscriptions.delete(subscriptionId)) return;
         if (loaded.child?.connected)
-          void send(loaded.child, { type: "unsubscribe", subscriptionId }).catch(() => undefined);
+          void send(loaded.child, {
+            type: "unsubscribe",
+            subscriptionId,
+          }).catch(() => undefined);
       },
     };
   }
@@ -578,6 +591,12 @@ export class PluginRuntime {
     }
   }
 
+  getUpdateBlockers(): string[] {
+    return this.plugins.size || this.pendingEvents.size
+      ? ["plugin runtimes or lifecycle events active"]
+      : [];
+  }
+
   async drainEvents(): Promise<void> {
     await Promise.all(this.pendingEvents);
   }
@@ -592,7 +611,12 @@ export class PluginRuntime {
     for (const loaded of plugins) {
       if (!loaded.hooks.includes(name)) continue;
       try {
-        await this.request(loaded, { type: "hook", requestId: randomUUID(), name, input: payload });
+        await this.request(loaded, {
+          type: "hook",
+          requestId: randomUUID(),
+          name,
+          input: payload,
+        });
       } catch (error) {
         throw new Error(`Plugin ${loaded.id} ${name} failed: ${describeError(error)}`, {
           cause: error,
@@ -701,7 +725,11 @@ export class PluginRuntime {
         throw new Error(
           `Agent tool ${tool.name} from plugin ${loaded.id} collides with plugin ${collision.pluginId}`,
         );
-      attached.push({ ...tool, pluginId: loaded.id, pluginInstanceId: loaded.instanceId });
+      attached.push({
+        ...tool,
+        pluginId: loaded.id,
+        pluginInstanceId: loaded.instanceId,
+      });
     }
   }
 

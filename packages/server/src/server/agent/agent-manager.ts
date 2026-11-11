@@ -1,3 +1,4 @@
+import { UpdateAdmissionFence, UpdateBlocked } from "../update-quiescence.js";
 import {
   readSelfDevelopmentPolicy,
   assertSelfDevelopmentCwd,
@@ -384,6 +385,7 @@ export interface CreateAgentOptions {
 }
 
 export interface AgentManagerOptions {
+  updateAdmission?: UpdateAdmissionFence;
   pluginLifecycle?: PluginLifecycle;
   /** An internal workspace makes every agent created inside it internal. */
   clients?: ProviderClientMap;
@@ -904,8 +906,11 @@ export class AgentManager {
   private acceptingAgentRegistrations = true;
   private readonly workspaceIsActive?: AgentManagerOptions["workspaceIsActive"];
 
+  readonly updateAdmission: UpdateAdmissionFence;
+
   constructor(options: AgentManagerOptions) {
     this.workspaceIsActive = options.workspaceIsActive;
+    this.updateAdmission = resolveUpdateAdmission(options.updateAdmission);
     this.pluginLifecycle = options.pluginLifecycle;
     this.pluginAgentTools = options.pluginAgentTools;
     this.timelineStore = options.timelineStore ?? new InMemoryAgentTimelineStore();
@@ -3039,6 +3044,8 @@ export class AgentManager {
   }
 
   private async runLifecycleMutation<T>(agentId: string, mutation: () => Promise<T>): Promise<T> {
+    const releaseUpdateAdmission = this.updateAdmission.enter();
+    if (!releaseUpdateAdmission) throw new UpdateBlocked("update_in_progress");
     // Parent cascade classifies a child inside the same lane used by open-tab
     // label writes, so a received ownership update cannot be overtaken.
     const previous = this.lifecycleMutationTails.get(agentId) ?? Promise.resolve();
@@ -3053,7 +3060,7 @@ export class AgentManager {
         this.lifecycleMutationTails.delete(agentId);
       }
     });
-    return result;
+    return result.finally(releaseUpdateAdmission);
   }
 
   async runAgent(
@@ -3302,6 +3309,7 @@ export class AgentManager {
     prompt: AgentPromptInput,
     options?: AgentRunOptions,
   ): AsyncGenerator<AgentStreamEvent> {
+    this.updateAdmission.assertOpen();
     if (this.conversationMutations.has(agentId))
       throw new Error("Conversation is being archived, restored, or deleted. Please retry.");
     if (this.collectingRuntimes.has(agentId) || (!this.agents.has(agentId) && this.registry))
@@ -3663,6 +3671,8 @@ export class AgentManager {
   }
 
   private async runForegroundMutation<T>(agentId: string, operation: () => Promise<T>): Promise<T> {
+    const releaseUpdateAdmission = this.updateAdmission.enter();
+    if (!releaseUpdateAdmission) throw new UpdateBlocked("update_in_progress");
     const previous = this.foregroundMutationTails.get(agentId) ?? Promise.resolve();
     const run = previous.catch(() => undefined).then(operation);
     const tail = run.then(
@@ -3673,6 +3683,7 @@ export class AgentManager {
     try {
       return await run;
     } finally {
+      releaseUpdateAdmission();
       if (this.foregroundMutationTails.get(agentId) === tail) {
         this.foregroundMutationTails.delete(agentId);
       }
@@ -4848,6 +4859,7 @@ export class AgentManager {
   }
 
   private enqueueSessionEvent(agentId: string, event: AgentStreamEvent): void {
+    this.updateAdmission.invalidate();
     this.logger.trace(
       {
         agentId,
@@ -6511,9 +6523,9 @@ export class AgentManager {
     if (!client) {
       const configuredProviders = this.getConfiguredProviderIds();
       throw new Error(
-        `Unknown provider '${options.provider}'. Configured providers: ${formatProviderList(
-          configuredProviders,
-        )}.`,
+        `Unknown provider '${
+          options.provider
+        }'. Configured providers: ${formatProviderList(configuredProviders)}.`,
       );
     }
 
@@ -6632,4 +6644,8 @@ export function commandMayHaveChangedExternalState(command: string): boolean {
     // ahead/behind counts can drift stale until the next refresh.
     /\bgit\s+fetch\b/.test(normalized)
   );
+}
+
+function resolveUpdateAdmission(fence?: UpdateAdmissionFence): UpdateAdmissionFence {
+  return fence ?? new UpdateAdmissionFence();
 }

@@ -1,3 +1,5 @@
+import { TerminalStreamOpcode } from "@getpaseo/protocol/binary-frames/index";
+import { UpdateAdmissionFence } from "./update-quiescence.js";
 import {
   createWorkspaceRuntimeStore,
   type WorkspaceRuntimeStore,
@@ -409,6 +411,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     pushNotifications: options.pushNotifications ?? asPushNotifications(),
     paseoHome: options.paseoHome ?? "/tmp/paseo-home",
     agentManager: asAgentManager({
+      updateAdmission: new UpdateAdmissionFence(),
       listAgents: vi.fn(() => []),
       listProviderSubagentActivity: vi.fn(() => []),
       getAgentBackgroundWorkSummary: () => undefined,
@@ -1477,7 +1480,12 @@ describe("workspace file access (behavior preservation)", () => {
   test("file upload round-trips bytes through binary frames", async () => {
     const paseoHome = makeDir("file-access-upload-");
     const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForTest({ messages, paseoHome });
+    const updateAdmission = new UpdateAdmissionFence();
+    const session = createSessionForTest({
+      messages,
+      paseoHome,
+      agentManager: { updateAdmission },
+    });
 
     const source = {};
     await session.handleMessage(
@@ -1491,6 +1499,9 @@ describe("workspace file access (behavior preservation)", () => {
       },
       source,
     );
+    expect(session.getUpdateBlockers()).toContain("retained session operations pending");
+    updateAdmission.close();
+    const uploadEpoch = updateAdmission.epoch;
     await session.handleBinaryFrame(
       {
         kind: "file_transfer",
@@ -1530,6 +1541,10 @@ describe("workspace file access (behavior preservation)", () => {
       source,
     );
 
+    expect(updateAdmission.epoch).toBeGreaterThan(uploadEpoch);
+    await vi.waitFor(() =>
+      expect(session.getUpdateBlockers()).not.toContain("retained session operations pending"),
+    );
     const response = messages.find((message) => message.type === "file.upload.response");
     if (response?.type !== "file.upload.response") {
       throw new Error("expected a file.upload.response message");
@@ -6353,4 +6368,104 @@ test("does not publish internal agents' background work to subscribed clients", 
     ],
   });
   expect(messages.some((message) => message.type === "agent.background_work.update")).toBe(false);
+});
+
+test("renderer update fence rejects mutations with original request ID while health requests remain available", async () => {
+  const updateAdmission = new UpdateAdmissionFence();
+  const messages: SessionOutboundMessage[] = [];
+  const cancelAgentRun = vi.fn();
+  const session = createSessionForTest({
+    messages,
+    agentManager: { updateAdmission, cancelAgentRun },
+  });
+  updateAdmission.close();
+  await session.handleMessage({
+    type: "kill_terminal_request",
+    terminalId: "terminal-fixture",
+    requestId: "update-retry",
+  });
+  expect(cancelAgentRun).not.toHaveBeenCalled();
+  expect(messages).toContainEqual({
+    type: "rpc_error",
+    payload: {
+      requestId: "update-retry",
+      requestType: "kill_terminal_request",
+      code: "update_in_progress",
+      error: "A safe renderer update is in progress. Retry this request after it finishes.",
+    },
+  });
+  await session.handleMessage({ type: "ping" });
+  expect(messages.some((message) => message.type === "pong")).toBe(true);
+  updateAdmission.open();
+});
+
+test("renderer update fence preserves one-way terminal bytes and invalidates the lease", async () => {
+  const updateAdmission = new UpdateAdmissionFence();
+  const session = createSessionForTest({ agentManager: { updateAdmission } });
+  const dispatch = vi
+    .spyOn(
+      session as unknown as {
+        dispatchInboundMessage(message: SessionInboundMessage, source?: object): Promise<void>;
+      },
+      "dispatchInboundMessage",
+    )
+    .mockResolvedValue(undefined);
+  updateAdmission.close();
+  const epoch = updateAdmission.epoch;
+  const input = {
+    type: "terminal_input" as const,
+    terminalId: "fixture",
+    message: { type: "input" as const, data: "preserve these bytes\r" },
+  };
+  await session.handleMessage(input);
+  expect(dispatch).toHaveBeenCalledWith(input, undefined);
+  expect(updateAdmission.epoch).toBeGreaterThan(epoch);
+  const release = updateAdmission.enter();
+  expect(release).not.toBeNull();
+  release?.();
+});
+
+test("renderer update preserves binary terminal input but permits restoration resize and subscriptions", async () => {
+  const updateAdmission = new UpdateAdmissionFence();
+  const session = createSessionForTest({ agentManager: { updateAdmission } });
+  const internals = session as unknown as {
+    terminalController: { handleBinaryFrame(frame: unknown, source: object): void };
+    dispatchInboundMessage(message: SessionInboundMessage, source?: object): Promise<void>;
+  };
+  const binary = vi
+    .spyOn(internals.terminalController, "handleBinaryFrame")
+    .mockImplementation(() => {});
+  const dispatch = vi.spyOn(internals, "dispatchInboundMessage").mockResolvedValue(undefined);
+  const source = {};
+  updateAdmission.close();
+  const epoch = updateAdmission.epoch;
+  await session.handleMessage(
+    { type: "subscribe_terminal_request", terminalId: "fixture", requestId: "restore" },
+    source,
+  );
+  await session.handleMessage(
+    {
+      type: "terminal_input",
+      terminalId: "fixture",
+      message: { type: "resize", rows: 24, cols: 80 },
+    },
+    source,
+  );
+  const resize = { opcode: TerminalStreamOpcode.Resize, slot: 1, payload: new Uint8Array() };
+  await session.handleBinaryFrame({ kind: "terminal", frame: resize }, source);
+  expect(updateAdmission.epoch).toBe(epoch);
+  expect(updateAdmission.enter()).toBeNull();
+  expect(dispatch).toHaveBeenCalledTimes(2);
+  expect(binary).toHaveBeenCalledWith(resize, source);
+  const input = {
+    opcode: TerminalStreamOpcode.Input,
+    slot: 1,
+    payload: new TextEncoder().encode("keep bytes"),
+  };
+  await session.handleBinaryFrame({ kind: "terminal", frame: input }, source);
+  expect(binary).toHaveBeenCalledWith(input, source);
+  expect(updateAdmission.epoch).toBeGreaterThan(epoch);
+  const release = updateAdmission.enter();
+  expect(release).not.toBeNull();
+  release?.();
 });

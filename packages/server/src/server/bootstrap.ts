@@ -1,3 +1,12 @@
+import {
+  UpdateAdmissionFence,
+  createUpdateQuiescence,
+  UpdateBlocked,
+  type UpdateBinding,
+  type UpdateTicket,
+} from "./update-quiescence.js";
+import { startUpdateControl } from "./update-control.js";
+import { getPidLockInfo } from "./pid-lock.js";
 import { createRestartRecovery } from "./agent/restart-recovery/index.js";
 import { sendPromptToAgent } from "./agent/agent-prompt.js";
 import { createIdleRuntimeCleanup } from "./agent/idle-runtime-cleanup/index.js";
@@ -670,7 +679,10 @@ export async function createPaseoDaemon(
     logger.error({ err: error }, "Failed to maintain orchestration skills at startup");
   });
   const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
-  const browserToolsBroker = new BrowserToolsBroker({});
+  const updateAdmission = new UpdateAdmissionFence();
+  const browserToolsBroker = new BrowserToolsBroker({ updateAdmission });
+  let updateControl: Awaited<ReturnType<typeof startUpdateControl>> | null = null;
+  let releaseUpdateLease: (() => void) | null = null;
   const pluginRuntime: PluginService = new PluginService(logger, daemonConfigStore, daemonVersion, {
     usageAgents: {
       hasAgent: (id) => agentManager.getAgent(id) !== null,
@@ -1012,6 +1024,7 @@ export async function createPaseoDaemon(
   });
   const initialAgentManagerState = providerSnapshotManager.getAgentManagerProviderState();
   const agentManager = new AgentManager({
+    updateAdmission,
     pluginLifecycle: pluginRuntime,
     pluginAgentTools: pluginRuntime,
     clients: initialAgentManagerState.clients,
@@ -1057,7 +1070,14 @@ export async function createPaseoDaemon(
     eligible: async (record) =>
       !record.workspaceId || !(await workspaceRegistry?.get(record.workspaceId))?.archivedAt,
     dispatch: (agentId, prompt) =>
-      sendPromptToAgent({ agentId, prompt, agentManager, agentStorage, logger, unarchive: false }),
+      sendPromptToAgent({
+        agentId,
+        prompt,
+        agentManager,
+        agentStorage,
+        logger,
+        unarchive: false,
+      }),
     report: (agentId, err) => logger.error({ agentId, err }, "Agent restart recovery failed"),
   });
   await restartRecovery.prepareStartup();
@@ -1195,7 +1215,9 @@ export async function createPaseoDaemon(
     workspaceRegistry,
     workspaceGitService,
     providerSnapshotManager,
-    readDaemonConfig: () => ({ metadataGeneration: daemonConfigStore.get().metadataGeneration }),
+    readDaemonConfig: () => ({
+      metadataGeneration: daemonConfigStore.get().metadataGeneration,
+    }),
     gitMutation: createGitMutationService({
       workspaceGitService,
       logger,
@@ -1450,6 +1472,7 @@ export async function createPaseoDaemon(
     );
   };
   const scheduleService = new ScheduleService({
+    updateAdmission,
     paseoHome: config.paseoHome,
     logger,
     agentManager,
@@ -1474,7 +1497,9 @@ export async function createPaseoDaemon(
   const persistedRecords = await agentStorage.listAll();
   logger.info(
     { elapsed: elapsed() },
-    `Agent registry loaded (${persistedRecords.length} record${persistedRecords.length === 1 ? "" : "s"}); agents will initialize on demand`,
+    `Agent registry loaded (${persistedRecords.length} record${
+      persistedRecords.length === 1 ? "" : "s"
+    }); agents will initialize on demand`,
   );
   logger.info(
     "Voice mode configured for agent-scoped resume flow (no dedicated voice assistant provider)",
@@ -1482,6 +1507,7 @@ export async function createPaseoDaemon(
   logger.info({ elapsed: elapsed() }, "Preparing voice and MCP runtime");
 
   const finishSubscriptions = createFinishSubscriptions({
+    updateAdmission,
     store: createJsonFinishSubscriptionStore(config.paseoHome),
     serverId,
     logger,
@@ -1900,7 +1926,9 @@ export async function createPaseoDaemon(
             restartRecovery.resumePending();
             await finishSubscriptions.start();
             wsServer.beginAcceptingConnections();
-            const relaySecurityLogger = logger.child({ module: "relay-security" });
+            const relaySecurityLogger = logger.child({
+              module: "relay-security",
+            });
             relayRuntime = createRelayRuntime({
               config: {
                 enabled: relayEnabled,
@@ -1955,6 +1983,101 @@ export async function createPaseoDaemon(
       // model loading doesn't block the server from accepting connections.
       speechService.start();
       scriptHealthMonitor.start();
+      const updateDirectory = process.env.PASEO_DEV_UPDATE_DAEMON_CONTROL;
+      if (updateDirectory) {
+        const lock = await getPidLockInfo(config.paseoHome);
+        if (!lock) throw new Error("Update control requires an owned daemon PID lock");
+        const generation = randomUUID();
+        const instance = {
+          pid: lock.pid,
+          startedAt: lock.startedAt,
+          hostname: lock.hostname,
+          uid: lock.uid,
+          bootId: lock.bootId ?? null,
+        };
+        const daemonIdentity = JSON.stringify({
+          ...instance,
+          workerPid: process.pid,
+          generation,
+        });
+        const quiescence = createUpdateQuiescence({
+          identity: () => daemonIdentity,
+          fence: updateAdmission,
+          runtimes: () => agentManager.getRuntimeCleanupCandidates(),
+          missingIngressCoverage: () => [],
+          blockers: () => [
+            ...scheduleService.getUpdateBlockers(),
+            ...finishSubscriptions.getUpdateBlockers(),
+            ...(wsServer?.agentMessages.getUpdateBlockers() ?? []),
+            ...pluginRuntime.getUpdateBlockers(),
+            ...(wsServer?.listSessions().flatMap((session) => session.getUpdateBlockers()) ?? []),
+            ...(browserToolsBroker.getPendingRequestCount() ? ["browser requests pending"] : []),
+          ],
+          stop: async () => {
+            throw new UpdateBlocked(
+              "Full daemon update requires a verified no-force supervisor path",
+            );
+          },
+        });
+        releaseUpdateLease = () => quiescence.dispose();
+        const bindingSchema = z
+          .object({
+            mode: z.enum(["renderer", "daemon"]),
+            daemonIdentity: z.string(),
+            candidateDigest: z.string().regex(/^[a-f0-9]{64}$/),
+          })
+          .strict();
+        const ticketSchema = bindingSchema
+          .extend({
+            token: z.string().uuid(),
+            expiresAt: z.number().finite(),
+            epoch: z.number().int().nonnegative(),
+          })
+          .strict();
+        updateControl = await startUpdateControl({
+          directory: updateDirectory,
+          descriptor: {
+            version: 1,
+            daemonIdentity,
+            generation,
+            workerPid: process.pid,
+            serverId,
+            instance,
+            capabilities: { rendererLease: true, daemonCommit: false },
+            ttlMs: 15_000,
+          },
+          handle: async (request) => {
+            const current = await getPidLockInfo(config.paseoHome);
+            if (
+              !current ||
+              current.pid !== instance.pid ||
+              current.startedAt !== instance.startedAt ||
+              current.uid !== instance.uid ||
+              current.hostname !== instance.hostname ||
+              (current.bootId ?? null) !== instance.bootId
+            )
+              throw new UpdateBlocked("Daemon instance changed");
+            if (request.operation === "prepare") {
+              const binding = bindingSchema.parse(request.binding) as UpdateBinding;
+              if (binding.mode !== "renderer")
+                throw new UpdateBlocked(
+                  "Full daemon update unsupported: no-force shutdown not verified",
+                );
+              return quiescence.prepare(binding);
+            }
+            const ticket = ticketSchema.parse(request.ticket) as UpdateTicket;
+            if (ticket.mode !== "renderer")
+              throw new UpdateBlocked("Full daemon update unsupported");
+            if (request.operation === "inspect") return quiescence.inspect(ticket);
+            if (request.operation === "renew") return quiescence.renew(ticket);
+            if (request.operation === "abort") {
+              quiescence.abort(ticket);
+              return { released: true };
+            }
+            return quiescence.commit(ticket);
+          },
+        });
+      }
     } catch (error) {
       localCredential = null;
       await deleteLocalCredential(config.paseoHome);
@@ -1972,6 +2095,8 @@ export async function createPaseoDaemon(
   };
 
   const stop = async (options?: { keepTerminals?: boolean }) => {
+    releaseUpdateLease?.();
+    await updateControl?.close();
     const keepTerminals = options?.keepTerminals === true;
     let terminalShutdownError: unknown = null;
     localCredential = null;
