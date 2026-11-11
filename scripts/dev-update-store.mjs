@@ -4,6 +4,49 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 export const hash = (value) => crypto.createHash("sha256").update(value).digest("hex");
+// Bound I/O and memory while still reading every byte on every verification.
+// Never use timestamps or a previous successful scan as content evidence.
+export async function mapVerification(items, visit, concurrency = 4) {
+  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 16)
+    throw new Error("Invalid verification concurrency");
+  const results = Array.from({ length: items.length });
+  let next = 0;
+  let failure;
+  let failed = false;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (!failed && next < items.length) {
+        const index = next++;
+        try {
+          results[index] = await visit(items[index], index);
+        } catch (error) {
+          if (!failed) {
+            failed = true;
+            failure = error;
+          }
+        }
+      }
+    }),
+  );
+  // Drain in-flight reads before allowing callers to clean up or rename a tree.
+  if (failed) throw failure;
+  return results;
+}
+export async function hashFile(file) {
+  const digest = crypto.createHash("sha256");
+  const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const buffer = Buffer.allocUnsafe(256 * 1024);
+    while (true) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (!bytesRead) break;
+      digest.update(buffer.subarray(0, bytesRead));
+    }
+    return digest.digest("hex");
+  } finally {
+    await handle.close();
+  }
+}
 export const idPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/;
 export function inside(root, target) {
   const relative = path.relative(root, target);
@@ -149,25 +192,35 @@ export async function scanRelease(root) {
   if (canonical !== path.resolve(root)) throw new Error("Release root must not be an alias");
   const entries = {};
   async function walk(directory, prefix = "") {
-    for (const name of (await fs.readdir(directory)).sort()) {
+    const children = await mapVerification((await fs.readdir(directory)).sort(), async (name) => {
       const relative = prefix ? `${prefix}/${name}` : name;
-      if (mutable(relative)) continue;
+      if (mutable(relative)) return null;
       const file = path.join(directory, name);
       const info = await fs.lstat(file);
-      if (name === ".DS_Store" && (await isFinderMetadata(file, info))) continue;
+      if (name === ".DS_Store" && (await isFinderMetadata(file, info))) return null;
       if (info.isSymbolicLink()) {
         const target = await fs.readlink(file);
         if (path.isAbsolute(target) || !inside(canonical, await fs.realpath(file)))
           throw new Error(`Release link escapes its tree: ${relative}`);
-        entries[relative] = { link: target };
-      } else if (info.isDirectory()) await walk(file, relative);
+        return { relative, entry: { link: target } };
+      } else if (info.isDirectory()) return { relative, directory: file };
       else if (info.isFile()) {
         if (info.nlink !== 1) throw new Error(`Shared hardlink is not a release file: ${relative}`);
-        entries[relative] = {
-          sha256: hash(await fs.readFile(file)),
-          executable: Boolean(info.mode & 0o111),
+        return {
+          relative,
+          entry: {
+            sha256: await hashFile(file),
+            executable: Boolean(info.mode & 0o111),
+          },
         };
       } else throw new Error(`Unsupported release entry: ${relative}`);
+    });
+    // Preserve the original sorted depth-first manifest insertion order.
+    // Recurse only after this batch drains, so nested directories cannot multiply concurrency.
+    for (const child of children) {
+      if (!child) continue;
+      if (child.directory) await walk(child.directory, child.relative);
+      else entries[child.relative] = child.entry;
     }
   }
   await walk(canonical);

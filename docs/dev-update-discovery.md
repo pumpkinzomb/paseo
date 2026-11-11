@@ -86,3 +86,17 @@ inspection, not deleted by discovery. There is no automatic cleanup of user
 artifacts and no Git push operation in this module.
 
 Focused regression command: `node --test scripts/dev-update-discovery.test.mjs`.
+
+## Verification throughput
+
+Release and dependency verification reads every payload byte on every call; no
+persistent hash/mtime cache or skipped deployment boundary is used. File reads
+are bounded to four workers with 256 KiB streaming buffers. Release scans drain
+one directory batch before descending and insert entries in the original sorted
+depth-first order, preserving existing manifest digests. Failed batches drain
+in-flight reads before returning, so cleanup cannot race outstanding workers.
+
+Focused regression: `node --test scripts/dev-update-verification.test.mjs`.
+This improves the cost of repeated scans, not their count. Performance varies
+with filesystem cache and concurrent disk activity; a scan benchmark is not an
+end-to-end deployment time guarantee.

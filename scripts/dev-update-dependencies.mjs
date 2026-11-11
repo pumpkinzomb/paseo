@@ -3,7 +3,7 @@ import path from "node:path";
 import { constants } from "node:fs";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { hash, inside, verifyRelease } from "./dev-update-store.mjs";
+import { hash, hashFile, mapVerification, inside, verifyRelease } from "./dev-update-store.mjs";
 
 const exec = promisify(execFile);
 const dependencyPath = (name) => /(^|\/)node_modules\//.test(name);
@@ -202,7 +202,7 @@ export async function cloneVerifiedReleaseEntries({ source, destination, entries
   await verifyDependencyEntries(destination, entries, source);
 }
 export async function verifyDependencyEntries(root, entries, donorRoot) {
-  for (const [name, expected] of Object.entries(entries)) {
+  await mapVerification(Object.entries(entries), async ([name, expected]) => {
     const file = path.join(root, safeRelative(name)),
       info = await fs.lstat(file);
     if (expected.link !== undefined) {
@@ -213,7 +213,7 @@ export async function verifyDependencyEntries(root, entries, donorRoot) {
         !info.isFile() ||
         info.nlink !== 1 ||
         Boolean(info.mode & 0o111) !== expected.executable ||
-        hash(await fs.readFile(file)) !== expected.sha256
+        (await hashFile(file)) !== expected.sha256
       )
         throw new Error(`Dependency payload changed: ${name}`);
       if (donorRoot) {
@@ -222,8 +222,9 @@ export async function verifyDependencyEntries(root, entries, donorRoot) {
           throw new Error("Dependency files share an inode");
       }
     }
-  }
+  });
 }
+
 export async function prepareDependencies({
   source,
   releases,
