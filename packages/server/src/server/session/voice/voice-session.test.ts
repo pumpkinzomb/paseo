@@ -567,5 +567,22 @@ test("native voice stop reports transcript storage failure instead of confirming
     }),
   );
   expect(host.spokenInput).toEqual([]);
-  await expect(voiceSession.cleanup()).rejects.toThrow("disk write failed");
+  expect(voiceSession.hasDemand).toBe(false);
+  expect(voiceSession.isActiveForAgent(VOICE_AGENT_ID)).toBe(false);
+  host.recordNativeTranscript = vi.fn().mockResolvedValue(undefined);
+  await voiceSession.handleNativeVoiceOffer({
+    type: "voice.native.start.request",
+    requestId: "retry-offer",
+    agentId: VOICE_AGENT_ID,
+    offerSdp: "offer",
+  });
+  emit({ type: "transcript", role: "user", text: "new session succeeds" });
+  await voiceSession.handleSetVoiceMode(false, undefined, "retry-stop");
+  expect(host.emitted).toContainEqual(
+    expect.objectContaining({
+      type: "set_voice_mode_response",
+      payload: expect.objectContaining({ requestId: "retry-stop", accepted: true, error: null }),
+    }),
+  );
+  await expect(voiceSession.cleanup()).resolves.toBeUndefined();
 });

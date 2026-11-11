@@ -199,7 +199,11 @@ export class VoiceSession {
           timer = setTimeout(() => reject(new Error("Voice transcript saving timed out")), 5000);
         }),
       ]);
-      if (this.nativeTranscriptError) throw this.nativeTranscriptError;
+      if (this.nativeTranscriptError) {
+        const error = this.nativeTranscriptError;
+        this.nativeTranscriptError = undefined;
+        throw error;
+      }
     } finally {
       clearTimeout(timer);
     }
@@ -545,6 +549,9 @@ export class VoiceSession {
   ): Promise<NativeVoiceConnection> {
     const agent = await this.host.loadAgent(agentId);
     if (this.closed) throw new Error("Voice source is closed");
+    if (this.nativeTranscriptPending > 0)
+      throw new Error("Previous voice transcripts are still saving");
+    if (this.nativeTranscriptError) await this.drainNativeTranscripts();
     if (!agent.session?.startNativeVoice)
       throw new Error("This agent does not support native voice");
     if (this.nativeVoiceSelected) throw new Error("Native voice is already active or starting");
@@ -681,33 +688,34 @@ export class VoiceSession {
       this.nativeVoiceSelected = false;
       this.isVoiceMode = false;
     }
-    await this.drainNativeTranscripts();
-    await this.stopVoiceTurnController();
-
     const agentId = this.voiceModeAgentId;
-    if (!agentId) {
-      this.voiceModeBaseConfig = null;
-      return;
-    }
-
-    if (restoreAgentConfig && this.voiceModeBaseConfig) {
-      const baseConfig = this.voiceModeBaseConfig;
+    try {
+      await this.drainNativeTranscripts();
+    } finally {
       try {
-        await this.host.reloadAgentSession(agentId, {
-          systemPrompt: buildVoiceModeSystemPrompt(baseConfig.systemPrompt, false),
-        });
-      } catch (error) {
-        this.sessionLogger.warn(
-          { err: error, agentId },
-          "Failed to restore agent config while disabling voice mode",
-        );
+        await this.stopVoiceTurnController();
+        if (agentId && restoreAgentConfig && this.voiceModeBaseConfig) {
+          const baseConfig = this.voiceModeBaseConfig;
+          try {
+            await this.host.reloadAgentSession(agentId, {
+              systemPrompt: buildVoiceModeSystemPrompt(baseConfig.systemPrompt, false),
+            });
+          } catch (error) {
+            this.sessionLogger.warn(
+              { err: error, agentId },
+              "Failed to restore agent config while disabling voice mode",
+            );
+          }
+        }
+      } finally {
+        if (agentId) {
+          this.unregisterVoiceSpeakHandler?.(agentId);
+          this.unregisterVoiceCallerContext?.(agentId);
+        }
+        this.voiceModeBaseConfig = null;
+        this.voiceModeAgentId = null;
       }
     }
-
-    this.unregisterVoiceSpeakHandler?.(agentId);
-    this.unregisterVoiceCallerContext?.(agentId);
-    this.voiceModeBaseConfig = null;
-    this.voiceModeAgentId = null;
   }
 
   private handleDictationManagerMessage(msg: DictationStreamOutboundMessage): void {
