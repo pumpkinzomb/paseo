@@ -15388,3 +15388,19 @@ test("group deletion rejects late creation after the deletion gate has already b
   active = true;
   expect((await f.create("group")).workspaceId).toBe("group");
 });
+
+test("explicit descendant deletion validates the full multi-workspace inventory", async () => {
+  const f = await conversationLifecycleFixture();
+  const parent = await f.create("parent-workspace");
+  const child = await f.create("child-workspace");
+  const sibling = await f.create("sibling-workspace");
+  await f.manager.setLabels(child.id, { [PARENT_AGENT_ID_LABEL]: parent.id });
+  await f.manager.mutateAssistantConversationRecords([parent.id, child.id], "delete", null, [
+    "parent-workspace",
+    "child-workspace",
+  ]);
+  expect(await f.storage.get(parent.id)).toBeNull();
+  expect(await f.storage.get(child.id)).toBeNull();
+  expect(await f.storage.get(sibling.id)).not.toBeNull();
+  expect(f.client.archivedHandles).toEqual([]);
+});

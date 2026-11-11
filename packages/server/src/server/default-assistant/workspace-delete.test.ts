@@ -95,3 +95,18 @@ it("a failed apply cannot clear logical conversation metadata", async () => {
   ).rejects.toThrow("close failed");
   expect(await readFile(f.file, "utf8")).toBe(before);
 });
+
+it("includes only an explicit descendant scope in its confirmed batch", async () => {
+  const f = await fixture(true);
+  const ids = await f.selection.deleteWorkspaceSessions({
+    ...f.input,
+    workspaceIds: ["w", "other"],
+  });
+  expect(ids).toEqual(["a", "b", "child", "unrelated"]);
+  await f.selection.deleteWorkspaceSessions({
+    ...f.input,
+    workspaceIds: ["w", "other"],
+    expectedAgentIds: ids,
+  });
+  expect(f.apply).toHaveBeenCalledExactlyOnceWith(ids);
+});

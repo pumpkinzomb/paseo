@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
   confirm: vi.fn(),
   closeTabs: vi.fn(),
+  collectWorkspaces: vi.fn(() => new Map<string, string>()),
   close: vi.fn(),
   refresh: vi.fn(),
   supported: true,
@@ -32,7 +33,10 @@ vi.mock("@/contexts/toast-context", () => ({ useToast: () => mocks.toast }));
 vi.mock("@/default-assistant/conversation", () => ({
   ASSISTANT_CONVERSATION_QUERY_ROOT: "testConversation",
 }));
-vi.mock("@/default-assistant/lifecycle-layout", () => ({ closeSessionTabs: mocks.closeTabs }));
+vi.mock("@/default-assistant/lifecycle-layout", () => ({
+  closeSessionTabs: mocks.closeTabs,
+  collectSessionWorkspaces: mocks.collectWorkspaces,
+}));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, args?: { count: number }) => (args ? `${key}:${args.count}` : key),
@@ -42,6 +46,7 @@ beforeEach(() => {
   vi.stubGlobal("React", React);
   vi.clearAllMocks();
   mocks.supported = true;
+  mocks.collectWorkspaces.mockReturnValue(new Map());
   mocks.preview.mockResolvedValue({ agentIds: ["parent", "segment", "child"], error: null });
   mocks.remove.mockResolvedValue({ agentIds: ["parent", "segment", "child"], error: null });
   mocks.confirm.mockResolvedValue(false);
@@ -74,11 +79,11 @@ it("one confirmation deletes the full authoritative group with no session picker
   show();
   fireEvent.click(screen.getByRole("button"));
   await waitFor(() =>
-    expect(mocks.remove).toHaveBeenCalledExactlyOnceWith("workspace", [
-      "parent",
-      "segment",
-      "child",
-    ]),
+    expect(mocks.remove).toHaveBeenCalledExactlyOnceWith(
+      "workspace",
+      ["parent", "segment", "child"],
+      undefined,
+    ),
   );
   expect(mocks.confirm.mock.calls[0][0].message).toBe("workspaceSessionDeletion.confirm:3");
   expect(mocks.close).toHaveBeenCalledTimes(1);
@@ -188,4 +193,37 @@ it("changing the target while confirming cancels the old scope", async () => {
   resolve(true);
   await Promise.resolve();
   expect(mocks.remove).not.toHaveBeenCalled();
+});
+
+it("sends the confirmed descendant workspace scope and closes child tabs in their own workspace", async () => {
+  mocks.confirm.mockResolvedValue(true);
+  mocks.preview.mockResolvedValue({
+    agentIds: ["parent", "child"],
+    workspaceIds: ["workspace", "child-workspace"],
+    error: null,
+  });
+  mocks.remove.mockResolvedValue({ agentIds: ["parent", "child"], error: null });
+  mocks.collectWorkspaces.mockReturnValue(
+    new Map([
+      ["parent", "workspace"],
+      ["child", "child-workspace"],
+    ]),
+  );
+  show();
+  fireEvent.click(screen.getByRole("button"));
+  await waitFor(() =>
+    expect(mocks.remove).toHaveBeenCalledExactlyOnceWith(
+      "workspace",
+      ["parent", "child"],
+      ["workspace", "child-workspace"],
+    ),
+  );
+  expect(mocks.closeTabs).toHaveBeenCalledWith(
+    "host",
+    ["parent", "child"],
+    new Map([
+      ["parent", "workspace"],
+      ["child", "child-workspace"],
+    ]),
+  );
 });

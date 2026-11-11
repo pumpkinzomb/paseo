@@ -3000,18 +3000,21 @@ export const WorkspaceSessionsDeleteInspectRequestSchema = z.object({
   type: z.literal("workspace.sessions.delete.inspect.request"),
   requestId: z.string(),
   workspaceId: z.string().regex(/^wks_[a-f0-9]{16}$/),
+  includeDescendants: z.boolean().optional(),
 });
 export const WorkspaceSessionsDeleteRequestSchema = z.object({
   type: z.literal("workspace.sessions.delete.request"),
   requestId: z.string(),
   workspaceId: z.string().regex(/^wks_[a-f0-9]{16}$/),
   expectedAgentIds: z.array(z.string().uuid()),
+  expectedWorkspaceIds: z.array(z.string().regex(/^wks_[a-f0-9]{16}$/)).optional(),
 });
 export const WorkspaceSessionsDeleteInspectResponseSchema = z.object({
   type: z.literal("workspace.sessions.delete.inspect.response"),
   payload: z.object({
     requestId: z.string(),
     agentIds: z.array(z.string()),
+    workspaceIds: z.array(z.string()).optional(),
     error: z.string().nullable(),
   }),
 });
@@ -3020,6 +3023,7 @@ export const WorkspaceSessionsDeleteResponseSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     agentIds: z.array(z.string()),
+    workspaceIds: z.array(z.string()).optional(),
     error: z.string().nullable(),
   }),
 });

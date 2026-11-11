@@ -4,9 +4,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/contexts/toast-context";
 import { useHostRuntimeClient, getHostRuntimeStore } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
-import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import {
+  useActiveWorkspaceSelection,
+  type ActiveWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
-import { closeSessionTabs } from "@/default-assistant/lifecycle-layout";
+import { closeSessionTabs, collectSessionWorkspaces } from "@/default-assistant/lifecycle-layout";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { toErrorMessage } from "@/utils/error-messages";
 import { allAgentHistoryQueryRootKey } from "./agent-history-query-key";
@@ -24,6 +27,24 @@ function deletionErrorKey(message: string) {
   )
     return "workspaceSessionDeletion.busy";
   return null;
+}
+
+function redirectDeletedWorkspace(
+  serverId: string,
+  workspaceId: string,
+  scope: string[] | undefined,
+  active: ActiveWorkspaceSelection | null,
+) {
+  const removedWorkspaceIds = scope ?? [workspaceId];
+  redirectIfArchivingActiveWorkspace({
+    serverId,
+    workspaceId:
+      active?.serverId === serverId && removedWorkspaceIds.includes(active.workspaceId)
+        ? active.workspaceId
+        : workspaceId,
+    removedWorkspaceIds,
+    activeWorkspaceSelection: active,
+  });
 }
 
 export function useDeleteWorkspaceSessions(
@@ -72,18 +93,26 @@ export function useDeleteWorkspaceSessions(
         destructive: true,
       });
       if (!confirmed || !stillCurrent()) return;
+      const ownedWorkspaces = collectSessionWorkspaces(serverId);
       mutationStarted = true;
-      const result = await client.deleteWorkspaceSessions(workspaceId, preview.agentIds);
+      const result = await client.deleteWorkspaceSessions(
+        workspaceId,
+        preview.agentIds,
+        preview.workspaceIds,
+      );
       responseReceived = true;
-      const workspaces = new Map(result.agentIds.map((id) => [id, workspaceId]));
+      const workspaces = new Map(
+        result.agentIds.map((id) => [id, ownedWorkspaces.get(id) ?? workspaceId]),
+      );
       closeSessionTabs(serverId, result.agentIds, workspaces);
       if (!result.error) {
         toast.show(t("workspaceSessionDeletion.done"), { variant: "success" });
-        redirectIfArchivingActiveWorkspace({
+        redirectDeletedWorkspace(
           serverId,
           workspaceId,
-          activeWorkspaceSelection: activeWorkspaceRef.current,
-        });
+          result.workspaceIds,
+          activeWorkspaceRef.current,
+        );
         if (stillCurrent()) onDeleted?.();
       }
       try {

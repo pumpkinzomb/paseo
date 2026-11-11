@@ -233,9 +233,10 @@ export class DefaultAssistantSelection {
     });
   }
 
-  /** The sidebar row owns an exact workspace, not a project or a provider session. */
+  /** The caller supplies an explicit workspace tree, never an inferred provider relationship. */
   deleteWorkspaceSessions(input: {
     workspaceId: string;
+    workspaceIds?: readonly string[];
     expectedAgentIds?: readonly string[];
     list: () => Promise<readonly { id: string; workspaceId?: string }[]>;
     validate: (ids: string[]) => Promise<void>;
@@ -244,8 +245,10 @@ export class DefaultAssistantSelection {
     return this.enqueue(async () => {
       const state = await this.read();
       const records = await input.list();
+      const workspaceIds = new Set(input.workspaceIds ?? [input.workspaceId]);
+      workspaceIds.add(input.workspaceId);
       const ids = records
-        .filter((record) => record.workspaceId === input.workspaceId)
+        .filter((record) => record.workspaceId && workspaceIds.has(record.workspaceId))
         .map((record) => record.id)
         .sort();
       const selected = new Set(ids);
@@ -254,7 +257,9 @@ export class DefaultAssistantSelection {
         conversation.segments.some(
           (segment) =>
             selected.has(segment.agentId) ||
-            (segment.workspaceId === input.workspaceId && !existingIds.has(segment.agentId)),
+            (segment.workspaceId !== null &&
+              workspaceIds.has(segment.workspaceId) &&
+              !existingIds.has(segment.agentId)),
         ),
       );
       // Never split a logical conversation or silently expand into another sidebar row.

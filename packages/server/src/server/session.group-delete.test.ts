@@ -15,6 +15,10 @@ async function fixture() {
     ["b", { id: "b", workspaceId: "w" }],
     ["other", { id: "other", workspaceId: "other" }],
   ]);
+  const workspaces: { workspaceId: string; parentWorkspaceId: string | null }[] = [
+    { workspaceId: "w", parentWorkspaceId: null },
+    { workspaceId: "other", parentWorkspaceId: null },
+  ];
   const update = vi.fn(async (_id: string, _apply: (record: object) => object) => true);
   const emit = vi.fn();
   const remove = vi.fn(async (ids: string[]) => {
@@ -32,17 +36,18 @@ async function fixture() {
     agentManager: owner,
     paseoHome: home,
     agentStorage: { listAll: async () => [...records.values()] },
-    workspaceRegistry: { get: async () => ({}), update },
+    workspaceRegistry: { get: async () => ({}), listAll: async () => workspaces, update },
     emitForSource: emit,
   });
-  const invoke = () =>
+  const invoke = (overrides: object = {}) =>
     Reflect.get(session, "handleWorkspaceSessionsDelete").call(session, {
       type: "workspace.sessions.delete.request",
       requestId: "request",
       workspaceId: "w",
       expectedAgentIds: ["a", "b"],
+      ...overrides,
     });
-  return { records, update, emit, remove, invoke, owner };
+  return { records, workspaces, update, emit, remove, invoke, owner };
 }
 it("group handler hides only metadata after a successful exact-scope deletion", async () => {
   const f = await fixture();
@@ -120,4 +125,55 @@ it("keeps completed children reviewable until their records are explicitly delet
   expect(result.archivedSubSessions).toEqual([
     expect.objectContaining({ workspaceId: "retained", agentId: "agent" }),
   ]);
+});
+
+it("deletes explicitly confirmed descendants and keeps a sibling workspace", async () => {
+  const f = await fixture();
+  f.workspaces.push({ workspaceId: "child", parentWorkspaceId: "w" });
+  f.workspaces.push({ workspaceId: "grandchild", parentWorkspaceId: "child" });
+  f.records.set("c", { id: "c", workspaceId: "child" });
+  f.records.set("g", { id: "g", workspaceId: "grandchild" });
+  await f.invoke({
+    expectedAgentIds: ["a", "b", "c", "g"],
+    expectedWorkspaceIds: ["w", "child", "grandchild"],
+  });
+  expect(f.remove).toHaveBeenCalledExactlyOnceWith(["a", "b", "c", "g"], "delete", null, [
+    "child",
+    "grandchild",
+    "w",
+  ]);
+  expect([...f.records.keys()]).toEqual(["other"]);
+  expect(f.update.mock.calls.map(([id]) => id)).toEqual(["child", "grandchild", "w"]);
+});
+it("rejects an added empty descendant after preview before deleting records", async () => {
+  const f = await fixture();
+  f.workspaces.push({ workspaceId: "new-empty", parentWorkspaceId: "w" });
+  await f.invoke({ expectedWorkspaceIds: ["w"] });
+  expect(f.remove).not.toHaveBeenCalled();
+  expect(f.emit.mock.calls[0][0].payload.error).toContain("changed");
+});
+it("keeps legacy clients scoped to the exact workspace", async () => {
+  const f = await fixture();
+  f.workspaces.push({ workspaceId: "child", parentWorkspaceId: "w" });
+  f.records.set("c", { id: "c", workspaceId: "child" });
+  await f.invoke();
+  expect(f.records.has("c")).toBe(true);
+  expect(f.update.mock.calls.map(([id]) => id)).toEqual(["w"]);
+});
+it("rejects busy children before record mutation", async () => {
+  const f = await fixture();
+  f.workspaces.push({ workspaceId: "child", parentWorkspaceId: "w" });
+  f.records.set("c", { id: "c", workspaceId: "child" });
+  f.owner.validateAssistantConversationMutation.mockRejectedValue(new Error("running work"));
+  await f.invoke({ expectedAgentIds: ["a", "b", "c"], expectedWorkspaceIds: ["w", "child"] });
+  expect(f.remove).not.toHaveBeenCalled();
+  expect(f.update).not.toHaveBeenCalled();
+});
+it("rejects a parent cycle without deleting records", async () => {
+  const f = await fixture();
+  f.workspaces[0]!.parentWorkspaceId = "child";
+  f.workspaces.push({ workspaceId: "child", parentWorkspaceId: "w" });
+  await f.invoke({ type: "workspace.sessions.delete.inspect.request", includeDescendants: true });
+  expect(f.remove).not.toHaveBeenCalled();
+  expect(f.emit.mock.calls[0][0].payload.error).toContain("cyclic");
 });

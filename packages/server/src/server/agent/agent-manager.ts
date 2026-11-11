@@ -4207,7 +4207,7 @@ export class AgentManager {
     agentIds: string[],
     action: "archive" | "restore" | "delete",
     assistantOnly: boolean | null = true,
-    expectedWorkspaceId?: string,
+    expectedWorkspaceId?: string | readonly string[],
   ): Promise<void> {
     const ids = [
       ...new Set(agentIds.map((id) => validateAgentId(id, "conversation lifecycle"))),
@@ -4224,16 +4224,19 @@ export class AgentManager {
         return this.runLifecycleMutation(ids[index]!, () => locked(index + 1));
       const validateWorkspace = async () => {
         if (!expectedWorkspaceId) return;
+        const workspaceIds = new Set(
+          typeof expectedWorkspaceId === "string" ? [expectedWorkspaceId] : expectedWorkspaceId,
+        );
         if (
           Array.from(this.agents.values()).some(
-            (agent) => agent.internal && agent.workspaceId === expectedWorkspaceId,
+            (agent) => agent.internal && agent.workspaceId && workspaceIds.has(agent.workspaceId),
           )
         )
           throw new Error(
             "This session group still owns background work. Finish it before deleting.",
           );
         const current = (await registry.listAll())
-          .filter((record) => record.workspaceId === expectedWorkspaceId)
+          .filter((record) => record.workspaceId && workspaceIds.has(record.workspaceId))
           .map((record) => record.id)
           .sort();
         if (JSON.stringify(current) !== JSON.stringify(ids))

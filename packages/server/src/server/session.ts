@@ -4887,6 +4887,38 @@ export class Session {
       : "workspace.sessions.delete.inspect.response";
     let attemptedIds: string[] = [];
     try {
+      const cascade =
+        request.type === "workspace.sessions.delete.inspect.request"
+          ? request.includeDescendants === true
+          : request.expectedWorkspaceIds !== undefined;
+      const resolveScope = async () => {
+        if (!cascade) return [request.workspaceId];
+        const workspaces = await this.workspaceRegistry.listAll();
+        const ids = new Set([request.workspaceId]);
+        for (let previousSize = -1; previousSize !== ids.size; ) {
+          previousSize = ids.size;
+          for (const workspace of workspaces) {
+            if (workspace.parentWorkspaceId && ids.has(workspace.parentWorkspaceId))
+              ids.add(workspace.workspaceId);
+          }
+        }
+        const root = workspaces.find((workspace) => workspace.workspaceId === request.workspaceId);
+        if (root?.parentWorkspaceId && ids.has(root.parentWorkspaceId))
+          throw new Error("Invalid cyclic session group relationship. No session was removed.");
+        return [...ids].sort();
+      };
+      const workspaceIds = await resolveScope();
+      if (
+        request.type === "workspace.sessions.delete.request" &&
+        request.expectedWorkspaceIds !== undefined &&
+        JSON.stringify([...new Set(request.expectedWorkspaceIds)].sort()) !==
+          JSON.stringify(workspaceIds)
+      )
+        throw new Error("The session groups changed. Reopen Delete and review them again.");
+      const verifyScope = async () => {
+        if (JSON.stringify(await resolveScope()) !== JSON.stringify(workspaceIds))
+          throw new Error("The session groups changed. Reopen Delete and review them again.");
+      };
       const execute = async () => {
         if (!(await this.workspaceRegistry.get(request.workspaceId)))
           throw new Error("This group no longer exists.");
@@ -4895,6 +4927,7 @@ export class Session {
           this.paseoHome,
         ).deleteWorkspaceSessions({
           workspaceId: request.workspaceId,
+          workspaceIds,
           expectedAgentIds:
             request.type === "workspace.sessions.delete.request"
               ? request.expectedAgentIds
@@ -4903,38 +4936,46 @@ export class Session {
           validate: (ids) =>
             this.agentManager.validateAssistantConversationMutation(ids, "delete", null),
           apply: async (ids) => {
+            await verifyScope();
             attemptedIds = ids;
             await this.agentManager.mutateAssistantConversationRecords(
               ids,
               "delete",
               null,
-              request.workspaceId,
+              workspaceIds,
             );
           },
         });
         if (deleting) {
+          await verifyScope();
           if (
             (await this.agentStorage.listAll()).some(
-              (record) => record.workspaceId === request.workspaceId,
+              (record) => record.workspaceId && workspaceIds.includes(record.workspaceId),
             )
           )
             throw new Error("The group changed during deletion. Its workspace was not hidden.");
           // Metadata only. Never invoke worktree removal, terminal teardown, or provider archive.
           const deletedAt = new Date().toISOString();
-          await this.workspaceRegistry.update(request.workspaceId, (workspace) => ({
-            ...workspace,
-            archivedAt: deletedAt,
-            updatedAt: deletedAt,
-            metadata: { ...workspace.metadata, sessionRecordsDeletedAt: deletedAt },
-          }));
+          for (const workspaceId of workspaceIds) {
+            await this.workspaceRegistry.update(workspaceId, (workspace) => ({
+              ...workspace,
+              archivedAt: deletedAt,
+              updatedAt: deletedAt,
+              metadata: { ...workspace.metadata, sessionRecordsDeletedAt: deletedAt },
+            }));
+          }
         }
         return agentIds;
       };
-      const agentIds = deleting
-        ? await this.agentManager.withWorkspaceSessionDeletion(request.workspaceId, execute)
-        : await execute();
+      const locked = (index: number): Promise<string[]> =>
+        index === workspaceIds.length
+          ? execute()
+          : this.agentManager.withWorkspaceSessionDeletion(workspaceIds[index]!, () =>
+              locked(index + 1),
+            );
+      const agentIds = deleting ? await locked(0) : await execute();
       this.emitForSource(
-        { type, payload: { requestId: request.requestId, agentIds, error: null } },
+        { type, payload: { requestId: request.requestId, agentIds, workspaceIds, error: null } },
         source,
       );
     } catch (error) {

@@ -6,6 +6,7 @@ import { buildWorkspaceArchiveRedirectRoute } from "@/utils/workspace-archive-na
 export interface RedirectIfArchivingActiveWorkspaceInput {
   serverId: string;
   workspaceId: string;
+  removedWorkspaceIds?: readonly string[];
   activeWorkspaceSelection: ActiveWorkspaceSelection | null;
 }
 
@@ -29,7 +30,9 @@ export function redirectIfArchivingActiveWorkspace(
     buildWorkspaceArchiveRedirectRoute({
       serverId: input.serverId,
       archivedWorkspaceId: input.workspaceId,
-      workspaces: deps.readWorkspaces(input.serverId),
+      workspaces: [...deps.readWorkspaces(input.serverId)].filter(
+        (workspace) => !input.removedWorkspaceIds?.includes(workspace.id),
+      ),
     }),
   );
   return true;

@@ -141,3 +141,22 @@ describe("redirectIfArchivingActiveWorkspace", () => {
     expect(routes).toEqual(["/new?serverId=server-1&dir=%2Frepo&name=Project&projectId=project-1"]);
   });
 });
+
+it("redirects a removed active child to the host instead of its removed project", () => {
+  const routes: Href[] = [];
+  expect(
+    redirectIfArchivingActiveWorkspace(
+      {
+        serverId: "server-1",
+        workspaceId: "child",
+        removedWorkspaceIds: ["parent", "child"],
+        activeWorkspaceSelection: { serverId: "server-1", workspaceId: "child" },
+      },
+      {
+        navigateToRoute: (route) => routes.push(route),
+        readWorkspaces: () => [workspace({ id: "child" })],
+      },
+    ),
+  ).toBe(true);
+  expect(routes).toEqual(["/h/server-1"]);
+});
