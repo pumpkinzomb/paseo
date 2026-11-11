@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import test from "node:test";
 import {
   INTENT_FILE,
+  checkRenderer,
   prepareReleaseIntent,
   inspectCandidate,
   fetchCandidate,
@@ -411,5 +412,24 @@ test("fetched installed revision does not depend on a stale local checkout", asy
       })
     ).state,
     "current",
+  );
+});
+
+test("renderer validation disables Vitest cache without relaxing sealed-byte checks", async (t) => {
+  const f = await fixture(t);
+  const calls = [];
+  await checkRenderer({
+    root: f.current.root,
+    changedPaths: ["packages/app/src/view.ts"],
+    runCommand: async (name, args) => {
+      calls.push({ name, args });
+    },
+  });
+  const related = calls.find(({ args }) => args.includes("related"));
+  assert.ok(related);
+  assert.ok(related.args.includes("--no-cache"));
+  assert.equal(
+    await fs.readFile(path.join(f.current.root, "node_modules/.vite/results.json"), "utf8"),
+    "{}",
   );
 });

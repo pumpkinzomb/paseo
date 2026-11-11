@@ -233,7 +233,7 @@ export async function fetchCandidate(config, installedRevision) {
 async function command(commandName, args, cwd, env) {
   await exec(commandName, args, { cwd, env, maxBuffer: 8 * 1024 * 1024, timeout: 10 * 60_000 });
 }
-export async function checkRenderer({ root, changedPaths }) {
+export async function checkRenderer({ root, changedPaths, runCommand = command }) {
   const env = Object.fromEntries(
     ["PATH", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE"]
       .filter((key) => process.env[key] !== undefined)
@@ -247,7 +247,7 @@ export async function checkRenderer({ root, changedPaths }) {
   env.PASEO_ELECTRON_USER_DATA_DIR = path.join(root, ".discovery-validation", "profile");
   env.npm_config_offline = "true";
   env.PATH = `${path.join(root, "node_modules", ".bin")}${path.delimiter}${env.PATH || ""}`;
-  await command("npm", ["run", "typecheck", "--workspace", "@getpaseo/app"], root, env);
+  await runCommand("npm", ["run", "typecheck", "--workspace", "@getpaseo/app"], root, env);
   const changed = changedPaths.filter(
     (name) => rendererPath.test(name) && /\.[cm]?[jt]sx?$/.test(name),
   );
@@ -259,9 +259,9 @@ export async function checkRenderer({ root, changedPaths }) {
     } catch {}
   }
   if (existing.length) {
-    await command("npm", ["exec", "--", "oxlint", ...existing], root, env);
-    await command("npm", ["exec", "--", "oxfmt", "--check", ...existing], root, env);
-    await command(
+    await runCommand("npm", ["exec", "--", "oxlint", ...existing], root, env);
+    await runCommand("npm", ["exec", "--", "oxfmt", "--check", ...existing], root, env);
+    await runCommand(
       "npm",
       [
         "exec",
@@ -272,6 +272,7 @@ export async function checkRenderer({ root, changedPaths }) {
         "related",
         ...existing.map((name) => name.slice("packages/app/".length)),
         "--run",
+        "--no-cache",
         "--passWithNoTests",
         "--bail=1",
       ],
