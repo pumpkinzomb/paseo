@@ -68,7 +68,10 @@ async function fixture(t, mode = "full") {
     git,
   };
 }
-async function fakeStage({ source, releases, id, statePreserving }) {
+async function fakeStage({ source, releases, id, statePreserving, dependencyDonor, minFreeBytes }) {
+  assert.equal(dependencyDonor.id, "base");
+  assert.match(dependencyDonor.digest, /^[a-f0-9]{64}$/);
+  assert.equal(minFreeBytes, 0);
   assert.equal(statePreserving, true);
   assert.equal((await exec("git", ["-C", source, "status", "--porcelain"])).stdout, "");
   const plan = JSON.parse(await fs.readFile(path.join(source, ".lab-config.json"), "utf8"));

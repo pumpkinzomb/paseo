@@ -135,16 +135,39 @@ Commit changes in an independent development lab. Stage with:
 
 ```
 node scripts/dev-update.mjs stage --source /absolute/lab \
-  --releases /absolute/releases --id update-<commit> --state-preserving
+  --releases /absolute/releases --id update-<commit> --state-preserving \
+  --dependency-release <verified-base-id> --dependency-digest <base-digest>
 ```
 
-The source commit is cloned without hardlinks into a new staging directory before
-validation. Dependencies are installed from the lockfile there, and Electron's lazy binary download is completed and checked before sealing. Server/app/desktop
-builds, repository typecheck/lint/format and focused updater tests run in that
-snapshot. The command refuses a dirty source tree and never copies live state,
-authentication, `.env` files or existing dependencies. A failed check leaves an
-unselected staging directory for diagnosis. Successful staging emits the release
-ID and manifest digest to pass to `init` or `queue`.
+The source commit is frozen in a new staging directory before validation. When
+all tracked dependency manifests, lockfiles, install configuration, patches and
+the reviewed install hook match the verified donor, staging independently
+copy-on-write clones its dependency payload, including Electron. It does not run
+`npm ci` or download Electron again. Nested workspace dependencies are included;
+throwaway dependency caches are not. Hardlinks and shared dependency directories
+are never used. Unsupported CoW, collisions or insufficient disk reserve stop the
+stage rather than falling back to a full copy or reinstall. The exact donor commit
+must be present in the frozen Git history; import that approved commit first if
+it is missing. Generated build manifests are not install inputs.
+
+For the first install, or an intentional dependency change, explicitly add
+`--install-dependencies`. This permits a clean lockfile install only when there is
+no compatible donor. It does not turn a failed compatible clone into an install.
+Full discovery supplies the current verified release as donor and allows a clean
+install for a declared dependency change. New install lifecycle commands require
+that clean path rather than guessed script compatibility.
+
+Server/app/desktop builds, repository typecheck/lint/format and focused updater
+tests run in the frozen snapshot. Reused dependency bytes and the donor are
+checked again afterward. The stage refuses dirty source and never copies live
+state, authentication or ignored `.env` files. New scratch trees live in the
+private sibling `.paseo-build-scratch` directory. A failed dependency clone before
+any installer/build/test command may automatically prune only exact duplicate
+files backed by its verified donor; source, logs, unmatched files and recovery
+receipts remain. Post-build failures remain unselected for diagnosis because a
+failed command is not proof that all its descendants stopped. Successful releases
+retain every runtime dependency. Nothing is deleted based merely on age or name.
+Successful staging emits the release ID and digest for `init` or `queue`.
 
 `--state-preserving` is an operator assertion made after reviewing the changes:
 there must be no incompatible state migration. The updater cannot infer that from

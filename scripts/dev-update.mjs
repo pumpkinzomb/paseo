@@ -28,6 +28,12 @@ import {
   captureBootstrapDaemon,
 } from "./dev-update-runtime.mjs";
 import { configuredDiscovery, runDiscoveryWatch } from "./dev-update-watch.mjs";
+import {
+  prepareDependencies,
+  verifyDependencyEntries,
+  assertDiskReserve,
+} from "./dev-update-dependencies.mjs";
+import { registerDependencyScratch, withDependencyScratchLease } from "./dev-update-cleanup.mjs";
 const exec = promisify(execFile);
 const directory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -44,7 +50,57 @@ async function run(command, args, cwd, env) {
     });
   });
 }
-export async function stageRelease({ source, releases, id, statePreserving }) {
+export async function prepareStageDependencies(
+  {
+    staging,
+    releases,
+    dependencyDonor,
+    installDependencies,
+    minFreeBytes,
+    managedRoot,
+    protectedPaths,
+  },
+  { prepare = prepareDependencies, register = registerDependencyScratch } = {},
+) {
+  try {
+    return await prepare({
+      source: staging,
+      releases,
+      donor: dependencyDonor,
+      allowInstall: installDependencies,
+      minFreeBytes,
+    });
+  } catch (error) {
+    if (error.dependencyClone) {
+      try {
+        const record = await register({
+          registry: path.join(managedRoot, "cleanup-records"),
+          managedRoot,
+          scratchRoot: staging,
+          ...error.dependencyClone,
+          protectedPaths,
+          automatic: true,
+        });
+        const result = await withDependencyScratchLease(record, (lease) => lease.complete());
+        error.dependencyCleanup = { ...record, result: result.cleanup };
+      } catch (cleanupError) {
+        // Retain anything whose stopped ownership or restore copy cannot be proven.
+        error.dependencyCleanupError = cleanupError.message;
+      }
+    }
+    throw error;
+  }
+}
+
+export async function stageRelease({
+  source,
+  releases,
+  id,
+  statePreserving,
+  dependencyDonor,
+  installDependencies = false,
+  minFreeBytes = 8 * 1024 ** 3,
+}) {
   if (!statePreserving)
     throw new Error(
       "Review state/schema compatibility and explicitly pass --state-preserving; migrations are unsupported",
@@ -76,7 +132,10 @@ export async function stageRelease({ source, releases, id, statePreserving }) {
     throw new Error("Release ID already exists; never overwrite a release");
   // Build beside the lab, not under protected runtime roots. The validated
   // tree is promoted by rename only after all work has finished.
-  const staging = path.join(path.dirname(source), `paseo-staging-${id}-${crypto.randomUUID()}`);
+  const managedRoot = path.join(path.dirname(source), ".paseo-build-scratch");
+  await privateDirectory(managedRoot);
+  const staging = path.join(managedRoot, `stage-${id}-${crypto.randomUUID()}`);
+  await privateDirectory(staging);
   // Freeze the commit BEFORE testing. A source edit during a long build cannot
   // get copied into a release after its checks passed. No working-tree files,
   // session stores, ignored .env/auth, or live dependencies are copied.
@@ -101,8 +160,17 @@ export async function stageRelease({ source, releases, id, statePreserving }) {
   );
   delete env.ELECTRON_OVERRIDE_DIST_PATH;
   delete env.ELECTRON_SKIP_BINARY_DOWNLOAD;
+  const dependencies = await prepareStageDependencies({
+    staging,
+    releases,
+    dependencyDonor,
+    installDependencies,
+    minFreeBytes,
+    managedRoot,
+    protectedPaths: [source, ...plan.protectedRoots],
+  });
   const checks = [
-    ["npm", ["ci"]],
+    ...(dependencies.mode === "install" ? [["npm", ["ci"]]] : []),
     [
       "node",
       [
@@ -131,7 +199,14 @@ export async function stageRelease({ source, releases, id, statePreserving }) {
       ],
     ],
   ];
-  for (const [command, args] of checks) await run(command, args, staging, env);
+  for (const [command, args] of checks) {
+    await assertDiskReserve(staging, minFreeBytes);
+    await run(command, args, staging, env);
+  }
+  if (dependencies.mode === "reuse") {
+    await verifyDependencyEntries(staging, dependencies.entries);
+    await verifyRelease(releases, dependencyDonor.id, dependencyDonor.digest);
+  }
   const stagedStatus = (await exec("git", ["status", "--porcelain"], { cwd: staging })).stdout;
   if (stagedStatus.trim()) throw new Error("Staged source changed during validation");
   // Remove only metadata/state created in this private staging checkout. The
@@ -147,6 +222,10 @@ export async function stageRelease({ source, releases, id, statePreserving }) {
     stateCompatibility: "preserve",
     validatedAt: new Date().toISOString(),
     checks: checks.map(([command, args]) => [command, ...args].join(" ")),
+    dependencies: {
+      mode: dependencies.mode,
+      ...(dependencies.donor ? { donor: dependencies.donor } : {}),
+    },
     entries: await scanRelease(staging),
   };
   await atomicJson(path.join(staging, "release.json"), manifest);
@@ -221,6 +300,11 @@ async function main() {
           releases: required("releases"),
           id: required("id"),
           statePreserving: options["state-preserving"] === true,
+          dependencyDonor:
+            options["dependency-release"] || options["dependency-digest"]
+              ? { id: required("dependency-release"), digest: required("dependency-digest") }
+              : undefined,
+          installDependencies: options["install-dependencies"] === true,
         }),
         null,
         2,
@@ -254,6 +338,8 @@ async function main() {
       "dev-update-watch.mjs",
       "dev-update-discovery.mjs",
       "dev-update-full-stage.mjs",
+      "dev-update-dependencies.mjs",
+      "dev-update-cleanup.mjs",
       "dev-update-validation.mjs",
       "isolated-lab.mjs",
     ])

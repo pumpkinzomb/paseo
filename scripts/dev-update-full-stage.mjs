@@ -38,8 +38,24 @@ async function git(cwd, args, env) {
     })
   ).stdout.trim();
 }
-async function stageInWorker({ source, releases, id, statePreserving, fixture }) {
-  const args = { source, releases, id, statePreserving };
+async function stageInWorker({
+  source,
+  releases,
+  id,
+  statePreserving,
+  fixture,
+  dependencyDonor,
+  minFreeBytes,
+}) {
+  const args = {
+    source,
+    releases,
+    id,
+    statePreserving,
+    dependencyDonor,
+    minFreeBytes,
+    installDependencies: true,
+  };
   const input = path.join(fixture, "stage-input.json"),
     output = path.join(fixture, "stage-output.json");
   await atomicJson(input, args);
@@ -190,6 +206,8 @@ export async function stageFullRelease({
           id,
           statePreserving: rechecked.intent.stateCompatibility === "preserve",
           fixture,
+          dependencyDonor: { id: current.id, digest: current.digest },
+          minFreeBytes,
         });
     const sealed = await verifyRelease(releases, selected.id, selected.digest);
     if (selected.id !== id || sealed.manifest.sourceRevision !== checked.revision)
