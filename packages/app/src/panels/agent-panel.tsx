@@ -1,3 +1,4 @@
+import { resolveAgentPanelInteraction } from "./agent-panel-interaction";
 import { AssistantPaneLifecycle } from "@/default-assistant/lifecycle-controls";
 import { AssistantConversationHistory } from "@/default-assistant/conversation-history";
 import {
@@ -1150,11 +1151,15 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   const { t } = useTranslation();
   // The workspace sheet is for looking; Open as tab brings the agent back with its composer.
   const paneHost = usePaneContext().host;
-  const showsComposer = draft !== null || paneHost !== "sheet";
+  const { showsComposer, hasActiveComposer, fileDropDisabled } = resolveAgentPanelInteraction({
+    paneHost,
+    isDraft: draft !== null,
+    archived: agentState.archivedAt !== null,
+    archiving: isArchivingCurrentAgent,
+  });
   // The dock lays out fullscreen for the same session the composer edits in.
   const composerEditingSession = useComposerEditingSession("chat");
   const isComposerFullscreen = useComposerFullscreen(composerEditingSession);
-  const hasActiveComposer = !agentState.archivedAt && !isArchivingCurrentAgent;
   const parentAgentId = useParentAgentId(serverId, agentId);
   // With a composer the parent is a pill above it; without one, the box takes the composer's place.
   const parentPillAgentId = showsComposer ? parentAgentId : null;
@@ -1247,7 +1252,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       style={animatedStaticStyles.content}
       onStartShouldSetResponderCapture={handleAttentionInteraction}
     >
-      <AssistantPaneLifecycle serverId={serverId} />
+      {showsComposer ? <AssistantPaneLifecycle serverId={serverId} /> : null}
       <AssistantConversationHistory serverId={serverId} />
       {showsComposer ? null : <SheetAgentFacts serverId={serverId} agentId={agentId} />}
       <RenderProfile id={`AgentStreamSection:${agentId}`}>
@@ -1304,7 +1309,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   );
 
   const dock = (
-    <ChatSurface disabled={isArchivingCurrentAgent} fullscreen={isComposerFullscreen}>
+    <ChatSurface disabled={fileDropDisabled} fullscreen={isComposerFullscreen}>
       {dockContent}
       {composerSection}
       {dockOverlay}
@@ -1331,7 +1336,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     </RewindComposerRestoreProvider>
   );
   return wrapAgentCommandProvider({
-    enabled: showsComposer && hasActiveComposer && !draft,
+    enabled: hasActiveComposer && !draft,
     serverId,
     agentId,
     editingSession: composerEditingSession,
@@ -1449,6 +1454,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   toast: ReturnType<typeof useToastHost>["api"];
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
+  const readOnly = usePaneContext().host === "sheet";
   const isCompactFormFactor = useIsCompactFormFactor();
   // The track bar's space is reserved whenever the bar is mounted, pills or not: pills come and go
   // every turn, and the transcript must not jump with them.
@@ -1536,6 +1542,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
       agentId={agent.id}
       serverId={serverId}
       context={agent}
+      readOnly={readOnly}
       streamItems={streamItems}
       pendingPermissions={pendingPermissions}
       routeBottomAnchorRequest={routeBottomAnchorRequest}

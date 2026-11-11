@@ -8,9 +8,36 @@ import type {
 } from "@/hooks/use-sidebar-workspaces-list";
 import { SidebarSubSessionGroup } from "./sidebar-sub-session-group";
 
+const actions = vi.hoisted(() => ({ remove: vi.fn(), navigate: vi.fn(), scopes: vi.fn() }));
+vi.mock("@/hooks/use-delete-workspace-sessions", () => ({
+  useDeleteWorkspaceSessions: (serverId: string, workspaceId: string) => {
+    actions.scopes(serverId, workspaceId);
+    return { remove: () => actions.remove(serverId, workspaceId), pending: false };
+  },
+}));
+vi.mock("@/stores/navigation-active-workspace-store", () => ({
+  navigateToWorkspace: actions.navigate,
+}));
+vi.mock("./archived-sub-session-dialog", () => ({
+  ArchivedSubSessionDialog: ({ agentId, onClose }: { agentId: string; onClose: () => void }) => (
+    <div data-testid="history-dialog" data-agent-id={agentId}>
+      <button type="button" onClick={onClose}>
+        Close history
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock("@/components/sidebar/sidebar-workspace-row-content", () => ({
+  sidebarWorkspaceRowStyles: { rowIndented: {} },
+}));
+
 // App sources compile against the classic JSX runtime, which expects React on the global.
 beforeEach(() => {
   vi.stubGlobal("React", React);
+  actions.remove.mockClear();
+  actions.navigate.mockClear();
+  actions.scopes.mockClear();
 });
 
 const mounted: Array<{ root: Root; container: HTMLDivElement }> = [];
@@ -168,6 +195,77 @@ describe("SidebarSubSessionGroup", () => {
     expect(
       container.querySelector('[data-testid="sidebar-archived-sub-session-host:agentless"]'),
     ).not.toBeNull();
+  });
+
+  it("opens a cleaned-up childs history without navigating to its missing workspace", async () => {
+    actions.navigate.mockClear();
+    const container = await mountGroup(
+      "en",
+      [],
+      [
+        {
+          workspaceId: "cleaned",
+          name: "Completed child",
+          archivedAt: "2026-11-11T00:00:00.000Z",
+          agentId: "worker",
+        },
+      ],
+    );
+    act(() =>
+      container
+        .querySelector<HTMLElement>("[data-testid=sidebar-sub-sessions-done-toggle-host\\:parent]")
+        ?.click(),
+    );
+    const row = container.querySelector<HTMLElement>(
+      "[data-testid=sidebar-archived-sub-session-host\\:cleaned]",
+    );
+    act(() => row?.click());
+    expect(
+      container.querySelector("[data-testid=history-dialog]")?.getAttribute("data-agent-id"),
+    ).toBe("worker");
+    expect(actions.navigate).not.toHaveBeenCalled();
+    act(() =>
+      container.querySelector<HTMLButtonElement>("[data-testid=history-dialog] button")?.click(),
+    );
+    expect(container.querySelector("[data-testid=history-dialog]")).toBeNull();
+    act(() => row?.click());
+    expect(container.querySelector("[data-testid=history-dialog]")).not.toBeNull();
+    // Deletion is a separate sibling button, never nested inside the open-history button.
+    expect(container.querySelector("button button")).toBeNull();
+    expect(actions.remove).not.toHaveBeenCalled();
+  });
+
+  it("removes only the selected completed child without opening its history", async () => {
+    const container = await mountGroup(
+      "en",
+      [],
+      [
+        {
+          workspaceId: "child",
+          name: "Child",
+          archivedAt: "2026-11-11T00:00:00.000Z",
+          agentId: "agent",
+        },
+      ],
+    );
+    act(() =>
+      container
+        .querySelector<HTMLElement>('[data-testid="sidebar-sub-sessions-done-toggle-host:parent"]')
+        ?.click(),
+    );
+    act(() =>
+      container
+        .querySelector<HTMLElement>(
+          '[data-testid="sidebar-archived-sub-session-delete-host:child"]',
+        )
+        ?.click(),
+    );
+    expect(actions.scopes).toHaveBeenCalledWith("host", "child");
+    expect(actions.remove).toHaveBeenCalledTimes(1);
+    expect(actions.remove).toHaveBeenCalledWith("host", "child");
+    expect(actions.navigate).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="history-dialog"]')).toBeNull();
+    expect(container.querySelector("button button")).toBeNull();
   });
 
   it("omits the Done toggle while every sub-session is still working", async () => {

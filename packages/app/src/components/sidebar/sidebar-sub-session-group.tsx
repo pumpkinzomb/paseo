@@ -11,9 +11,10 @@ import type {
   SidebarWorkspacePlacement,
 } from "@/hooks/use-sidebar-workspaces-list";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
-import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { density, densityIconBox } from "@/styles/density";
-import { navigateToAgent } from "@/utils/navigate-to-agent";
+import { ArchivedSubSessionDialog } from "./archived-sub-session-dialog";
+import { useDeleteWorkspaceSessions } from "@/hooks/use-delete-workspace-sessions";
+import { Button } from "@/components/ui/button";
 import { SidebarGroupToggleRow } from "./sidebar-group-toggle-row";
 import { groupSubSessionsByActivity } from "./sidebar-sub-sessions";
 
@@ -97,18 +98,15 @@ function ArchivedSubSessionRow({
   subSession: ArchivedSubSession;
 }) {
   const { t } = useTranslation();
+  const [reviewing, setReviewing] = useState(false);
+  const closeReview = useCallback(() => setReviewing(false), []);
+  const deletion = useDeleteWorkspaceSessions(serverId, subSession.workspaceId, closeReview);
   const handlePress = useCallback(() => {
     if (subSession.agentId) {
-      navigateToAgent({
-        serverId,
-        agentId: subSession.agentId,
-        workspaceId: subSession.workspaceId,
-        pin: true,
-      });
+      setReviewing(true);
       return;
     }
-    navigateToWorkspace({ serverId, workspaceId: subSession.workspaceId });
-  }, [serverId, subSession.agentId, subSession.workspaceId]);
+  }, [subSession.agentId]);
   const rowStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.archivedRow,
@@ -120,23 +118,47 @@ function ArchivedSubSessionRow({
   const archivedLabel = t("sidebar.workspace.subSessions.archivedAgent");
 
   return (
-    <PressHighlight
-      accessibilityRole={isWeb ? undefined : "button"}
-      accessibilityLabel={`${subSession.name}, ${archivedLabel}`}
-      onPress={handlePress}
-      style={rowStyle}
-      testID={`sidebar-archived-sub-session-${serverId}:${subSession.workspaceId}`}
-    >
-      <View style={styles.iconSlot}>
-        <DensityIcon icon={Archive} size="sm" color="foregroundMuted" />
+    <View>
+      <View style={styles.archivedRowContainer}>
+        <PressHighlight
+          accessibilityRole={isWeb ? undefined : "button"}
+          accessibilityLabel={`${subSession.name}, ${archivedLabel}`}
+          onPress={handlePress}
+          disabled={!subSession.agentId}
+          style={rowStyle}
+          testID={`sidebar-archived-sub-session-${serverId}:${subSession.workspaceId}`}
+        >
+          <View style={styles.iconSlot}>
+            <DensityIcon icon={Archive} size="sm" color="foregroundMuted" />
+          </View>
+          <Text style={styles.name} numberOfLines={1}>
+            {subSession.name}
+          </Text>
+          <Text style={styles.archivedLabel} numberOfLines={1}>
+            {archivedLabel}
+          </Text>
+        </PressHighlight>
+        {deletion.remove ? (
+          <Button
+            variant="ghost"
+            onPress={deletion.remove}
+            disabled={deletion.pending}
+            testID={`sidebar-archived-sub-session-delete-${serverId}:${subSession.workspaceId}`}
+          >
+            {t("workspaceSessionDeletion.menu")}
+          </Button>
+        ) : null}
       </View>
-      <Text style={styles.name} numberOfLines={1}>
-        {subSession.name}
-      </Text>
-      <Text style={styles.archivedLabel} numberOfLines={1}>
-        {archivedLabel}
-      </Text>
-    </PressHighlight>
+      {reviewing && subSession.agentId ? (
+        <ArchivedSubSessionDialog
+          serverId={serverId}
+          workspaceId={subSession.workspaceId}
+          agentId={subSession.agentId}
+          name={subSession.name}
+          onClose={closeReview}
+        />
+      ) : null}
+    </View>
   );
 }
 
@@ -147,7 +169,9 @@ const styles = StyleSheet.create((theme) => ({
     paddingLeft: theme.spacing[4],
   },
   // Kept in step with the workspace row's geometry, like the Done toggle above it.
+  archivedRowContainer: { flexDirection: "row", alignItems: "center" },
   archivedRow: {
+    flex: 1,
     minHeight: density.rowHeight,
     marginBottom: theme.spacing[0.5],
     paddingVertical: theme.spacing[2],
