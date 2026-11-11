@@ -273,6 +273,37 @@ async function readPaseoConfigOrThrow(repoRoot: string): Promise<PaseoConfig | n
 }
 
 export async function getWorktreeSetupCommands(repoRoot: string): Promise<string[]> {
+  // Managed self-development also covers worktrees created from older branches
+  // whose paseo.json still installs dependencies and copies live state.
+  const helper = process.env.PASEO_WORKTREE_SETUP_HELPER;
+  const context = process.env.PASEO_WORKTREE_DEPENDENCY_CONTEXT;
+  if (helper && context) {
+    let sourceRoot: unknown;
+    try {
+      sourceRoot = (JSON.parse(context) as { sourceRoot?: unknown }).sourceRoot;
+    } catch {
+      // Malformed optional managed context must not break unrelated repositories.
+      return (await readPaseoConfigOrThrow(repoRoot))?.worktree?.setup ?? [];
+    }
+    if (typeof sourceRoot === "string" && sourceRoot && isAbsolute(helper)) {
+      const [sourceCommon, targetCommon] = await Promise.all([
+        getGitCommonDir(sourceRoot).catch(() => null),
+        getGitCommonDir(repoRoot).catch(() => null),
+      ]);
+      if (
+        sourceCommon &&
+        targetCommon &&
+        (await normalizePathForOwnership(sourceCommon)) ===
+          (await normalizePathForOwnership(targetCommon))
+      ) {
+        return [
+          'node "$PASEO_WORKTREE_SETUP_HELPER"',
+          "npm run build:server",
+          "npm run build --workspace=@getpaseo/expo-two-way-audio",
+        ];
+      }
+    }
+  }
   return (await readPaseoConfigOrThrow(repoRoot))?.worktree?.setup ?? [];
 }
 

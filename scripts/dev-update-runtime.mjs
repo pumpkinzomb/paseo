@@ -14,6 +14,7 @@ import {
   isRendererOnly,
   acquireLock,
   changeState,
+  manifestDigest,
 } from "./dev-update-store.mjs";
 import { AutomaticUpdateController } from "./dev-update-automatic.mjs";
 import { createDaemonUpdateLease } from "./dev-update-lease.mjs";
@@ -508,6 +509,18 @@ export async function assertRuntimeArtifacts(root) {
   ])
     await fs.access(path.join(root, relative), 4);
 }
+export function managedWorktreeEnvironment(config, root, control, manifest) {
+  if (!config.selfDevelopmentPolicy) return {};
+  return {
+    PASEO_WORKTREE_DEPENDENCY_CONTEXT: JSON.stringify({
+      releases: config.releases,
+      donor: { id: manifest.id, digest: manifestDigest(manifest) },
+      protectedRoots: [root, config.home, config.userData, control],
+      sourceRoot: config.selfDevelopmentPolicy.labRoot,
+    }),
+    PASEO_WORKTREE_SETUP_HELPER: path.join(root, "scripts", "prepare-managed-worktree.mjs"),
+  };
+}
 export async function launchRuntime(config, root, control, { daemonHandoff = null } = {}) {
   await assertRuntimeArtifacts(root);
   await assertManagedConfiguration(config, root);
@@ -518,6 +531,16 @@ export async function launchRuntime(config, root, control, { daemonHandoff = nul
   if (config.automaticUpdates?.enabled)
     await privateDirectory(path.join(control, "daemon-control"));
   const env = runtimeEnvironment(config, generationDirectory, generation);
+  if (config.selfDevelopmentPolicy)
+    Object.assign(
+      env,
+      managedWorktreeEnvironment(
+        config,
+        root,
+        control,
+        await readJson(path.join(root, "release.json")),
+      ),
+    );
   if (daemonHandoff)
     await atomicJson(path.join(generationDirectory, "daemon-handoff.json"), {
       schemaVersion: 1,

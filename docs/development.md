@@ -49,8 +49,20 @@ than downloading a published desktop release.
 - The **server itself** (e.g. when launched by the desktop app or `npm run start`) defaults to `~/.paseo` (see `packages/server/src/server/paseo-home.ts`).
 - **Repo dev scripts** default to `$ROOT/.dev/paseo-home`, where `$ROOT` is the current checkout or worktree root. This keeps all dev state scoped to the checkout instead of the packaged desktop app.
 - **`npm run cli -- ...`** runs through the same dev-home wrapper as the dev scripts, so the in-repo CLI automatically targets the current checkout's `.dev/paseo-home` and configured dev daemon endpoint.
-- **Paseo-created worktrees** seed `$PASEO_WORKTREE_PATH/.dev/paseo-home` from `$PASEO_SOURCE_CHECKOUT_PATH/.dev/paseo-home` by copying durable JSON metadata. Runtime files like pid files, sockets, and logs are not copied.
-- **This repo's worktree setup** also best-effort seeds `packages/app/ios` and the newest `.dev/ios-build` entry from the source checkout so iOS simulator services can reuse native project and Xcode cache state when it is safe enough to do so.
+- **Managed Paseo self-development worktrees** reuse the current verified release's
+  dependencies using independent copy-on-write files. Their setup never runs
+  `npm ci`, copies provider sessions, or seeds native build caches. The supervisor
+  supplies the donor identity/digest; the shared setup reader overrides older
+  Paseo branches with legacy install commands. Other repositories retain their
+  configured setup commands.
+- Setup refuses changed install inputs, partial existing dependencies, aliases,
+  missing managed context, and insufficient space instead of silently downloading
+  another Electron/native dependency tree. Necessary dependency upgrades remain an
+  explicit operation. This does not prohibit an agent from manually executing an
+  arbitrary install command.
+- The preparation receipt allows an unchanged worktree to retry without copying
+  dependencies again. This receipt is not authorization to delete a completed
+  worktree or its conversations; lifecycle reclamation is separate.
 
 Override knobs:
 
