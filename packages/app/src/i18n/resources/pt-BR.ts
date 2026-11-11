@@ -128,6 +128,7 @@ export const ptBR: TranslationResources = {
       settingOff: "Desligado",
     },
   },
+  voiceSetup: en.voiceSetup,
   composer: {
     placeholders: {
       desktop: "Envie uma mensagem ao agente, marque @files ou use /commands e /skills",

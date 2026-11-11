@@ -178,6 +178,7 @@ export type AgentOptionControl = z.infer<typeof AgentOptionControlSchema>;
 export interface AgentCapabilityFlags {
   [capability: string]: boolean | undefined;
   supportsStreaming: boolean;
+  supportsNativeVoice?: boolean;
   supportsSessionPersistence: boolean;
   supportsSessionListing?: boolean;
   supportsDynamicModes: boolean;

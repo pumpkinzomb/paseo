@@ -1,3 +1,4 @@
+import type { NativeVoiceConnection, NativeVoiceEvent } from "./native-voice.js";
 import type {
   AgentOptionControl,
   AgentOptionSelectControl,
@@ -169,6 +170,7 @@ export interface AgentCreateConfigUnattendedInput {
 export interface AgentCapabilityFlags {
   [capability: string]: boolean | undefined;
   supportsStreaming: boolean;
+  supportsNativeVoice?: boolean;
   supportsSessionPersistence: boolean;
   supportsSessionListing?: boolean;
   supportsDynamicModes: boolean;
@@ -688,6 +690,10 @@ export interface AgentUsageSession {
 }
 
 export interface AgentSession {
+  startNativeVoice?(
+    offerSdp: string,
+    emit: (event: NativeVoiceEvent) => void,
+  ): Promise<NativeVoiceConnection>;
   usageSession?(): AgentUsageSession | null;
   readonly provider: AgentProvider;
   readonly id: string | null;

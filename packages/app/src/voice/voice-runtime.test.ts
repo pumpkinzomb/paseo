@@ -1,7 +1,16 @@
+/** @vitest-environment jsdom */
+import { createElement } from "react";
+import { act, render } from "@testing-library/react";
+import { getUpdateTransientBlockers } from "@/desktop/dev-update/transient-state";
+import { useVoiceUpdateBlocker } from "./voice-update-blocker";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DaemonServerInfo } from "@/stores/session-store";
 import type { AudioEngine } from "@/audio";
-import { createVoiceRuntime, type VoiceSessionAdapter } from "@/voice/voice-runtime";
+import {
+  createVoiceRuntime,
+  type VoiceSessionAdapter,
+  type VoiceRuntimeDeps,
+} from "@/voice/voice-runtime";
 import { REALTIME_VOICE_VAD_CONFIG } from "@/voice/realtime-voice-config";
 
 const CUE_MIME_TYPE = "audio/pcm;rate=16000;bits=16";
@@ -67,12 +76,14 @@ function createServerInfo(): DaemonServerInfo {
 }
 
 function createRuntime(options?: {
+  native?: Pick<VoiceRuntimeDeps, "supportsNativeVoice" | "startNativeVoice">;
   engine?: AudioEngine;
   getServerInfo?: (serverId: string) => DaemonServerInfo | null;
 }) {
   const engine = options?.engine ?? createAudioEngineMock();
   const runtime = createVoiceRuntime({
     engine,
+    ...options?.native,
     getServerInfo: options?.getServerInfo ?? (() => createServerInfo()),
     activateKeepAwake: vi.fn().mockResolvedValue(undefined),
     deactivateKeepAwake: vi.fn().mockResolvedValue(undefined),
@@ -535,4 +546,126 @@ describe("voice runtime", () => {
     expect(listener).not.toHaveBeenCalled();
     unsubscribe();
   });
+});
+
+describe("native voice runtime", () => {
+  it("uses the native peer without local speech setup or PCM capture", async () => {
+    const peer = {
+      stop: vi.fn().mockResolvedValue(undefined),
+      toggleMute: vi.fn().mockReturnValue(true),
+    };
+    const startNativeVoice = vi.fn().mockResolvedValue(peer);
+    const { runtime, engine } = createRuntime({
+      getServerInfo: () => null,
+      native: { supportsNativeVoice: () => true, startNativeVoice },
+    });
+    const adapter = createSessionAdapter();
+    runtime.registerSession(adapter);
+    await runtime.startVoice("server-1", "agent-1");
+    expect(runtime.getSnapshot().isVoiceMode).toBe(true);
+    expect(engine.initialize).not.toHaveBeenCalled();
+    expect(engine.startCapture).not.toHaveBeenCalled();
+    expect(adapter.setVoiceMode).not.toHaveBeenCalled();
+    runtime.toggleMute();
+    expect(peer.toggleMute).toHaveBeenCalledOnce();
+    await runtime.stopVoice();
+    expect(peer.stop).toHaveBeenCalledOnce();
+    expect(runtime.getSnapshot().isVoiceMode).toBe(false);
+  });
+
+  it("stops a late native peer after session termination during startup", async () => {
+    let resolvePeer!: (peer: { stop(): Promise<void>; toggleMute(): boolean }) => void;
+    const pending = new Promise<{ stop(): Promise<void>; toggleMute(): boolean }>((resolve) => {
+      resolvePeer = resolve;
+    });
+    const startNativeVoice = vi.fn().mockReturnValue(pending);
+    const { runtime } = createRuntime({
+      native: { supportsNativeVoice: () => true, startNativeVoice },
+    });
+    runtime.registerSession(createSessionAdapter());
+    const startup = runtime.startVoice("server-1", "agent-1");
+    await vi.waitFor(() => expect(startNativeVoice).toHaveBeenCalledOnce());
+    runtime.onVoiceSessionEnded("server-1", "agent-1");
+    const peer = {
+      stop: vi.fn().mockResolvedValue(undefined),
+      toggleMute: vi.fn().mockReturnValue(false),
+    };
+    resolvePeer(peer);
+    await startup;
+    await vi.waitFor(() => expect(runtime.getSnapshot().isVoiceMode).toBe(false));
+    expect(peer.stop).toHaveBeenCalledOnce();
+  });
+
+  it("closes the old peer and ignores its late events after switching agents", async () => {
+    const first = {
+      stop: vi.fn().mockResolvedValue(undefined),
+      toggleMute: vi.fn().mockReturnValue(false),
+    };
+    const second = {
+      stop: vi.fn().mockResolvedValue(undefined),
+      toggleMute: vi.fn().mockReturnValue(false),
+    };
+    const startNativeVoice = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    const { runtime } = createRuntime({
+      native: { supportsNativeVoice: () => true, startNativeVoice },
+    });
+    runtime.registerSession(createSessionAdapter());
+    await runtime.startVoice("server-1", "agent-1");
+    await runtime.startVoice("server-1", "agent-2");
+    expect(first.stop).toHaveBeenCalledOnce();
+    const callbacks = startNativeVoice.mock.calls[0][3];
+    callbacks.onEnded(new Error("old session closed"));
+    expect(runtime.getSnapshot().activeAgentId).toBe("agent-2");
+    expect(runtime.getSnapshot().isVoiceMode).toBe(true);
+    expect(second.stop).not.toHaveBeenCalled();
+    await runtime.stopVoice();
+  });
+});
+
+it("blocks renderer updates through native voice startup, active use and stop without a composer", async () => {
+  let resolvePeer!: (peer: { stop(): Promise<void>; toggleMute(): boolean }) => void;
+  let finishStop!: () => void;
+  const starting = new Promise<{ stop(): Promise<void>; toggleMute(): boolean }>((resolve) => {
+    resolvePeer = resolve;
+  });
+  const stopping = new Promise<void>((resolve) => {
+    finishStop = resolve;
+  });
+  const { runtime } = createRuntime({
+    native: { supportsNativeVoice: () => true, startNativeVoice: () => starting },
+  });
+  runtime.registerSession(createSessionAdapter());
+  function Guard() {
+    useVoiceUpdateBlocker(runtime);
+    return null;
+  }
+  const view = render(createElement(Guard));
+  try {
+    expect(getUpdateTransientBlockers()).toEqual([]);
+    let start!: Promise<void>;
+    await act(async () => {
+      start = runtime.startVoice("server-1", "agent-1");
+    });
+    expect(runtime.isVoiceModeForAgent("server-1", "agent-1")).toBe(false);
+    expect(getUpdateTransientBlockers()).toEqual(["voice-session-active"]);
+    await act(async () => {
+      resolvePeer({ stop: () => stopping, toggleMute: () => false });
+      await start;
+    });
+    expect(getUpdateTransientBlockers()).toEqual(["voice-session-active"]);
+    let stop!: Promise<void>;
+    await act(async () => {
+      stop = runtime.stopVoice();
+    });
+    expect(getUpdateTransientBlockers()).toEqual(["voice-session-active"]);
+    await act(async () => {
+      finishStop();
+      await stop;
+    });
+    expect(getUpdateTransientBlockers()).toEqual([]);
+  } finally {
+    finishStop();
+    view.unmount();
+    await runtime.destroy();
+  }
 });

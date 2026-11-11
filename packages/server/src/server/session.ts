@@ -2476,11 +2476,12 @@ export class Session {
       if (!releaseUpdateAdmission) {
         const requestId = sessionRequestId(msg);
         // One-way terminal/audio input has no retry/ack protocol. Never drop it.
-        // Urgent cancellation/permission replies must also remain usable.
+        // Urgent cancellation/permission replies and explicit voice starts stay usable.
         // Interrupting revokes this renderer-only lease before admitting the work.
         if (
           !requestId ||
           msg.type === "cancel_agent_request" ||
+          msg.type === "voice.native.start.request" ||
           msg.type === "agent_permission_response"
         ) {
           this.agentManager.updateAdmission.interrupt();
@@ -3164,6 +3165,7 @@ export class Session {
       case "abort_request":
       case "audio_played":
       case "set_voice_mode":
+      case "voice.native.start.request":
       case "dictation_stream_start":
       case "dictation_stream_chunk":
       case "dictation_stream_finish":

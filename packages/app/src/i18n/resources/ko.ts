@@ -243,6 +243,20 @@ export const ko: TranslationResources = {
     thisClient: "이 앱",
     noHosts: "등록된 호스트 없음",
   },
+  voiceSetup: {
+    title: "음성 대화 준비",
+    description:
+      "여기서 음성 인식과 읽어주기를 설정한 뒤 켜고 시작할 수 있어요. 로컬 모델은 다운로드가 필요할 수 있고, 클라우드 음성은 설정된 서비스를 이용해요.",
+    languages:
+      "한국어를 쓰려면 한국어 지원 음성 모델을 선택해주세요. 기본 Parakeet v2는 영어 전용이에요.",
+    enableAndStart: "켜고 시작",
+    start: "음성 시작",
+    waiting: "준비되면 시작",
+    preparing:
+      "음성을 준비하고 있어요. 아래에서 모델을 조정할 수 있어요. 이 창을 닫으면 자동 시작을 취소해요.",
+    close: "닫기",
+    enableFailed: "음성을 켜지 못했어요. 호스트의 설정 재정의 여부를 확인해주세요.",
+  },
   composer: {
     placeholders: {
       desktop: "에이전트에게 메시지를 보내거나 @files 태그, /commands, /skills를 사용하세요",

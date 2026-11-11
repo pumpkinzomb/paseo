@@ -1180,6 +1180,23 @@ export const WorkspaceArchiveUndoRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const NativeVoiceStartRequestSchema = z.object({
+  type: z.literal("voice.native.start.request"),
+  requestId: z.string(),
+  agentId: z.guid(),
+  offerSdp: z.string().min(1).max(131072),
+});
+export const NativeVoiceStartResponseSchema = z.object({
+  type: z.literal("voice.native.start.response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    accepted: z.boolean(),
+    answerSdp: z.string().nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
 export const SetVoiceModeMessageSchema = z.object({
   type: z.literal("set_voice_mode"),
   enabled: z.boolean(),
@@ -3673,6 +3690,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceRecoveryRestoreRequestSchema,
   WorkspaceArchiveUndoRequestSchema,
   SetVoiceModeMessageSchema,
+  NativeVoiceStartRequestSchema,
   SendAgentMessageRequestSchema,
   WaitForFinishRequestSchema,
   DaemonGetStatusRequestSchema,
@@ -3917,6 +3935,11 @@ export const TranscriptionResultMessageSchema = z.object({
     format: z.string().optional(),
     debugRecordingPath: z.string().optional(),
   }),
+});
+
+export const VoiceSessionEndedMessageSchema = z.object({
+  type: z.literal("voice_session_ended"),
+  payload: z.object({ agentId: z.string(), error: z.string().nullable() }),
 });
 
 export const VoiceInputStateMessageSchema = z.object({
@@ -7613,6 +7636,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AssistantChunkMessageSchema,
   AudioOutputMessageSchema,
   TranscriptionResultMessageSchema,
+  VoiceSessionEndedMessageSchema,
   VoiceInputStateMessageSchema,
   DictationStreamAckMessageSchema,
   DictationStreamFinishAcceptedMessageSchema,
@@ -7689,6 +7713,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceMarkUnreadResponseSchema,
   SendAgentMessageResponseMessageSchema,
   SetVoiceModeResponseMessageSchema,
+  NativeVoiceStartResponseSchema,
   DaemonGetStatusResponseSchema,
   DaemonGetPairingOfferResponseSchema,
   DaemonConfigReloadResponseSchema,

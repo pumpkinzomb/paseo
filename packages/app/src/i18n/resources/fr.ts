@@ -129,6 +129,7 @@ export const fr: TranslationResources = {
       settingOff: "Désactivé",
     },
   },
+  voiceSetup: en.voiceSetup,
   composer: {
     placeholders: {
       desktop: "Écrivez à l’agent, mentionnez des @fichiers ou utilisez les /commandes et /skills",

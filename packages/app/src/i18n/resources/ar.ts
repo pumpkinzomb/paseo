@@ -127,6 +127,7 @@ export const ar: TranslationResources = {
       settingOff: "إيقاف",
     },
   },
+  voiceSetup: en.voiceSetup,
   composer: {
     placeholders: {
       desktop: "أرسل رسالة إلى الوكيل أو ضع علامة على @files أو استخدم /commands و /skills",

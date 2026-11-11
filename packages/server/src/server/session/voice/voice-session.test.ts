@@ -326,3 +326,103 @@ describe("VoiceSession streaming transcription", () => {
     await voiceSession.cleanup();
   });
 });
+
+describe("native voice offer", () => {
+  test("returns the SDP answer and stops the native connection when voice is disabled", async () => {
+    const { host, voiceSession } = createVoiceSession();
+    const agent = await host.loadAgent(VOICE_AGENT_ID);
+    const stop = vi.fn().mockResolvedValue(undefined);
+    const startNativeVoice = vi.fn().mockResolvedValue({ answerSdp: "answer", stop });
+    host.loadAgent = vi
+      .fn()
+      .mockResolvedValue(Object.assign(agent, { session: { startNativeVoice } }));
+    await voiceSession.handleNativeVoiceOffer({
+      type: "voice.native.start.request",
+      requestId: "offer",
+      agentId: VOICE_AGENT_ID,
+      offerSdp: "offer-sdp",
+    });
+    expect(startNativeVoice).toHaveBeenCalledWith("offer-sdp", expect.any(Function));
+    expect(host.emitted).toContainEqual({
+      type: "voice.native.start.response",
+      payload: {
+        requestId: "offer",
+        agentId: VOICE_AGENT_ID,
+        accepted: true,
+        answerSdp: "answer",
+        error: null,
+      },
+    });
+    await voiceSession.handleSetVoiceMode(false, undefined, "stop");
+    expect(stop).toHaveBeenCalledOnce();
+    expect(host.spokenInput).toEqual([]);
+  });
+
+  test("returns a visible failure when native startup fails", async () => {
+    const { host, voiceSession } = createVoiceSession();
+    const agent = await host.loadAgent(VOICE_AGENT_ID);
+    const startNativeVoice = vi.fn().mockRejectedValue(new Error("Signaling failed"));
+    host.loadAgent = vi
+      .fn()
+      .mockResolvedValue(Object.assign(agent, { session: { startNativeVoice } }));
+    await voiceSession.handleNativeVoiceOffer({
+      type: "voice.native.start.request",
+      requestId: "offer",
+      agentId: VOICE_AGENT_ID,
+      offerSdp: "offer-sdp",
+    });
+    expect(host.emitted).toContainEqual({
+      type: "voice.native.start.response",
+      payload: {
+        requestId: "offer",
+        agentId: VOICE_AGENT_ID,
+        accepted: false,
+        answerSdp: null,
+        error: "Signaling failed",
+      },
+    });
+    expect(host.spokenInput).toEqual([]);
+  });
+  test("rejects duplicate offers while starting and stops a connection obtained after cancellation", async () => {
+    const { host, voiceSession } = createVoiceSession();
+    const agent = await host.loadAgent(VOICE_AGENT_ID);
+    const stop = vi.fn().mockResolvedValue(undefined);
+    let resolveConnection!: (value: { answerSdp: string; stop(): Promise<void> }) => void;
+    const pending = new Promise<{ answerSdp: string; stop(): Promise<void> }>((resolve) => {
+      resolveConnection = resolve;
+    });
+    const startNativeVoice = vi.fn().mockReturnValue(pending);
+    host.loadAgent = vi
+      .fn()
+      .mockResolvedValue(Object.assign(agent, { session: { startNativeVoice } }));
+    const first = voiceSession.handleNativeVoiceOffer({
+      type: "voice.native.start.request",
+      requestId: "first",
+      agentId: VOICE_AGENT_ID,
+      offerSdp: "offer",
+    });
+    await vi.waitFor(() => expect(startNativeVoice).toHaveBeenCalledOnce());
+    await voiceSession.handleNativeVoiceOffer({
+      type: "voice.native.start.request",
+      requestId: "second",
+      agentId: VOICE_AGENT_ID,
+      offerSdp: "other",
+    });
+    expect(startNativeVoice).toHaveBeenCalledOnce();
+    expect(host.emitted).toContainEqual({
+      type: "voice.native.start.response",
+      payload: {
+        requestId: "second",
+        agentId: VOICE_AGENT_ID,
+        accepted: false,
+        answerSdp: null,
+        error: "Native voice is already active or starting",
+      },
+    });
+    voiceSession.cancel();
+    resolveConnection({ answerSdp: "late", stop });
+    await first;
+    expect(stop).toHaveBeenCalledOnce();
+    await voiceSession.cleanup();
+  });
+});

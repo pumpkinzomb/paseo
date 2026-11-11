@@ -128,6 +128,7 @@ export const ru: TranslationResources = {
       settingOff: "Выкл",
     },
   },
+  voiceSetup: en.voiceSetup,
   composer: {
     placeholders: {
       desktop: "Напишите агенту сообщение, отметьте @files или используйте /commands и /skills.",

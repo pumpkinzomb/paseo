@@ -128,6 +128,7 @@ export const ja: TranslationResources = {
       settingOff: "オフ",
     },
   },
+  voiceSetup: en.voiceSetup,
   composer: {
     placeholders: {
       desktop: "エージェントにメッセージ、@ファイル、/コマンドや/スキルを入力",

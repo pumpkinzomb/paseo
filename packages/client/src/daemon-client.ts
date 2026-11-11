@@ -4767,6 +4767,17 @@ export class DaemonClient {
     return response;
   }
 
+  async startNativeVoice(agentId: string, offerSdp: string): Promise<string> {
+    const result = await this.sendCorrelatedSessionRequest({
+      message: { type: "voice.native.start.request", agentId, offerSdp },
+      responseType: "voice.native.start.response",
+      timeout: 40000,
+    });
+    if (!result.accepted || !result.answerSdp)
+      throw new Error(result.error ?? "Native voice signaling failed");
+    return result.answerSdp;
+  }
+
   async sendVoiceAudioChunk(audio: string, format: string, isLast = false): Promise<void> {
     return this.sendSessionMessageStrict({
       type: "voice_audio_chunk",

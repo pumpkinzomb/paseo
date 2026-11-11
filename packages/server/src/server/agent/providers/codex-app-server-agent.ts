@@ -1,3 +1,5 @@
+import { CodexNativeVoice } from "./codex-native-voice.js";
+import type { NativeVoiceConnection, NativeVoiceEvent } from "../native-voice.js";
 import type { ProviderOptions } from "@getpaseo/protocol/agent-types";
 import { applyProviderOptionsPatch } from "../option-controls.js";
 import { assertChangesAreLive, validateProviderOptions } from "../provider-options.js";
@@ -260,6 +262,7 @@ function formatOutOfBandStatusMessage(text: string): string {
 }
 
 const CODEX_APP_SERVER_CAPABILITIES: AgentCapabilityFlags = {
+  supportsNativeVoice: true,
   supportsStreaming: true,
   supportsSessionPersistence: true,
   supportsSessionListing: true,
@@ -3527,6 +3530,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     cancelRequested: boolean;
   } | null = null;
   private client: CodexAppServerClient | null = null;
+  private readonly nativeVoice = new CodexNativeVoice();
   private readonly background = new CodexBackgroundInventory((event) => this.emitEvent(event));
   private threadRollbackAvailable = true;
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
@@ -3808,6 +3812,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   private handleUnexpectedTermination(error: Error): void {
+    this.nativeVoice.fail(error);
     this.connectionState = "disconnected";
     this.background.stop();
     const hasActiveRootTurn = this.activeForegroundTurnId !== null || this.currentTurnId !== null;
@@ -5231,6 +5236,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   async canStopRuntime(): Promise<boolean> {
+    if (this.nativeVoice.isActive) return false;
     if (
       !this.client ||
       this.client.hasPendingRequests() ||
@@ -5389,7 +5395,22 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
   }
 
+  async startNativeVoice(
+    offerSdp: string,
+    emit: (event: NativeVoiceEvent) => void,
+  ): Promise<NativeVoiceConnection> {
+    await this.connect();
+    if (this.currentThreadId) await this.ensureThreadLoaded();
+    else await this.ensureThread();
+    if (!this.client || !this.currentThreadId)
+      throw new Error("Codex thread is not ready for voice");
+    return this.nativeVoice.start(this.client, this.currentThreadId, offerSdp, emit);
+  }
+
   async close(): Promise<void> {
+    await this.nativeVoice
+      .close()
+      .catch((error) => this.logger.warn({ err: error }, "Native voice cleanup failed"));
     this.closed = true;
     this.startupAbort.abort(this.createClosedError());
     this.background.stop();
@@ -5791,6 +5812,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   private async processNotification(method: string, params: unknown): Promise<void> {
+    if (this.nativeVoice.handle(method, params)) return;
     const notificationParams = toObjectRecord(params);
     if (method === "serverRequest/resolved" && typeof notificationParams?.requestId === "number") {
       const requestId = this.mcpElicitationPermissionIds.get(notificationParams.requestId);

@@ -1,3 +1,4 @@
+import type { NativeVoicePeer } from "./native-voice-peer";
 import { Buffer } from "buffer";
 import type { AgentStreamEventPayload, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities";
@@ -64,6 +65,19 @@ export interface VoiceSessionAdapter {
 export interface VoiceRuntimeDeps {
   engine: AudioEngine;
   getServerInfo(serverId: string): DaemonServerInfo | null;
+  onNativeVoiceError?(error: Error): void;
+  supportsNativeVoice?(serverId: string, agentId: string): boolean;
+  startNativeVoice?(
+    serverId: string,
+    agentId: string,
+    signal: AbortSignal,
+    callbacks: {
+      onSpeech: (speaking: boolean) => void;
+      onTranscript: (text: string) => void;
+      onPlaying: (playing: boolean) => void;
+      onEnded: (error: Error) => void;
+    },
+  ): Promise<NativeVoicePeer>;
   activateKeepAwake(tag: string): Promise<void>;
   deactivateKeepAwake(tag: string): Promise<void>;
 }
@@ -171,6 +185,7 @@ export interface VoiceRuntime {
   handleCapturePcm(chunk: Uint8Array): void;
   handleCaptureVolume(level: number): void;
   handleAudioOutput(serverId: string, payload: AudioOutputPayload): void;
+  onVoiceSessionEnded(serverId: string, agentId: string): void;
   startVoice(serverId: string, agentId: string): Promise<void>;
   stopVoice(): Promise<void>;
   destroy(): Promise<void>;
@@ -189,6 +204,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
   const listeners = new Set<() => void>();
   const telemetryListeners = new Set<() => void>();
   const sessions = new Map<string, RuntimeSessionState>();
+  let nativePeer: NativeVoicePeer | null = null;
+  let nativeAbort: AbortController | null = null;
   const state: RuntimeState = {
     snapshot: INITIAL_SNAPSHOT,
     telemetry: INITIAL_TELEMETRY,
@@ -453,7 +470,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
   }
 
   function reconcileCue(): void {
-    if (!canPlayCue()) {
+    if (nativeAbort || !canPlayCue()) {
       stopCue();
       return;
     }
@@ -542,7 +559,17 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     }));
   }
 
+  async function stopNativeConnection(): Promise<void> {
+    nativeAbort?.abort();
+    nativeAbort = null;
+    const peer = nativePeer;
+    nativePeer = null;
+    await peer?.stop();
+  }
+
   async function performLocalStop(): Promise<void> {
+    const generation = ++state.generation;
+    await stopNativeConnection().catch(() => undefined);
     stopCue();
     uploader.reset();
     resetPlaybackState();
@@ -551,7 +578,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     await deps.engine.stopCapture().catch(() => undefined);
     await deps.deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => undefined);
     getActiveSession()?.adapter.setAssistantAudioPlaying(false);
-    resetToDisabledState();
+    if (state.generation === generation) resetToDisabledState();
   }
 
   async function resyncVoiceMode(serverId: string): Promise<void> {
@@ -575,6 +602,49 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     } finally {
       patchSnapshot((prev) => ({ ...prev, isVoiceSwitching: false }));
     }
+  }
+
+  async function startNativeConnection(
+    serverId: string,
+    agentId: string,
+    generation: number,
+  ): Promise<void> {
+    const start = deps.startNativeVoice;
+    if (!start) throw new Error("Native voice transport is unavailable");
+    nativeAbort = new AbortController();
+    const peer = await start(serverId, agentId, nativeAbort.signal, {
+      onSpeech: (speaking) => {
+        if (state.generation === generation) api.onServerSpeechStateChanged(serverId, speaking);
+      },
+      onTranscript: (text) => {
+        if (state.generation === generation) api.onTranscriptionResult(serverId, text);
+      },
+      onPlaying: (playing) => {
+        if (state.generation !== generation) return;
+        if (playing) api.onAssistantAudioStarted(serverId);
+        else {
+          state.turnInProgress = false;
+          api.onAssistantAudioFinished(serverId);
+        }
+      },
+      onEnded: (error) => {
+        if (state.generation !== generation) return;
+        deps.onNativeVoiceError?.(error);
+        api.onVoiceSessionEnded(serverId, agentId);
+      },
+    });
+    if (state.generation !== generation) {
+      await peer.stop();
+      return;
+    }
+    nativePeer = peer;
+    patchSnapshot((prev) => ({
+      ...prev,
+      isVoiceMode: true,
+      isVoiceSwitching: false,
+      phase: "listening",
+      isMuted: false,
+    }));
   }
 
   const api: VoiceRuntime = {
@@ -626,6 +696,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       }
       if (!connected) {
         state.transportReady = false;
+        if (nativePeer || nativeAbort) void performLocalStop();
         return;
       }
       void resyncVoiceMode(serverId);
@@ -657,6 +728,12 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       }));
       reconcileSegmentDurationTimer();
       reconcileCue();
+    },
+
+    onVoiceSessionEnded(serverId, agentId) {
+      if (state.snapshot.activeServerId !== serverId || state.snapshot.activeAgentId !== agentId)
+        return;
+      void performLocalStop();
     },
 
     handleAudioOutput(serverId, payload) {
@@ -717,7 +794,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         serverInfo,
         mode: "voice",
       });
-      if (unavailableMessage) {
+      if (unavailableMessage && !deps.supportsNativeVoice?.(serverId, agentId)) {
         throw new Error(unavailableMessage);
       }
 
@@ -736,6 +813,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       }));
 
       try {
+        await stopNativeConnection();
+        if (state.generation !== generation) return;
         if (
           state.snapshot.isVoiceMode &&
           previousServerId &&
@@ -752,9 +831,17 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
           console.warn("[VoiceRuntime] Failed to activate keep-awake:", error);
         });
 
+        if (deps.supportsNativeVoice?.(serverId, agentId) && deps.startNativeVoice) {
+          await startNativeConnection(serverId, agentId, generation);
+          return;
+        }
         await deps.engine.initialize();
         await session.adapter.setVoiceMode(true, agentId);
         enabledCurrentVoiceMode = true;
+        if (state.generation !== generation) {
+          await session.adapter.setVoiceMode(false).catch(() => undefined);
+          return;
+        }
         await deps.engine.startCapture();
         if (state.generation !== generation) {
           return;
@@ -772,6 +859,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
           isMuted: deps.engine.isMuted(),
         }));
       } catch (error) {
+        if (state.generation !== generation) return;
         if (enabledCurrentVoiceMode) {
           await session.adapter.setVoiceMode(false).catch(() => undefined);
         }
@@ -798,7 +886,13 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         deps.engine.stop();
         deps.engine.clearQueue();
         activeSession?.adapter.setAssistantAudioPlaying(false);
-        if (activeSession) {
+        nativeAbort?.abort();
+        nativeAbort = null;
+        if (nativePeer) {
+          const peer = nativePeer;
+          nativePeer = null;
+          await peer.stop();
+        } else if (activeSession) {
           await activeSession.adapter.setVoiceMode(false);
         }
         await deps.engine.stopCapture();
@@ -819,7 +913,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     },
 
     toggleMute() {
-      const nextMuted = deps.engine.toggleMute();
+      const nextMuted = nativePeer ? nativePeer.toggleMute() : deps.engine.toggleMute();
       if (nextMuted) {
         uploader.reset();
         resetCaptureTelemetry();

@@ -128,6 +128,7 @@ export const es: TranslationResources = {
       settingOff: "Desactivado",
     },
   },
+  voiceSetup: en.voiceSetup,
   composer: {
     placeholders: {
       desktop: "Envíe un mensaje al agente, etiquete@fileso use/commandsy/skills",

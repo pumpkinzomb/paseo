@@ -40,7 +40,13 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function HostVoicePage({ serverId }: { serverId: string }) {
+export function HostVoicePage({
+  serverId,
+  voiceOnly = false,
+}: {
+  serverId: string;
+  voiceOnly?: boolean;
+}) {
   const { t } = useTranslation();
   const toast = useToast();
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -118,18 +124,20 @@ export function HostVoicePage({ serverId }: { serverId: string }) {
 
   return (
     <View testID="voice-settings">
-      <SettingsSection title={t("settings.voice.dictation.title")} testID="voice-dictation">
-        <SettingsCard>
-          <FeatureSwitchRow
-            label={t("settings.voice.dictation.enabled")}
-            hint={t("settings.voice.dictation.enabledHint")}
-            envVar={envOverrides["features.dictation.enabled"]}
-            value={features.dictation.enabled}
-            onChange={setDictationEnabled}
-          />
-          {siteRow("dictation.stt", t("settings.voice.sites.dictationStt"))}
-        </SettingsCard>
-      </SettingsSection>
+      {!voiceOnly ? (
+        <SettingsSection title={t("settings.voice.dictation.title")} testID="voice-dictation">
+          <SettingsCard>
+            <FeatureSwitchRow
+              label={t("settings.voice.dictation.enabled")}
+              hint={t("settings.voice.dictation.enabledHint")}
+              envVar={envOverrides["features.dictation.enabled"]}
+              value={features.dictation.enabled}
+              onChange={setDictationEnabled}
+            />
+            {siteRow("dictation.stt", t("settings.voice.sites.dictationStt"))}
+          </SettingsCard>
+        </SettingsSection>
+      ) : null}
       <SettingsSection
         title={t("settings.voice.voiceMode.title")}
         info={t("settings.voice.voiceMode.info")}

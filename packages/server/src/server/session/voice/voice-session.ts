@@ -1,3 +1,4 @@
+import type { NativeVoiceConnection, NativeVoiceEvent } from "../../agent/native-voice.js";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import type pino from "pino";
@@ -175,6 +176,9 @@ export class VoiceSession {
   private processingPhase: ProcessingPhase = "idle";
 
   private isVoiceMode = false;
+  private nativeVoice: NativeVoiceConnection | null = null;
+  private nativeVoiceSelected = false;
+  private nativeGeneration = 0;
   private speechInProgress = false;
 
   private readonly dictationStreamManager: DictationStreamManager;
@@ -480,6 +484,97 @@ export class VoiceSession {
     }
   }
 
+  async handleNativeVoiceOffer(
+    msg: Extract<SessionInboundMessage, { type: "voice.native.start.request" }>,
+  ): Promise<void> {
+    try {
+      const connection = await this.tryEnableNativeVoice(msg.agentId, msg.offerSdp);
+      this.emit({
+        type: "voice.native.start.response",
+        payload: {
+          requestId: msg.requestId,
+          agentId: msg.agentId,
+          accepted: true,
+          answerSdp: connection.answerSdp,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "voice.native.start.response",
+        payload: {
+          requestId: msg.requestId,
+          agentId: msg.agentId,
+          accepted: false,
+          answerSdp: null,
+          error: getErrorMessage(error),
+        },
+      });
+    }
+  }
+
+  private async tryEnableNativeVoice(
+    agentId: string,
+    offerSdp: string,
+  ): Promise<NativeVoiceConnection> {
+    const agent = await this.host.loadAgent(agentId);
+    if (this.closed) throw new Error("Voice source is closed");
+    if (!agent.session?.startNativeVoice)
+      throw new Error("This agent does not support native voice");
+    if (this.nativeVoiceSelected) throw new Error("Native voice is already active or starting");
+    if (this.isVoiceMode || this.nativeVoice) await this.disableVoiceModeForActiveAgent(true);
+    const generation = ++this.nativeGeneration;
+    this.nativeVoiceSelected = true;
+    this.voiceModeAgentId = agentId;
+    try {
+      const connection = await agent.session.startNativeVoice(offerSdp, (event) => {
+        if (!this.closed && generation === this.nativeGeneration)
+          this.handleNativeVoiceEvent(agentId, event);
+      });
+      if (this.closed || generation !== this.nativeGeneration) {
+        await connection.stop();
+        throw new Error("Native voice startup was cancelled");
+      }
+      this.nativeVoice = connection;
+      this.isVoiceMode = true;
+      return connection;
+    } catch (error) {
+      if (generation === this.nativeGeneration) {
+        this.nativeVoiceSelected = false;
+        this.isVoiceMode = false;
+        this.voiceModeAgentId = null;
+      }
+      throw error;
+    }
+  }
+
+  private handleNativeVoiceEvent(agentId: string, event: NativeVoiceEvent): void {
+    if (event.type === "transcript") {
+      if (event.role === "user" && event.text.trim())
+        this.emit({
+          type: "transcription_result",
+          payload: {
+            text: event.text,
+            requestId: uuidv4(),
+          },
+        });
+    } else {
+      ++this.nativeGeneration;
+      this.nativeVoice = null;
+      this.nativeVoiceSelected = false;
+      this.isVoiceMode = false;
+      this.voiceModeAgentId = null;
+      this.emit({
+        type: "voice_session_ended",
+        payload: {
+          agentId,
+          error: event.type === "error" ? event.message : event.reason,
+        },
+      });
+      this.onIdle?.();
+    }
+  }
+
   private parseVoiceTargetAgentId(rawId: string, source: string): string {
     const parsed = AgentIdSchema.safeParse(rawId.trim());
     if (!parsed.success) {
@@ -528,6 +623,16 @@ export class VoiceSession {
   }
 
   private async disableVoiceModeForActiveAgent(restoreAgentConfig: boolean): Promise<void> {
+    ++this.nativeGeneration;
+    const native = this.nativeVoice;
+    this.nativeVoice = null;
+    this.nativeVoiceSelected = false;
+    this.isVoiceMode = false;
+    try {
+      await native?.stop();
+    } catch (error) {
+      this.sessionLogger.warn({ err: error }, "Failed to stop native voice connection");
+    }
     await this.stopVoiceTurnController();
 
     const agentId = this.voiceModeAgentId;
@@ -756,12 +861,20 @@ export class VoiceSession {
   async handleAudioChunk(
     msg: Extract<SessionInboundMessage, { type: "voice_audio_chunk" }>,
   ): Promise<void> {
+    // WebRTC media goes directly through the negotiated peer, never the local STT pipeline.
+    if (this.nativeVoiceSelected) return;
     if (!this.isVoiceMode) {
       this.sessionLogger.warn(
         "Received voice_audio_chunk while voice mode is disabled; transcript will be emitted but voice assistant turn is skipped",
       );
     }
 
+    await this.handleLocalAudioChunk(msg);
+  }
+
+  private async handleLocalAudioChunk(
+    msg: Extract<SessionInboundMessage, { type: "voice_audio_chunk" }>,
+  ): Promise<void> {
     const chunkFormat = msg.format || "audio/wav";
 
     if (this.isVoiceMode) {
@@ -1095,6 +1208,13 @@ export class VoiceSession {
    * Handle abort request from client
    */
   async handleAbort(): Promise<void> {
+    if (this.nativeVoiceSelected) {
+      const agentId = this.voiceModeAgentId;
+      await this.disableVoiceModeForActiveAgent(false);
+      if (agentId) this.emit({ type: "voice_session_ended", payload: { agentId, error: null } });
+      this.onIdle?.();
+      return;
+    }
     this.sessionLogger.info(
       { phase: this.processingPhase },
       `Abort request, phase: ${this.processingPhase}`,
@@ -1319,6 +1439,7 @@ export class VoiceSession {
   cancel(): void {
     if (this.closed) return;
     this.closed = true;
+    ++this.nativeGeneration;
     this.abortController.abort();
     this.clearBufferTimeout();
     this.pendingAudioSegments = [];

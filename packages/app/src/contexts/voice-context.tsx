@@ -1,3 +1,8 @@
+import { useVoiceUpdateBlocker } from "@/voice/voice-update-blocker";
+import { useToast } from "@/contexts/toast-context";
+import { nativeVoicePeerAvailable, startNativeVoicePeer } from "@/voice/native-voice-peer";
+import { getHostRuntimeStore } from "@/runtime/host-runtime";
+import { VoiceEntryProvider, VoiceStartContext } from "@/voice/voice-entry";
 import {
   createContext,
   useContext,
@@ -56,6 +61,7 @@ export function useVoice() {
 }
 
 export function useVoiceOptional(): VoiceContextValue | null {
+  const startVoice = useContext(VoiceStartContext);
   const runtime = useContext(VoiceRuntimeContext);
   const snapshot = useSyncExternalStore(
     runtime ? runtime.subscribe : noopSubscribe,
@@ -73,12 +79,12 @@ export function useVoiceOptional(): VoiceContextValue | null {
     }
     return {
       ...snapshot,
-      startVoice: runtime.startVoice,
+      startVoice: startVoice ?? runtime.startVoice,
       stopVoice: runtime.stopVoice,
       isVoiceModeForAgent: runtime.isVoiceModeForAgent,
       toggleMute: runtime.toggleMute,
     };
-  }, [snapshot, runtime]);
+  }, [snapshot, runtime, startVoice]);
 }
 
 export function useVoiceTelemetry() {
@@ -113,6 +119,7 @@ interface VoiceProviderProps {
 }
 
 export function VoiceProvider({ children }: VoiceProviderProps) {
+  const toast = useToast();
   const engineRef = useRef<AudioEngine | null>(null);
   const runtimeRef = useRef<VoiceRuntime | null>(null);
 
@@ -136,9 +143,25 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
     });
 
     runtime = createVoiceRuntime({
+      onNativeVoiceError: (error) => toast.error(error.message),
       engine,
       getServerInfo: (serverId) =>
         useSessionStore.getState().getSession(serverId)?.serverInfo ?? null,
+      supportsNativeVoice: (serverId, agentId) => {
+        const session = useSessionStore.getState().getSession(serverId);
+        const agent = session?.agentDetails.get(agentId) ?? session?.agents.get(agentId);
+        return nativeVoicePeerAvailable() && agent?.capabilities.supportsNativeVoice === true;
+      },
+      startNativeVoice: (serverId, agentId, signal, callbacks) => {
+        const client = getHostRuntimeStore().getClient(serverId);
+        if (!client) return Promise.reject(new Error("Host is unavailable"));
+        return startNativeVoicePeer({
+          signal,
+          negotiate: (offer) => client.startNativeVoice(agentId, offer),
+          stopRemote: () => client.setVoiceMode(false),
+          ...callbacks,
+        });
+      },
       activateKeepAwake: async (tag) => {
         await activateKeepAwakeAsync(tag);
       },
@@ -153,6 +176,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
 
   const engine = engineRef.current;
   const runtime = runtimeRef.current!;
+  useVoiceUpdateBlocker(runtime);
 
   useEffect(() => {
     return () => {
@@ -164,7 +188,9 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
 
   return (
     <VoiceAudioEngineContext.Provider value={engine}>
-      <VoiceRuntimeContext.Provider value={runtime}>{children}</VoiceRuntimeContext.Provider>
+      <VoiceRuntimeContext.Provider value={runtime}>
+        <VoiceEntryProvider runtime={runtime}>{children}</VoiceEntryProvider>
+      </VoiceRuntimeContext.Provider>
     </VoiceAudioEngineContext.Provider>
   );
 }

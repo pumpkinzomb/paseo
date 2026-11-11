@@ -242,6 +242,20 @@ export const en = {
     thisClient: "This app",
     noHosts: "No hosts configured",
   },
+  voiceSetup: {
+    title: "Set up voice conversation",
+    description:
+      "Choose speech recognition and speaking settings here, then enable and start. Local models may need to download; cloud speech uses your configured service.",
+    languages:
+      "Choose a speech model that supports your language. The default Parakeet v2 model supports English only.",
+    enableAndStart: "Enable and start",
+    start: "Start voice",
+    waiting: "Start when ready",
+    preparing:
+      "Preparing voice. You can adjust models below. Close this window to cancel automatic start.",
+    close: "Close",
+    enableFailed: "Voice could not be enabled. Check the host settings override.",
+  },
   composer: {
     placeholders: {
       desktop: "Message the agent, tag @files, or use /commands and /skills",

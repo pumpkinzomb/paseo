@@ -6491,3 +6491,33 @@ test("renderer plugin metadata reads do not revoke the retained daemon lease", a
   expect(updateAdmission.enter()).toBeNull();
   updateAdmission.open();
 });
+
+test("native voice start revokes a renderer update lease before dispatching provider work", async () => {
+  const updateAdmission = new UpdateAdmissionFence();
+  const session = createSessionForTest({ agentManager: { updateAdmission } });
+  updateAdmission.close();
+  const epoch = updateAdmission.epoch;
+  const dispatch = vi
+    .spyOn(
+      session as unknown as {
+        dispatchInboundMessage(message: SessionInboundMessage, source?: object): Promise<void>;
+      },
+      "dispatchInboundMessage",
+    )
+    .mockImplementation(async () => {
+      expect(updateAdmission.epoch).toBeGreaterThan(epoch);
+      expect(updateAdmission.pending).toBe(1);
+    });
+  const request = {
+    type: "voice.native.start.request" as const,
+    requestId: "voice-during-renderer-update",
+    agentId: "e7c110a1-18cd-4ba3-b247-60e4ee615821",
+    offerSdp: "voice-offer",
+  };
+  await session.handleMessage(request);
+  expect(dispatch).toHaveBeenCalledExactlyOnceWith(request, undefined);
+  expect(updateAdmission.pending).toBe(0);
+  const release = updateAdmission.enter();
+  expect(release).not.toBeNull();
+  release?.();
+});

@@ -638,6 +638,12 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       voiceRuntime?.onTranscriptionResult(serverId, transcriptText);
     });
 
+    const unsubVoiceEnded = client.on("voice_session_ended", (message) => {
+      if (message.type !== "voice_session_ended") return;
+      voiceRuntime?.onVoiceSessionEnded(serverId, message.payload.agentId);
+      if (message.payload.error) toast.error(message.payload.error);
+    });
+
     const unsubVoiceInputState = client.on("voice_input_state", (message) => {
       if (message.type !== "voice_input_state") return;
       voiceRuntime?.onServerSpeechStateChanged(serverId, message.payload.isSpeaking);
@@ -678,6 +684,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubActivity();
       unsubTranscription();
       unsubVoiceInputState();
+      unsubVoiceEnded();
       unsubTerminalAttention();
     };
   }, [
