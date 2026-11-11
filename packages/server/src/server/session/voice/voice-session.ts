@@ -127,6 +127,12 @@ export interface VoiceSessionHost {
     agentId: string,
     overrides: Partial<AgentSessionConfig>,
   ): Promise<ManagedAgent>;
+  recordNativeTranscript(
+    agentId: string,
+    role: "user" | "assistant",
+    text: string,
+    messageId: string,
+  ): Promise<void>;
   sendSpokenInput(agentId: string, text: string): Promise<void>;
   interruptAgentIfRunning(agentId: string): Promise<void>;
   hasActiveAgentRun(agentId: string | null): boolean;
@@ -179,6 +185,25 @@ export class VoiceSession {
   private nativeVoice: NativeVoiceConnection | null = null;
   private nativeVoiceSelected = false;
   private nativeGeneration = 0;
+  private nativeTranscriptWrites: Promise<void> = Promise.resolve();
+  private nativeTranscriptError: unknown;
+  private nativeTranscriptPending = 0;
+  private nativeStop: Promise<void> | null = null;
+
+  private async drainNativeTranscripts(): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.nativeTranscriptWrites,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("Voice transcript saving timed out")), 5000);
+        }),
+      ]);
+      if (this.nativeTranscriptError) throw this.nativeTranscriptError;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   private speechInProgress = false;
 
   private readonly dictationStreamManager: DictationStreamManager;
@@ -249,6 +274,7 @@ export class VoiceSession {
   get hasDemand(): boolean {
     return (
       this.isVoiceMode ||
+      this.nativeTranscriptPending > 0 ||
       this.dictationStreamManager.hasDemand ||
       this.processingPhase !== "idle" ||
       this.audioBuffer !== null ||
@@ -550,6 +576,21 @@ export class VoiceSession {
 
   private handleNativeVoiceEvent(agentId: string, event: NativeVoiceEvent): void {
     if (event.type === "transcript") {
+      if ((event.role === "user" || event.role === "assistant") && event.text.trim()) {
+        const role = event.role;
+        const messageId = uuidv4();
+        this.nativeTranscriptPending += 1;
+        this.nativeTranscriptWrites = this.nativeTranscriptWrites
+          .then(() => this.host.recordNativeTranscript(agentId, role, event.text, messageId))
+          .catch((error: unknown) => {
+            this.nativeTranscriptError = error;
+            this.sessionLogger.error({ err: error, agentId }, "Failed to save voice transcript");
+          })
+          .finally(() => {
+            this.nativeTranscriptPending -= 1;
+            this.onIdle?.();
+          });
+      }
       if (event.role === "user" && event.text.trim())
         this.emit({
           type: "transcription_result",
@@ -623,16 +664,24 @@ export class VoiceSession {
   }
 
   private async disableVoiceModeForActiveAgent(restoreAgentConfig: boolean): Promise<void> {
-    ++this.nativeGeneration;
     const native = this.nativeVoice;
-    this.nativeVoice = null;
-    this.nativeVoiceSelected = false;
-    this.isVoiceMode = false;
+    if (!native) ++this.nativeGeneration; // Cancel an offer still starting.
+    if (native && !this.nativeStop) {
+      this.nativeStop = native.stop().finally(() => {
+        ++this.nativeGeneration;
+        this.nativeVoice = null;
+      });
+    }
     try {
-      await native?.stop();
+      await this.nativeStop;
     } catch (error) {
       this.sessionLogger.warn({ err: error }, "Failed to stop native voice connection");
+    } finally {
+      this.nativeStop = null;
+      this.nativeVoiceSelected = false;
+      this.isVoiceMode = false;
     }
+    await this.drainNativeTranscripts();
     await this.stopVoiceTurnController();
 
     const agentId = this.voiceModeAgentId;

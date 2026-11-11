@@ -13,6 +13,14 @@ import { AgentOwnerSchema, daemonExecutionKey, type DaemonAgentOwner } from "./a
 import { controlsFromFeatures } from "@getpaseo/protocol/option-controls";
 import { foldFeatureValues } from "./option-controls.js";
 
+const NativeVoiceTranscriptSchema = z.object({
+  messageId: z.string().uuid(),
+  role: z.enum(["user", "assistant"]),
+  text: z.string(),
+  timestamp: z.string().datetime(),
+});
+export type StoredNativeVoiceTranscript = z.infer<typeof NativeVoiceTranscriptSchema>;
+
 const SERIALIZABLE_CONFIG_SCHEMA = z
   .object({
     modeId: z.string().nullable().optional(),
@@ -149,6 +157,43 @@ export class AgentStorage {
   constructor(baseDir: string, logger: Logger) {
     this.baseDir = baseDir;
     this.logger = logger.child({ module: "agent", component: "agent-storage" });
+  }
+
+  private nativeVoicePath(agentId: string): string {
+    return path.join(this.baseDir, "voice-history", `${encodeURIComponent(agentId)}.voice`);
+  }
+
+  async readNativeVoiceTranscripts(agentId: string): Promise<StoredNativeVoiceTranscript[]> {
+    try {
+      return z
+        .array(NativeVoiceTranscriptSchema)
+        .parse(JSON.parse(await fs.readFile(this.nativeVoicePath(agentId), "utf8")));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+  }
+
+  async appendNativeVoiceTranscript(
+    agentId: string,
+    transcript: StoredNativeVoiceTranscript,
+  ): Promise<void> {
+    const value = NativeVoiceTranscriptSchema.parse(transcript);
+    const previous = this.pendingWrites.get(agentId) ?? Promise.resolve();
+    const next = previous.then(async () => {
+      if (this.deleting.has(agentId)) throw new Error("Agent is being deleted");
+      const entries = await this.readNativeVoiceTranscripts(agentId);
+      if (!entries.some((entry) => entry.messageId === value.messageId)) {
+        entries.push(value);
+        await writeJsonFileAtomic(this.nativeVoicePath(agentId), entries);
+      }
+      return undefined;
+    });
+    const tracked = next.finally(() => {
+      if (this.pendingWrites.get(agentId) === tracked) this.pendingWrites.delete(agentId);
+    });
+    this.pendingWrites.set(agentId, tracked);
+    await tracked;
   }
 
   async initialize(): Promise<void> {
@@ -360,7 +405,7 @@ export class AgentStorage {
     await this.load();
     this.beginDelete(agentId);
     await (this.pendingWrites.get(agentId) ?? Promise.resolve());
-    const paths = Array.from(this.pathsById.get(agentId) ?? []);
+    const paths = [...(this.pathsById.get(agentId) ?? []), this.nativeVoicePath(agentId)];
     await Promise.all(
       paths.map(async (filePath) => {
         try {

@@ -155,6 +155,29 @@ describe("AgentStorage", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  test("native voice history is atomic, ID-deduplicated and removed with its agent", async () => {
+    const agentId = "voice-test";
+    const first = {
+      messageId: "11111111-1111-4111-8111-111111111111",
+      role: "user" as const,
+      text: "same",
+      timestamp: "2026-11-11T00:00:00.000Z",
+    };
+    const second = { ...first, messageId: "22222222-2222-4222-8222-222222222222" };
+    await Promise.all([
+      storage.appendNativeVoiceTranscript(agentId, first),
+      storage.appendNativeVoiceTranscript(agentId, second),
+    ]);
+    await storage.appendNativeVoiceTranscript(agentId, first);
+    const reloaded = new AgentStorage(storagePath, createTestLogger());
+    expect(await reloaded.readNativeVoiceTranscripts(agentId)).toEqual([first, second]);
+    await reloaded.remove(agentId, { strict: true });
+    expect(await reloaded.readNativeVoiceTranscripts(agentId)).toEqual([]);
+    await fs.mkdir(path.join(storagePath, "voice-history"), { recursive: true });
+    await fs.writeFile(path.join(storagePath, "voice-history", "broken.voice"), "invalid json");
+    await expect(reloaded.readNativeVoiceTranscripts("broken")).rejects.toThrow();
+  });
+
   test("workspace and active queries follow updates, removal, and reload", async () => {
     const base = {
       provider: "codex",

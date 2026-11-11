@@ -74,6 +74,7 @@ function createFakeHost(): FakeVoiceHost {
     loadAgent: async (agentId) =>
       ({ id: agentId, config: { systemPrompt: undefined } }) as unknown as ManagedAgent,
     reloadAgentSession: async (agentId) => ({ id: agentId }) as unknown as ManagedAgent,
+    recordNativeTranscript: vi.fn().mockResolvedValue(undefined),
     sendSpokenInput: async (agentId, text) => {
       spokenInput.push({ agentId, text });
     },
@@ -425,4 +426,146 @@ describe("native voice offer", () => {
     expect(stop).toHaveBeenCalledOnce();
     await voiceSession.cleanup();
   });
+});
+
+test("native final transcripts are recorded in order before stop acknowledges without resending", async () => {
+  const { host, voiceSession } = createVoiceSession();
+  const agent = await host.loadAgent(VOICE_AGENT_ID);
+  let emit!: (event: import("../../agent/native-voice.js").NativeVoiceEvent) => void;
+  let finishStop!: () => void;
+  const stop = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finishStop = resolve;
+      }),
+  );
+  host.loadAgent = vi.fn().mockResolvedValue(
+    Object.assign(agent, {
+      session: {
+        startNativeVoice: async (_offer: string, callback: typeof emit) => {
+          emit = callback;
+          return { answerSdp: "answer", stop };
+        },
+      },
+    }),
+  );
+  let save!: () => void;
+  const recorded: string[] = [];
+  host.recordNativeTranscript = vi.fn(async (agentId, role, text) => {
+    expect(agentId).toBe(VOICE_AGENT_ID);
+    recorded.push(`${role}:${text}`);
+    if (recorded.length === 1)
+      await new Promise<void>((resolve) => {
+        save = resolve;
+      });
+  });
+  await voiceSession.handleNativeVoiceOffer({
+    type: "voice.native.start.request",
+    requestId: "offer",
+    agentId: VOICE_AGENT_ID,
+    offerSdp: "offer",
+  });
+  emit({ type: "transcript", role: "user", text: "same words" });
+  const stopping = voiceSession.handleSetVoiceMode(false, undefined, "stop-final");
+  emit({ type: "transcript", role: "user", text: "same words" });
+  emit({ type: "transcript", role: "assistant", text: "reply" });
+  await vi.waitFor(() => expect(recorded).toEqual(["user:same words"]));
+  finishStop();
+  await Promise.resolve();
+  expect(
+    host.emitted.some(
+      (e) => e.type === "set_voice_mode_response" && e.payload.requestId === "stop-final",
+    ),
+  ).toBe(false);
+  save();
+  await stopping;
+  expect(recorded).toEqual(["user:same words", "user:same words", "assistant:reply"]);
+  const ids = vi.mocked(host.recordNativeTranscript).mock.calls.map((call) => call[3]);
+  expect(new Set(ids).size).toBe(3);
+  expect(host.spokenInput).toEqual([]);
+  await voiceSession.handleSetVoiceMode(false, undefined, "again");
+  expect(stop).toHaveBeenCalledOnce();
+  await voiceSession.cleanup();
+});
+
+test("native received transcripts finish saving to the original agent after source closes", async () => {
+  const { host, voiceSession } = createVoiceSession();
+  const agent = await host.loadAgent(VOICE_AGENT_ID);
+  let emit!: (event: import("../../agent/native-voice.js").NativeVoiceEvent) => void;
+  host.loadAgent = vi.fn().mockResolvedValue(
+    Object.assign(agent, {
+      session: {
+        startNativeVoice: async (_offer: string, callback: typeof emit) => {
+          emit = callback;
+          return { answerSdp: "answer", stop: async () => {} };
+        },
+      },
+    }),
+  );
+  let saved!: () => void;
+  host.recordNativeTranscript = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        saved = resolve;
+      }),
+  );
+  await voiceSession.handleNativeVoiceOffer({
+    type: "voice.native.start.request",
+    requestId: "offer",
+    agentId: VOICE_AGENT_ID,
+    offerSdp: "offer",
+  });
+  emit({ type: "transcript", role: "user", text: "retained" });
+  await vi.waitFor(() => expect(host.recordNativeTranscript).toHaveBeenCalledOnce());
+  voiceSession.cancel();
+  const cleanup = voiceSession.cleanup();
+  emit({ type: "transcript", role: "user", text: "after cancel ignored" });
+  expect(voiceSession.hasDemand).toBe(true);
+  saved();
+  await cleanup;
+  expect(host.recordNativeTranscript).toHaveBeenCalledExactlyOnceWith(
+    VOICE_AGENT_ID,
+    "user",
+    "retained",
+    expect.any(String),
+  );
+  expect(host.spokenInput).toEqual([]);
+  expect(voiceSession.hasDemand).toBe(false);
+});
+
+test("native voice stop reports transcript storage failure instead of confirming a saved stop", async () => {
+  const { host, voiceSession } = createVoiceSession();
+  const agent = await host.loadAgent(VOICE_AGENT_ID);
+  let emit!: (event: import("../../agent/native-voice.js").NativeVoiceEvent) => void;
+  host.loadAgent = vi.fn().mockResolvedValue(
+    Object.assign(agent, {
+      session: {
+        startNativeVoice: async (_offer: string, callback: typeof emit) => {
+          emit = callback;
+          return { answerSdp: "answer", stop: async () => {} };
+        },
+      },
+    }),
+  );
+  host.recordNativeTranscript = vi.fn().mockRejectedValue(new Error("disk write failed"));
+  await voiceSession.handleNativeVoiceOffer({
+    type: "voice.native.start.request",
+    requestId: "offer",
+    agentId: VOICE_AGENT_ID,
+    offerSdp: "offer",
+  });
+  emit({ type: "transcript", role: "user", text: "retain" });
+  await voiceSession.handleSetVoiceMode(false, undefined, "failed-save");
+  expect(host.emitted).toContainEqual(
+    expect.objectContaining({
+      type: "set_voice_mode_response",
+      payload: expect.objectContaining({
+        requestId: "failed-save",
+        accepted: false,
+        error: "disk write failed",
+      }),
+    }),
+  );
+  expect(host.spokenInput).toEqual([]);
+  await expect(voiceSession.cleanup()).rejects.toThrow("disk write failed");
 });

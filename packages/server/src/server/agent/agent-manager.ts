@@ -3169,6 +3169,51 @@ export class AgentManager {
     return true;
   }
 
+  async appendNativeVoiceTranscript(
+    agentId: string,
+    role: "user" | "assistant",
+    text: string,
+    messageId: string,
+  ): Promise<void> {
+    this.requireAgent(agentId);
+    await this.requireRegistry().appendNativeVoiceTranscript(agentId, {
+      role,
+      text,
+      messageId,
+      timestamp: new Date().toISOString(),
+    });
+    await this.appendTimelineItem(agentId, {
+      type: role === "user" ? "user_message" : "assistant_message",
+      text,
+      messageId,
+    });
+  }
+
+  private async mergeNativeVoiceHistory(
+    agent: ActiveManagedAgent,
+    events: Extract<AgentStreamEvent, { type: "timeline" }>[],
+  ): Promise<void> {
+    const saved = (await this.registry?.readNativeVoiceTranscripts(agent.id)) ?? [];
+    const ids = new Set(
+      events.flatMap(({ item }) => ("messageId" in item && item.messageId ? [item.messageId] : [])),
+    );
+    for (const entry of saved) {
+      if (ids.has(entry.messageId)) continue;
+      ids.add(entry.messageId);
+      events.push({
+        type: "timeline",
+        provider: agent.provider,
+        timestamp: entry.timestamp,
+        item: {
+          type: entry.role === "user" ? "user_message" : "assistant_message",
+          text: entry.text,
+          messageId: entry.messageId,
+        },
+      });
+    }
+    if (saved.length) events.sort((a, b) => (a.timestamp ?? "").localeCompare(b.timestamp ?? ""));
+  }
+
   async appendTimelineItem(
     agentId: string,
     item: AgentTimelineItem,
@@ -5138,6 +5183,7 @@ export class AgentManager {
       }
     }
 
+    await this.mergeNativeVoiceHistory(agent, historyEvents);
     this.agentStreamCoalescer.flushAndDiscard(agent.id);
     await this.deleteCommittedTimeline(agent.id);
     this.timelineStore.delete(agent.id);
@@ -5207,6 +5253,8 @@ export class AgentManager {
       this.logger.warn({ err: error, agentId: agent.id }, "Failed to hydrate provider history");
       throw error;
     }
+
+    await this.mergeNativeVoiceHistory(agent, historyEvents);
 
     // The replay is the timeline, so drop the rows a previous hydration committed.
     // Keeping them would leave getTimelineRows reading one copy per hydration.

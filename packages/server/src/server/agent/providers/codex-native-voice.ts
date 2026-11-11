@@ -11,6 +11,7 @@ interface Owner {
   reject: (error: Error) => void;
   closed: boolean;
   ready: boolean;
+  stopping?: Promise<void>;
 }
 const Envelope = z.object({
   threadId: z.string(),
@@ -62,14 +63,19 @@ export class CodexNativeVoice {
       owner.ready = true;
       return {
         answerSdp,
-        stop: async () => {
-          if (owner.closed) return;
-          owner.closed = true;
-          try {
-            await client.request("thread/realtime/stop", { threadId }, 5000);
-          } finally {
-            if (this.owner === owner) this.owner = null;
-          }
+        stop: () => {
+          if (owner.stopping) return owner.stopping;
+          if (owner.closed) return Promise.resolve();
+          // Keep accepting completed transcripts until the bounded stop RPC settles.
+          owner.stopping = (async () => {
+            try {
+              await client.request("thread/realtime/stop", { threadId }, 5000);
+            } finally {
+              owner.closed = true;
+              if (this.owner === owner) this.owner = null;
+            }
+          })();
+          return owner.stopping;
         },
       };
     } catch (error) {

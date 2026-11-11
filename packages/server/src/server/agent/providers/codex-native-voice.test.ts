@@ -101,3 +101,40 @@ describe("Codex native voice", () => {
     ).toHaveLength(0);
   });
 });
+
+it("keeps final transcripts during stop and shares concurrent stop acknowledgement", async () => {
+  const { voice, client, emit } = setup();
+  const start = voice.start(client, "thread", "offer", emit);
+  voice.handle("thread/realtime/sdp", { threadId: "thread", sdp: "answer" });
+  const connection = await start;
+  let finish!: () => void;
+  client.request.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = () => resolve({});
+      }),
+  );
+  const stopping = connection.stop();
+  const again = connection.stop();
+  expect(again).toBe(stopping);
+  expect(voice.isActive).toBe(true);
+  voice.handle("thread/realtime/transcript/done", {
+    threadId: "thread",
+    role: "user",
+    text: "last words",
+  });
+  expect(emit).toHaveBeenCalledExactlyOnceWith({
+    type: "transcript",
+    role: "user",
+    text: "last words",
+  });
+  finish();
+  await stopping;
+  voice.handle("thread/realtime/transcript/done", {
+    threadId: "thread",
+    role: "user",
+    text: "too late",
+  });
+  expect(emit).toHaveBeenCalledOnce();
+  expect(voice.isActive).toBe(false);
+});
