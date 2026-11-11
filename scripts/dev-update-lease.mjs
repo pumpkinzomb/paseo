@@ -272,3 +272,114 @@ export async function createDaemonUpdateLease({
     },
   };
 }
+
+async function exchangeReclamation({ request, generationDirectory, timeoutMs, transport }) {
+  let result;
+  if (transport) {
+    let timer;
+    try {
+      result = await Promise.race([
+        transport(request),
+        new Promise((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(new Error("Dependency reclamation outcome unknown; inspect before retrying")),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  } else {
+    await atomicJson(path.join(generationDirectory, "requests", `${request.id}.json`), request);
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const response = await privateJson(
+        path.join(generationDirectory, "responses", `${request.id}.json`),
+        true,
+      );
+      if (response) {
+        if (
+          response.version !== 1 ||
+          response.id !== request.id ||
+          typeof response.ok !== "boolean"
+        )
+          throw new Error("Invalid dependency reclamation response");
+        if (!response.ok)
+          throw new Error(
+            `Dependency reclamation blocked: ${String(response.error?.message ?? "unknown").slice(0, 512)}`,
+          );
+        result = response.result;
+        break;
+      }
+      await delay(50);
+    }
+    if (!result) throw new Error("Dependency reclamation outcome unknown; inspect before retrying");
+  }
+  return result;
+}
+
+/** One daemon-owned operation: no caller supplied paths and no blind timeout retry. */
+export async function reclaimManagedDependencies({
+  control,
+  instance,
+  registryId,
+  evidence,
+  timeoutMs = 180000,
+  transport,
+}) {
+  if (
+    !/^[a-f0-9]{64}$/.test(registryId) ||
+    !/^[a-f0-9]{40}$/.test(evidence?.sourceRevision ?? "") ||
+    !/^[a-f0-9]{64}$/.test(evidence?.releaseDigest ?? "")
+  )
+    throw new Error("Invalid managed dependency reclamation request");
+  const directory = path.join(control, "daemon-control");
+  await privateDirectory(directory);
+  const descriptor = await privateJson(path.join(directory, "descriptor.json"));
+  if (
+    !matchesLeaseDaemon(descriptor, instance) ||
+    descriptor.capabilities?.managedDependencyRetirement !== true
+  )
+    throw new Error("Daemon does not support verified dependency reclamation");
+  const generationDirectory = path.join(directory, descriptor.generation);
+  const verify = async () => {
+    for (const dir of [
+      directory,
+      generationDirectory,
+      path.join(generationDirectory, "requests"),
+      path.join(generationDirectory, "responses"),
+    ])
+      await privateDirectory(dir);
+    const current = await privateJson(path.join(directory, "descriptor.json"));
+    if (
+      !matchesLeaseDaemon(current, instance) ||
+      current.daemonIdentity !== descriptor.daemonIdentity ||
+      current.capabilities?.managedDependencyRetirement !== true
+    )
+      throw new Error(
+        "Daemon changed during dependency reclamation; inspect outcome before retrying",
+      );
+  };
+  await verify();
+  const id = crypto.randomUUID();
+  const request = {
+    version: 1,
+    id,
+    operation: "reclaimDependencies",
+    daemonIdentity: descriptor.daemonIdentity,
+    registryId,
+    evidence,
+  };
+  const result = await exchangeReclamation({ request, generationDirectory, timeoutMs, transport });
+  await verify();
+  if (
+    result?.detached !== true ||
+    typeof result.transactionId !== "string" ||
+    !result.transactionId ||
+    result.purgePending !== true
+  )
+    throw new Error("Invalid dependency detach receipt; inspect before retrying");
+  return result;
+}

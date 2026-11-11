@@ -244,6 +244,14 @@ export function registerDevUpdateTests() {
     assert.equal(env.EXPO_DEV_URL, "http://localhost:18091");
     assert.equal(env.EXPO_PUBLIC_LOCAL_DAEMON, undefined);
     assert.equal(env.PASEO_DEV_UPDATE_GENERATION, "gen");
+    assert.equal(env.PASEO_DEV_UPDATE_DAEMON_CONTROL, undefined);
+    const managed = runtimeEnvironment(
+      { ...config, selfDevelopmentPolicy: { labRoot: "/safe/lab" } },
+      "/control/generation",
+      "gen",
+      {},
+    );
+    assert.equal(managed.PASEO_DEV_UPDATE_DAEMON_CONTROL, "/control/daemon-control");
   });
   test("managed runtime validates persisted listen and CORS before launching", () => {
     const config = { daemonPort: 19781, metroPort: 19091 };

@@ -18,7 +18,7 @@ import {
 } from "./dev-update-store.mjs";
 import { runManagedMaintenance } from "./managed-worktree-maintenance.mjs";
 import { AutomaticUpdateController } from "./dev-update-automatic.mjs";
-import { createDaemonUpdateLease } from "./dev-update-lease.mjs";
+import { createDaemonUpdateLease, reclaimManagedDependencies } from "./dev-update-lease.mjs";
 
 export function runtimeEnvironment(
   config,
@@ -44,7 +44,7 @@ export function runtimeEnvironment(
     PASEO_DEV_UPDATE_CONTROL_DIR: generationDirectory,
     PASEO_DEV_UPDATE_GENERATION: generation,
   });
-  if (config.automaticUpdates?.enabled === true)
+  if (config.automaticUpdates?.enabled === true || config.selfDevelopmentPolicy)
     env.PASEO_DEV_UPDATE_DAEMON_CONTROL = path.join(
       path.dirname(generationDirectory),
       "daemon-control",
@@ -193,6 +193,13 @@ class Supervisor {
     if (!this.config.selfDevelopmentPolicy) return;
     const request = {
       registry: path.join(this.control, "managed-worktrees"),
+      reclaim: async (registryId, evidence) =>
+        reclaimManagedDependencies({
+          control: this.control,
+          instance: await this.inspectDaemon(),
+          registryId,
+          evidence,
+        }),
       evidence: {
         sourceRevision: this.release.manifest.sourceRevision,
         releaseDigest: this.selection.digest,
@@ -545,6 +552,7 @@ export function managedWorktreeEnvironment(config, root, control, manifest) {
       maintenanceRegistry: path.join(control, "managed-worktrees"),
     }),
     PASEO_WORKTREE_SETUP_HELPER: path.join(root, "scripts", "prepare-managed-worktree.mjs"),
+    PASEO_MANAGED_DEPENDENCY_REGISTRY: path.join(control, "managed-worktrees"),
   };
 }
 export async function launchRuntime(config, root, control, { daemonHandoff = null } = {}) {

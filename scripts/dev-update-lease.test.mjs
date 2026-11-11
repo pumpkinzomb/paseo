@@ -267,3 +267,92 @@ test("real mailbox rejects a stale response id", async (t) => {
     await writer;
   }
 });
+
+test("reclamation requires advertised capability and sends only identity and registration", async (t) => {
+  const { reclaimManagedDependencies } = await import("./dev-update-lease.mjs");
+  const f = await fixture(t);
+  const request = {
+    control: f.root,
+    instance: f.instance,
+    registryId: "b".repeat(64),
+    evidence: { sourceRevision: "c".repeat(40), releaseDigest: "d".repeat(64) },
+  };
+  await assert.rejects(reclaimManagedDependencies(request), /does not support/);
+  f.descriptor.capabilities.managedDependencyRetirement = true;
+  await f.writeDescriptor();
+  const receipt = await reclaimManagedDependencies({
+    ...request,
+    transport: async (value) => {
+      assert.equal(value.operation, "reclaimDependencies");
+      assert.equal(value.daemonIdentity, f.descriptor.daemonIdentity);
+      assert.equal(value.registryId, request.registryId);
+      assert.equal(value.root, undefined);
+      assert.equal(value.ticket, undefined);
+      return { detached: true, transactionId: "retire-1", purgePending: true };
+    },
+  });
+  assert.equal(receipt.transactionId, "retire-1");
+});
+
+test("reclamation timeout and changed identity report uncertainty without retry", async (t) => {
+  const { reclaimManagedDependencies } = await import("./dev-update-lease.mjs");
+  const f = await fixture(t);
+  f.descriptor.capabilities.managedDependencyRetirement = true;
+  await f.writeDescriptor();
+  const request = {
+    control: f.root,
+    instance: f.instance,
+    registryId: "b".repeat(64),
+    evidence: { sourceRevision: "c".repeat(40), releaseDigest: "d".repeat(64) },
+  };
+  let calls = 0;
+  await assert.rejects(
+    reclaimManagedDependencies({
+      ...request,
+      timeoutMs: 5,
+      transport: async () => {
+        calls++;
+        return new Promise(() => {});
+      },
+    }),
+    /outcome unknown/,
+  );
+  assert.equal(calls, 1);
+  await assert.rejects(
+    reclaimManagedDependencies({
+      ...request,
+      transport: async () => {
+        f.descriptor.generation = "changed";
+        await f.writeDescriptor();
+        return { detached: true, transactionId: "retire-1", purgePending: true };
+      },
+    }),
+    /changed/,
+  );
+});
+
+test("reclamation mailbox validates result and never accepts arbitrary paths", async (t) => {
+  const { reclaimManagedDependencies } = await import("./dev-update-lease.mjs");
+  const f = await fixture(t);
+  f.descriptor.capabilities.managedDependencyRetirement = true;
+  await f.writeDescriptor();
+  await assert.rejects(
+    reclaimManagedDependencies({
+      control: f.root,
+      instance: f.instance,
+      registryId: "../target",
+      evidence: { sourceRevision: "c".repeat(40), releaseDigest: "d".repeat(64) },
+    }),
+    /Invalid managed/,
+  );
+  await assert.rejects(
+    reclaimManagedDependencies({
+      control: f.root,
+      instance: f.instance,
+      registryId: "b".repeat(64),
+      evidence: { sourceRevision: "c".repeat(40), releaseDigest: "d".repeat(64) },
+      transport: async () => ({ detached: false }),
+    }),
+    /Invalid dependency detach/,
+  );
+});
