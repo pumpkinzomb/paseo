@@ -193,7 +193,7 @@ export function useUsageHostReports({
     staleTimeMs: REPORTS_STALE_TIME_MS,
     refetchInterval: shouldPoll ? REPORTS_REFETCH_INTERVAL_MS : false,
   });
-  return setting.enabled ? query.data ?? NO_REPORTS : NO_REPORTS;
+  return setting.enabled ? (query.data ?? NO_REPORTS) : NO_REPORTS;
 }
 
 /**

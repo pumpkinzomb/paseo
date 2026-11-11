@@ -37,6 +37,43 @@ const ThemedPlug = withUnistyles(Plug);
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 
+function useUsageAuthentication(
+  serverId: string,
+  sourceId: string,
+  refreshAfterLogin: () => Promise<void>,
+) {
+  const { t } = useTranslation();
+  const isLocal = useIsLocalDaemon(serverId);
+  const [authPending, setAuthPending] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const canAuthenticate = isLocal && sourceId === "cursor" && !!getElectronHost()?.usageAuth;
+  const reconnect = useCallback(async () => {
+    if (authPending) return;
+    setAuthError(null);
+    if (!canAuthenticate) {
+      setAuthError(t("providerUsage.reconnectManual"));
+      return;
+    }
+    setAuthPending(true);
+    try {
+      await getElectronHost()!.usageAuth!.start(sourceId);
+      await refreshAfterLogin();
+    } catch {
+      setAuthError(t("providerUsage.reconnectFailed"));
+    } finally {
+      setAuthPending(false);
+    }
+  }, [authPending, canAuthenticate, refreshAfterLogin, sourceId, t]);
+  return {
+    authState: (authPending ? "pending" : "idle") as UsageRefresh,
+    authError,
+    reconnectHint: t(
+      canAuthenticate ? "providerUsage.reconnectHint" : "providerUsage.reconnectManual",
+    ),
+    reconnect,
+  };
+}
+
 export function UsageCard({
   serverId,
   agentId,
@@ -63,27 +100,11 @@ export function UsageCard({
     entry.id,
     agentId,
   );
-  const isLocal = useIsLocalDaemon(serverId);
-  const [authPending, setAuthPending] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const canAuthenticate = isLocal && entry.sourceId === "cursor" && !!getElectronHost()?.usageAuth;
-  const reconnect = async () => {
-    if (authPending) return;
-    setAuthError(null);
-    if (!canAuthenticate) {
-      setAuthError(t("providerUsage.reconnectManual"));
-      return;
-    }
-    setAuthPending(true);
-    try {
-      await getElectronHost()!.usageAuth!.start(entry.sourceId);
-      await refreshAfterLogin();
-    } catch {
-      setAuthError(t("providerUsage.reconnectFailed"));
-    } finally {
-      setAuthPending(false);
-    }
-  };
+  const { authState, authError, reconnectHint, reconnect } = useUsageAuthentication(
+    serverId,
+    entry.sourceId,
+    refreshAfterLogin,
+  );
   // Where there is no hover the freshness is printed on the card; elsewhere the Refresh tooltip.
   const showsFreshnessInline = isNative || isCompact || !refreshable;
   const usage = entry.report;
@@ -134,7 +155,7 @@ export function UsageCard({
           <UsageReconnectButton
             sourceLabel={entry.sourceLabel}
             compact={isCompact}
-            refreshState={authPending ? "pending" : "idle"}
+            refreshState={authState}
             onRefresh={reconnect}
           />
         ) : null}
@@ -153,9 +174,7 @@ export function UsageCard({
 
       {needsUsageReconnect(entry) ? (
         <View style={styles.reconnect}>
-          <Text style={styles.footer}>
-            {t(canAuthenticate ? "providerUsage.reconnectHint" : "providerUsage.reconnectManual")}
-          </Text>
+          <Text style={styles.footer}>{reconnectHint}</Text>
         </View>
       ) : null}
 

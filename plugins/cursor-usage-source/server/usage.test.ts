@@ -105,9 +105,9 @@ describe("cursor usage source", () => {
       jsonResponse({ billingCycleStart: null, billingCycleEnd: null }),
     );
     await fetchUsage(accounts[0]!.input, request as typeof fetch);
-    expect((request.mock.calls[0]?.[1]?.headers as Record<string, string>).Authorization).toBe(
-      "Bearer fresh-cli-token",
-    );
+    expect(
+      (request.mock.calls[0]?.[1]?.headers as Record<string, string> | undefined)?.Authorization,
+    ).toBe("Bearer fresh-cli-token");
   });
 
   it("keeps explicit environment credentials ahead of CLI credentials", async () => {
@@ -318,7 +318,9 @@ describe("cursor usage source", () => {
       vi.mocked(readCursorCliKeychainToken).mockResolvedValue("session-cli-token");
       const accounts = await discoverSession(cursorSession({}), "darwin");
       expect(accounts[0]?.input).toEqual({ store: "keychain", locator: "cursor-access-token" });
-      expect(await discoverSession(cursorSession({ AGENT_CLI_CREDENTIAL_STORE: "memory" }), "darwin")).toEqual([]);
+      expect(
+        await discoverSession(cursorSession({ AGENT_CLI_CREDENTIAL_STORE: "memory" }), "darwin"),
+      ).toEqual([]);
     });
 
     it("keeps different accounts separate while joining global and session logins for the same account", async () => {
