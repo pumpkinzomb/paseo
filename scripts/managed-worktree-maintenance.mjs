@@ -36,6 +36,59 @@ export async function registerManagedDependencies(context, root, receipt) {
   };
   await atomicJson(path.join(registry, `${hash(root)}.json`), record);
 }
+// Git ancestry remains the fast path. Cherry-picks have different commit IDs,
+// so allow only a bounded, entirely patch-equivalent linear remainder. Empty
+// commits and merge resolutions are not evidence of completed work.
+async function isIntegrated(root, head, ref) {
+  try {
+    ref = await git(root, "rev-parse", "--verify", `${ref}^{commit}`);
+  } catch {
+    return false;
+  }
+  try {
+    await git(root, "merge-base", "--is-ancestor", head, ref);
+    return true;
+  } catch {
+    // Invalid refs and ambiguous histories fail closed in the checks below.
+  }
+  try {
+    const history = (await git(root, "rev-list", "--parents", "--max-count=257", `${ref}..${head}`))
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => line.split(" "));
+    if (!history.length || history.length > 256 || history.some((line) => line.length !== 2))
+      return false;
+    const equivalent = new Set();
+    for (const line of (await git(root, "cherry", ref, head)).split("\n")) {
+      const match = /^- ([a-f0-9]{40})$/.exec(line);
+      if (!match) return false;
+      equivalent.add(match[1]);
+    }
+    if (equivalent.size !== history.length) return false;
+    const affected = new Set();
+    for (const [commit] of history) {
+      if (!equivalent.has(commit)) return false;
+      const { stdout } = await exec(
+        "git",
+        ["diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", commit],
+        { cwd: root, maxBuffer: 4 * 1024 ** 2 },
+      );
+      const paths = stdout.split("\0").filter(Boolean);
+      if (!paths.length) return false;
+      for (const file of paths) affected.add(file);
+      if (affected.size > 2048) return false;
+    }
+    // Patch IDs alone ignore whitespace and retain reverted historical patches.
+    // Require the actual final objects/modes of every touched path to match too.
+    const paths = [...affected].sort();
+    const tree = (revision) =>
+      git(root, "--literal-pathspecs", "ls-tree", "-rz", "--full-tree", revision, "--", ...paths);
+    return (await tree(head)) === (await tree(ref));
+  } catch {
+    return false;
+  }
+}
+
 export async function inspectManagedCandidate(record, evidence) {
   if (
     record.schemaVersion !== 1 ||
@@ -77,11 +130,7 @@ export async function inspectManagedCandidate(record, evidence) {
     ["refs/heads/main", "not-merged-to-main"],
     [evidence.sourceRevision, "not-in-running-release"],
   ]) {
-    try {
-      await git(record.sourceRoot, "merge-base", "--is-ancestor", head, ref);
-    } catch {
-      throw new Error(reason);
-    }
+    if (!(await isIntegrated(record.sourceRoot, head, ref))) throw new Error(reason);
   }
   const receiptFile = path.join(record.root, ".managed-dependencies.json");
   if (!(await fs.lstat(receiptFile)).isFile()) throw new Error("receipt-alias");

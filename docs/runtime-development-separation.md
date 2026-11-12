@@ -356,3 +356,32 @@ Failed, timed-out, identity-changed or unexpectedly modified fixtures remain
 for diagnosis. This does not sweep old `.lab` folders, arbitrary worktrees or
 user sessions; those require separate review. Dependencies still use verified
 copy-on-write reuse when inputs match. This cleanup does not restart the app.
+
+### Failed builds and legacy lab copies
+
+When a build command has closed, failed reuse-based staging checks for processes
+still using its scratch directory before reclaiming unchanged dependency files
+of at least 1 MiB. Every reclaimed byte must match an independent sealed donor;
+changed files, new files, source, logs and test state stay intact. A restore
+receipt is kept. A timed-out/unknown worker or necessary fresh install is retained,
+not guessed safe. This includes `packages/*/node_modules`, not only root modules.
+
+Old `.lab` folders are not silently adopted. Inspect a single direct child first:
+
+```
+node scripts/cleanup-legacy-lab.mjs --lab /absolute/lab --candidate old-test \
+  --control /absolute/control --releases /absolute/releases \
+  --donor RELEASE_ID --digest RELEASE_DIGEST
+```
+
+Adding `--apply` explicitly adopts only that owned, inactive child's exact donor
+copies, tightens scratch directory access to owner-only, and leaves source and
+unknown files alone. The default is read-only. It does not delete the entire lab
+or infer that a folder is obsolete from its date/name. Existing session and
+provider data are outside the deletion scope. Changed or missing restore donors
+stop reclamation.
+
+Managed worktrees may now qualify after cherry-pick integration, but only if all
+unique linear nonempty patches and final affected file contents/modes match both
+main and the running release. Squash/merge ambiguity, dirty worktrees and active
+sessions still prevent automatic retirement.

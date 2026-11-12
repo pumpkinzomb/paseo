@@ -35,6 +35,7 @@ import {
 } from "./dev-update-dependencies.mjs";
 import { registerDependencyScratch, withDependencyScratchLease } from "./dev-update-cleanup.mjs";
 import { pruneReleases } from "./dev-update-prune.mjs";
+import { reclaimStoppedBuildDependencies } from "./stopped-build-dependencies.mjs";
 function pruneFromOptions(options, required) {
   return pruneReleases({
     control: required("control"),
@@ -51,9 +52,11 @@ async function run(command, args, cwd, env) {
   await new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, env, stdio: "inherit" });
     child.once("error", reject);
-    child.once("exit", (code, signal) => {
+    child.once("close", (code, signal) => {
       if (code !== 0) {
-        reject(new Error(`${command} ${args.join(" ")} failed (${code ?? signal})`));
+        const error = new Error(`${command} ${args.join(" ")} failed (${code ?? signal})`);
+        error.commandStopped = true;
+        reject(error);
         return;
       }
       resolve();
@@ -209,9 +212,34 @@ export async function stageRelease({
       ],
     ],
   ];
-  for (const [command, args] of checks) {
-    await assertDiskReserve(staging, minFreeBytes);
-    await run(command, args, staging, env);
+  try {
+    for (const [command, args] of checks) {
+      await assertDiskReserve(staging, minFreeBytes);
+      await run(command, args, staging, env);
+    }
+  } catch (error) {
+    // A timeout/unknown child lifetime must never become a deletion signal.
+    // Preserve failed source, logs and changed dependency files for diagnosis.
+    if (error.commandStopped && dependencies.mode === "reuse") {
+      try {
+        error.dependencyCleanup = await reclaimStoppedBuildDependencies({
+          registry: path.join(managedRoot, "cleanup-records"),
+          managedRoot,
+          scratchRoot: staging,
+          donor: { releases, ...dependencyDonor },
+          protectedPaths: [source, ...plan.protectedRoots],
+        });
+      } catch (cleanupError) {
+        error.dependencyCleanupError = cleanupError.message;
+      }
+    }
+    await atomicJson(path.join(staging, "failed-stage.json"), {
+      state: error.commandStopped ? "failed-stopped" : "failed-unknown",
+      error: error.message,
+      cleanup: error.dependencyCleanup ?? null,
+      cleanupError: error.dependencyCleanupError ?? null,
+    });
+    throw error;
   }
   if (dependencies.mode === "reuse") {
     await verifyDependencyEntries(staging, dependencies.entries);

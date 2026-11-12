@@ -152,3 +152,95 @@ test("known daemon busy refusal is skipped, not uncertain", async (t) => {
   assert.equal(results[0].state, "skipped");
   assert.equal(results[0].retry, undefined);
 });
+
+async function cherryFixture(t) {
+  const f = await fixture(t);
+  const childGit = (...args) =>
+    execFileSync("git", ["-C", f.root, ...args], { stdio: "pipe" })
+      .toString()
+      .trim();
+  await fs.writeFile(path.join(f.root, "feature.txt"), "completed feature\n");
+  childGit("add", "feature.txt");
+  childGit("commit", "-qm", "feature");
+  const childHead = childGit("rev-parse", "HEAD");
+  await fs.writeFile(path.join(f.source, "main-only.txt"), "unrelated\n");
+  f.git("add", "main-only.txt");
+  f.git("commit", "-qm", "main advanced");
+  f.git("cherry-pick", childHead);
+  const deployed = f.git("rev-parse", "HEAD");
+  assert.notEqual(deployed, childHead);
+  return { ...f, childGit, deployed };
+}
+test("patch-equivalent cherry-pick counts only when present in main and running release", async (t) => {
+  const f = await cherryFixture(t);
+  await assert.rejects(inspectManagedCandidate(f.record, f.evidence), /not-in-running-release/);
+  const result = await inspectManagedCandidate(f.record, {
+    ...f.evidence,
+    sourceRevision: f.deployed,
+  });
+  assert.equal(result.candidate, true);
+  assert.equal(await fs.readFile(path.join(f.root, "node_modules/keep"), "utf8"), "deps");
+  await fs.writeFile(path.join(f.root, "feature.txt"), "uncommitted work");
+  await assert.rejects(
+    inspectManagedCandidate(f.record, { ...f.evidence, sourceRevision: f.deployed }),
+    /worktree-dirty/,
+  );
+});
+test("patch-equivalent history with one unapplied patch is not complete", async (t) => {
+  const f = await cherryFixture(t);
+  await fs.writeFile(path.join(f.root, "unfinished.txt"), "unfinished\n");
+  f.childGit("add", "unfinished.txt");
+  f.childGit("commit", "-qm", "unfinished");
+  await assert.rejects(
+    inspectManagedCandidate(f.record, { ...f.evidence, sourceRevision: f.deployed }),
+    /not-merged-to-main/,
+  );
+});
+test("empty or merge-only completion cannot be inferred from matching patches", async (t) => {
+  const f = await cherryFixture(t);
+  f.childGit("commit", "--allow-empty", "-qm", "metadata not integrated");
+  await assert.rejects(
+    inspectManagedCandidate(f.record, { ...f.evidence, sourceRevision: f.deployed }),
+    /not-merged-to-main/,
+  );
+  f.childGit("reset", "--hard", "HEAD~");
+  f.childGit("merge", "--no-ff", "-m", "merge main", "main");
+  await assert.rejects(
+    inspectManagedCandidate(f.record, { ...f.evidence, sourceRevision: f.deployed }),
+    /not-merged-to-main/,
+  );
+});
+
+test("a historical cherry-pick later reverted is not considered completed", async (t) => {
+  const f = await cherryFixture(t);
+  f.git("revert", "--no-edit", f.deployed);
+  const reverted = f.git("rev-parse", "HEAD");
+  await assert.rejects(
+    inspectManagedCandidate(f.record, { ...f.evidence, sourceRevision: reverted }),
+    /not-merged-to-main/,
+  );
+});
+test("matching patch IDs with changed final bytes or mode do not authorize retirement", async (t) => {
+  const f = await cherryFixture(t);
+  await fs.writeFile(path.join(f.source, "feature.txt"), "completed  feature\n");
+  f.git("add", "feature.txt");
+  f.git("commit", "-qm", "different final whitespace");
+  await assert.rejects(
+    inspectManagedCandidate(f.record, {
+      ...f.evidence,
+      sourceRevision: f.git("rev-parse", "HEAD"),
+    }),
+    /not-merged-to-main/,
+  );
+  await fs.writeFile(path.join(f.source, "feature.txt"), "completed feature\n");
+  await fs.chmod(path.join(f.source, "feature.txt"), 0o755);
+  f.git("add", "feature.txt");
+  f.git("commit", "-qm", "different mode");
+  await assert.rejects(
+    inspectManagedCandidate(f.record, {
+      ...f.evidence,
+      sourceRevision: f.git("rev-parse", "HEAD"),
+    }),
+    /not-merged-to-main/,
+  );
+});
