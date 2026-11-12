@@ -1,6 +1,14 @@
 export const en = {
   voiceCall: {
     previousRecords: "Previous records",
+    nativeRecovery:
+      "The selected voice cannot start a Codex call. Choose a supported voice below, then retry.",
+    chooseSupportedVoice:
+      "The saved voice {{voice}} is not available for Codex V3. Choose a listed voice or the provider default. Your saved choice has not been changed.",
+    savedVoiceUnavailable: "{{voice}} (saved choice, unavailable)",
+    catalogFailed: "Could not load Codex voices. Reconnect the host and retry.",
+    catalogNeedsConversation: "Open a Codex conversation to load its available voices.",
+    catalogLoading: "Loading Codex V3 voices…",
     nativeReferenceHint:
       "Same-name official API reference only, not a Codex call preview. Tone and delivery can differ in realtime calls. No microphone or API key is used.",
     referenceTone: "API reference: {{tone}}",
@@ -34,7 +42,7 @@ export const en = {
     assistant: "Assistant",
     nativeTitle: "Codex realtime calls",
     nativeHint:
-      "Applies to your next Codex call on this device. End the current call and reconnect to change its voice. Availability is checked with Codex V3 at connection; unavailable choices fail without substituting another voice.",
+      "Live Codex V3 voice list for this conversation. Applies to the next call; reconnect to change an active call.",
     providerDefault: "Codex configured default (voice not reported)",
     previewUnavailable: "Preview unavailable",
     nativePreviewHint:

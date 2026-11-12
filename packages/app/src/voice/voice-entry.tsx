@@ -1,3 +1,4 @@
+import { NativeVoiceRecovery } from "./native-voice-recovery";
 import { shouldUseNativeVoice } from "@/voice/native-voice-routing";
 import { useUpdateTransientBlocker } from "@/desktop/dev-update/transient-state";
 import { nativeVoicePeerAvailable } from "./native-voice-peer";
@@ -37,6 +38,8 @@ export function VoiceEntryProvider({
   runtime: VoiceRuntime;
   children: ReactNode;
 }) {
+  const [nativeTarget, setNativeTarget] = useState<Target | null>(null);
+  const closeNative = useCallback(() => setNativeTarget(null), []);
   const [target, setTarget] = useState<Target | null>(null);
   const close = useCallback(() => setTarget(null), []);
   const startVoice = useCallback(
@@ -44,7 +47,16 @@ export function VoiceEntryProvider({
       const session = useSessionStore.getState().getSession(serverId);
       const agent = session?.agentDetails.get(agentId) ?? session?.agents.get(agentId);
       if (shouldUseNativeVoice(agent, nativeVoicePeerAvailable())) {
-        await runtime.startVoice(serverId, agentId);
+        try {
+          await runtime.startVoice(serverId, agentId);
+        } catch (error) {
+          if (
+            !(error instanceof Error) ||
+            !error.message.includes("Codex realtime V3 voice is unavailable:")
+          )
+            throw error;
+          setNativeTarget({ serverId, agentId });
+        }
         return;
       }
       const serverInfo = session?.serverInfo;
@@ -60,6 +72,14 @@ export function VoiceEntryProvider({
   return (
     <VoiceStartContext value={startVoice}>
       {children}
+      {nativeTarget ? (
+        <NativeVoiceRecovery
+          key={`${nativeTarget.serverId}:${nativeTarget.agentId}`}
+          {...nativeTarget}
+          runtime={runtime}
+          onClose={closeNative}
+        />
+      ) : null}
       {target ? (
         <VoiceSetupSheet
           key={`${target.serverId}:${target.agentId}`}

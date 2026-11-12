@@ -99,7 +99,7 @@ export function CallTranscriptBody({
       <Text style={styles.hint}>
         {t(callId ? "voiceCall.callTranscriptHint" : "voiceCall.legacyTranscriptHint")}
       </Text>
-      {(!client || query.error) ? (
+      {!client || query.error ? (
         <View>
           <Text style={styles.hint}>{t("voiceCall.transcriptIncomplete")}</Text>
           {client ? (

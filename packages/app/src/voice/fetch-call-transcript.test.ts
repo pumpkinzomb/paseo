@@ -25,7 +25,12 @@ it("loads back to selected call marker, preserves order, excludes other calls an
         {
           seqStart: 1,
           seqEnd: 1,
-          item: { type: "notification", voiceCallId: "one", message: "call", level: "info" },
+          item: {
+            type: "notification",
+            voiceCallId: "one",
+            message: "call",
+            level: "info",
+          },
         },
         speech("old"),
       ],
@@ -41,7 +46,11 @@ it("loads back to selected call marker, preserves order, excludes other calls an
 });
 it("deduplicates overlapping pages by message identity", async () => {
   const fetch = fetcher(
-    { entries: [speech("same")], hasOlder: true, startCursor: { epoch: "e", seq: 2 } },
+    {
+      entries: [speech("same")],
+      hasOlder: true,
+      startCursor: { epoch: "e", seq: 2 },
+    },
     { entries: [speech("same")], hasOlder: false },
   );
   expect(await fetchCallTranscript(fetch, "agent", "one")).toHaveLength(1);
@@ -58,18 +67,46 @@ it("rejects incomplete pages instead of showing a falsely complete record", asyn
   ).rejects.toThrow();
 });
 it("stops repeated cursors rather than looping", async () => {
-  const page = { entries: [], hasOlder: true, startCursor: { epoch: "e", seq: 2 } };
+  const page = {
+    entries: [],
+    hasOlder: true,
+    startCursor: { epoch: "e", seq: 2 },
+  };
   await expect(fetchCallTranscript(fetcher(page, page), "agent", "one")).rejects.toThrow(
     "Repeated",
   );
 });
 
 it("loads all legacy voice pages without inventing calls or including worker reports", async () => {
-  const old = (text: string) => ({ ...speech(text), item: { ...speech(text).item, voiceCallId: undefined } });
+  const old = (text: string) => ({
+    ...speech(text),
+    item: { ...speech(text).item, voiceCallId: undefined },
+  });
   const fetch = fetcher(
-    { entries: [old("later"), speech("new call"), speech("SOURCE INTEGRATION COMPLETE", "", "text")], hasOlder: true, startCursor: { epoch: "e", seq: 5 } },
-    { entries: [{ seqStart: 1, seqEnd: 1, item: { type: "notification", message: "ordinary notice" } }, old("earlier")], hasOlder: false },
+    {
+      entries: [
+        old("later"),
+        speech("new call"),
+        speech("SOURCE INTEGRATION COMPLETE", "", "text"),
+      ],
+      hasOlder: true,
+      startCursor: { epoch: "e", seq: 5 },
+    },
+    {
+      entries: [
+        {
+          seqStart: 1,
+          seqEnd: 1,
+          item: { type: "notification", message: "ordinary notice" },
+        },
+        old("earlier"),
+      ],
+      hasOlder: false,
+    },
   );
-  expect((await fetchCallTranscript(fetch, "agent")).map((r) => r.text)).toEqual(["earlier", "later"]);
+  expect((await fetchCallTranscript(fetch, "agent")).map((r) => r.text)).toEqual([
+    "earlier",
+    "later",
+  ]);
   expect(fetch).toHaveBeenCalledTimes(2);
 });

@@ -4,6 +4,15 @@ import { pluginSettings } from "./plugin-settings";
 export const ko: TranslationResources = {
   voiceCall: {
     previousRecords: "이전 기록",
+    nativeRecovery:
+      "선택된 음성으로 Codex 통화를 시작할 수 없어요. 아래에서 지원하는 음성을 선택하고 다시 시도해 주세요.",
+    chooseSupportedVoice:
+      "저장된 {{voice}} 음성은 Codex V3에서 사용할 수 없어요. 목록의 음성이나 제공자 기본값을 선택해 주세요. 저장된 설정은 임의로 바꾸지 않았어요.",
+    savedVoiceUnavailable: "{{voice}} (저장된 선택 · 사용 불가)",
+    catalogFailed:
+      "Codex 음성 목록을 불러오지 못했어요. 호스트 연결을 확인하고 다시 시도해 주세요.",
+    catalogNeedsConversation: "Codex 대화를 먼저 열면 사용 가능한 음성 목록을 확인할 수 있어요.",
+    catalogLoading: "Codex V3 음성 목록을 불러오는 중…",
     nativeReferenceHint:
       "동일 이름의 공식 API 참고 음성입니다. Codex 통화 미리듣기가 아니며 실제 통화의 음색·말투는 다를 수 있어요. 마이크나 API 키를 사용하지 않습니다.",
     referenceTone: "API 참고: {{tone}}",
@@ -37,7 +46,7 @@ export const ko: TranslationResources = {
     assistant: "어시스턴트",
     nativeTitle: "Codex 실시간 통화",
     nativeHint:
-      "이 기기의 다음 Codex 통화에 적용됩니다. 음성을 바꾸려면 현재 통화를 종료하고 다시 연결하세요. 연결 시 Codex V3 지원 여부를 확인하며, 지원하지 않으면 다른 음성으로 바꾸지 않고 오류를 표시합니다.",
+      "이 대화의 Codex V3 지원 목록을 직접 조회합니다. 다음 통화에 적용되며, 통화 중에는 종료 후 다시 연결해 주세요.",
     providerDefault: "Codex 설정 기본값 (음성 이름 미제공)",
     previewUnavailable: "미리듣기 사용 불가",
     nativePreviewHint:
