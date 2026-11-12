@@ -54,6 +54,16 @@ export const en = {
       "Permanently delete this conversation and all its segments from Paseo? This cannot be undone in Paseo. Original provider records, project files and attachments are preserved. Subagents are not deleted; active or unarchived child work must be handled first.",
   },
   defaultAssistant: {
+    isolationNotice:
+      "This lead still uses its original Codex settings. Continue in a new Sunny-only segment while preserving this conversation.",
+    isolationAction: "Continue with Sunny settings",
+    isolationChooseModel: "Select a model to continue in the independent Sunny runtime.",
+    isolationTitle: "Move to Sunny settings",
+    isolationPreviewNotice:
+      "After you confirm, Paseo opens the new independent segment automatically. The original messages stay in this conversation; only the reviewed context below is carried forward.",
+    isolationMoved:
+      "Continued in a new Sunny-only segment. The original conversation is preserved.",
+
     pricePaid: "Paid · catalog pricing",
     priceUnknown: "Price unknown",
     searchModels: "Search provider or model",
@@ -72,7 +82,7 @@ export const en = {
       "This is a new session carrying only the reviewed handoff. The full history remains in the previous conversation.",
     handoffOpenSource: "View previous conversation",
     managerModelNotice:
-      "This selects the lead agent only, not its workers. Within the same provider, the model changes in the current conversation. For another provider, review and edit a context handoff before creating a separate conversation.",
+      "This selects the lead agent only, not its workers. Within the same provider, the model changes in the current conversation unless this legacy lead needs an independent Sunny segment. For another provider, review and edit a context handoff before creating a separate conversation.",
     handoffTitle: "Review context handoff",
     handoffNotice:
       "Destination: {{provider}} / {{model}}. Review exactly what will be shared. Approval creates a separate conversation with the selected provider and preserves the original. No model turn runs now; the approved handoff is stored in that session and becomes reference context on your next message.",

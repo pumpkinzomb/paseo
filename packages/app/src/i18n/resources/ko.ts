@@ -57,6 +57,15 @@ export const ko: TranslationResources = {
       "Paseo에서 이 대화와 모든 구간을 영구 삭제할까요? Paseo에서는 되돌릴 수 없습니다. 원본 공급자 기록·프로젝트·첨부 파일은 보존합니다. 하위 에이전트는 삭제하지 않으며 실행 중이거나 보관되지 않은 하위 작업을 먼저 정리해야 합니다.",
   },
   defaultAssistant: {
+    isolationNotice:
+      "이 리드는 아직 기존 Codex 설정을 사용합니다. 현재 대화는 보존하고 써니 전용 구간으로 이어갈 수 있어요.",
+    isolationAction: "써니 전용 설정으로 이어가기",
+    isolationChooseModel: "모델을 선택하면 써니 전용 환경으로 이어갈 수 있어요.",
+    isolationTitle: "써니 전용 설정으로 전환",
+    isolationPreviewNotice:
+      "확인하면 새 독립 구간으로 자동 이동합니다. 원래 메시지는 같은 대화에 남고, 아래에서 검토한 맥락만 새 구간에 전달됩니다.",
+    isolationMoved: "써니 전용 새 구간으로 이어졌습니다. 이전 대화는 보존되어 있어요.",
+
     pricePaid: "유료 · 카탈로그 기준",
     priceUnknown: "요금 미확인",
     searchModels: "공급자 또는 모델 검색",
@@ -75,7 +84,7 @@ export const ko: TranslationResources = {
       "검토한 인계문만 이어받은 새 세션입니다. 전체 기록은 이전 대화에 남아 있어요.",
     handoffOpenSource: "이전 대화 보기",
     managerModelNotice:
-      "하위 작업자가 아닌 상위 에이전트에만 적용됩니다. 같은 공급자의 모델은 현재 대화에서 바로 변경합니다. 다른 공급자는 전달할 맥락을 검토·편집한 뒤 별도 대화를 만듭니다.",
+      "하위 작업자가 아닌 상위 에이전트에만 적용됩니다. 같은 공급자의 모델은 현재 구간에서 변경하되, 기존 Codex 설정을 쓰는 리드는 써니 전용 새 구간으로 전환합니다. 다른 공급자는 전달할 맥락을 검토·편집한 뒤 별도 대화를 만듭니다.",
     handoffTitle: "전달할 맥락 검토",
     handoffNotice:
       "전달 대상: {{provider}} / {{model}}. 공유될 내용을 직접 확인하세요. 승인하면 원본을 보존하고 새 공급자의 대화를 만듭니다. 지금 모델을 실행하지 않으며, 승인한 인계문은 새 세션에 보관되어 다음 메시지부터 참고 문맥으로 사용됩니다.",

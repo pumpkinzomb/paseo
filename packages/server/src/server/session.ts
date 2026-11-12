@@ -5436,6 +5436,12 @@ export class Session {
                       ? {
                           "paseo.handoff.sourceAgentId": request.handoff.sourceAgentId,
                           "paseo.handoff.sourceUpdatedAt": request.handoff.sourceUpdatedAt,
+                          ...(provider === "codex" &&
+                          previous?.provider === "codex" &&
+                          previous.runtimeInfo?.extra?.paseoLeadRuntimeStatus ===
+                            "legacy-unisolated"
+                            ? { "paseo.handoff.reason": "lead-runtime-isolation" }
+                            : {}),
                         }
                       : {}),
                   },

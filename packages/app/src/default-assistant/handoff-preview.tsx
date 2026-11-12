@@ -22,6 +22,7 @@ interface HandoffPreviewProps {
   serverId: string;
   sourceAgentId: string;
   selection: AssistantModelSelection;
+  purpose?: "isolation";
   onClose: () => void;
 }
 
@@ -69,7 +70,16 @@ export function AssistantHandoffPreview(props: HandoffPreviewProps) {
     dataShape: "value",
     gcTime: 0,
   });
-  const header = useMemo(() => ({ title: t("defaultAssistant.handoffTitle") }), [t]);
+  const header = useMemo(
+    () => ({
+      title: t(
+        props.purpose === "isolation"
+          ? "defaultAssistant.isolationTitle"
+          : "defaultAssistant.handoffTitle",
+      ),
+    }),
+    [props.purpose, t],
+  );
   const { refetch } = query;
   const retry = useCallback(() => {
     void refetch();
@@ -88,6 +98,9 @@ export function AssistantHandoffPreview(props: HandoffPreviewProps) {
           model: props.selection.model,
         })}
       </Text>
+      {props.purpose === "isolation" ? (
+        <Text style={styles.notice}>{t("defaultAssistant.isolationPreviewNotice")}</Text>
+      ) : null}
       {query.data ? (
         <>
           <Text style={styles.notice}>

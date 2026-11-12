@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentModelDefinition, ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
 import {
   assistantModelGroups,
+  needsAssistantRuntimeMigration,
   assistantModelChangeKind,
   assistantModelPriceStatus,
   availableAssistantModels,
@@ -127,5 +128,43 @@ describe("assistant full model catalog", () => {
     ).toBe(
       "/h/host%20%2F%20one/assistant?new=request-1&provider=open%2Fcode&model=vendor%2Fmodel%3Ffast%3D1",
     );
+  });
+});
+
+describe("legacy lead runtime migration", () => {
+  const legacy = {
+    provider: "codex",
+    labels: { "paseo.role": "assistant" },
+    runtimeInfo: { extra: { paseoLeadRuntimeStatus: "legacy-unisolated" } },
+  };
+  it("creates a reviewed successor even when the selected model stays on Codex", () => {
+    expect(needsAssistantRuntimeMigration(legacy)).toBe(true);
+    expect(assistantModelChangeKind("codex", "codex", true)).toBe("handoff");
+    expect(assistantModelChangeKind("codex", "claude", true)).toBe("handoff");
+  });
+  it("does not migrate workers, unknown profiles, or an already isolated lead", () => {
+    expect(needsAssistantRuntimeMigration({ ...legacy, labels: {} })).toBe(false);
+    expect(needsAssistantRuntimeMigration({ ...legacy, provider: "claude" })).toBe(false);
+    expect(needsAssistantRuntimeMigration({ ...legacy, runtimeInfo: undefined })).toBe(false);
+    expect(
+      needsAssistantRuntimeMigration({
+        ...legacy,
+        runtimeInfo: { extra: { paseoLeadRuntimeStatus: "isolated" } },
+      }),
+    ).toBe(false);
+    expect(assistantModelChangeKind("codex", "codex", false)).toBe("in-place");
+  });
+  it("uses retained metadata before reconnect and gives current runtime precedence", () => {
+    const persistence = { metadata: { paseoLeadRuntimeStatus: "legacy-unisolated" } };
+    expect(needsAssistantRuntimeMigration({ ...legacy, runtimeInfo: undefined, persistence })).toBe(
+      true,
+    );
+    expect(
+      needsAssistantRuntimeMigration({
+        ...legacy,
+        runtimeInfo: { extra: { paseoLeadRuntimeStatus: "isolated" } },
+        persistence,
+      }),
+    ).toBe(false);
   });
 });

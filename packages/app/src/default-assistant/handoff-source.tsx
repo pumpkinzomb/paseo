@@ -21,13 +21,22 @@ export function AssistantHandoffSource({
     (state) =>
       state.sessions[serverId]?.agents.get(agentId)?.labels?.["paseo.handoff.sourceAgentId"],
   );
+  const isIsolation = useSessionStore(
+    (state) =>
+      state.sessions[serverId]?.agents.get(agentId)?.labels?.["paseo.handoff.reason"] ===
+      "lead-runtime-isolation",
+  );
   const openSource = useCallback(() => {
     if (sourceId) navigateToAgent({ serverId, agentId: sourceId, pin: true });
   }, [serverId, sourceId]);
-  if (conversation || !sourceId || sourceId === agentId) return null;
+  if ((conversation && !isIsolation) || !sourceId || sourceId === agentId) return null;
   return (
     <View style={styles.row} testID="assistant-handoff-source">
-      <Text style={styles.notice}>{t("defaultAssistant.handoffSourceNotice")}</Text>
+      <Text style={styles.notice}>
+        {t(
+          isIsolation ? "defaultAssistant.isolationMoved" : "defaultAssistant.handoffSourceNotice",
+        )}
+      </Text>
       <Button variant="ghost" onPress={openSource} testID="assistant-handoff-open-source">
         {t("defaultAssistant.handoffOpenSource")}
       </Button>

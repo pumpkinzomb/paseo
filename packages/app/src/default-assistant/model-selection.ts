@@ -119,10 +119,29 @@ export function buildAssistantModelRoute(
   return `/h/${encodeURIComponent(serverId)}/assistant?new=${encodeURIComponent(requestId)}&provider=${encodeURIComponent(selection.provider)}&model=${encodeURIComponent(selection.model)}`;
 }
 
-/** Same-provider changes keep the native session; cross-provider changes require review. */
+/** Legacy migration and cross-provider changes use a reviewed successor segment. */
 export function assistantModelChangeKind(
   sourceProvider: string,
   targetProvider: string,
+  requiresIsolation = false,
 ): "in-place" | "handoff" {
-  return sourceProvider === targetProvider ? "in-place" : "handoff";
+  return sourceProvider === targetProvider && !requiresIsolation ? "in-place" : "handoff";
+}
+
+/** Only a runtime-confirmed legacy lead needs a new native segment. */
+export function needsAssistantRuntimeMigration(
+  agent:
+    | {
+        provider: string;
+        labels?: Record<string, string>;
+        runtimeInfo?: { extra?: Record<string, unknown> };
+        persistence?: { metadata?: Record<string, unknown> } | null;
+      }
+    | undefined,
+): boolean {
+  if (agent?.provider !== "codex" || agent.labels?.["paseo.role"] !== "assistant") return false;
+  const status =
+    agent.runtimeInfo?.extra?.paseoLeadRuntimeStatus ??
+    agent.persistence?.metadata?.paseoLeadRuntimeStatus;
+  return status === "legacy-unisolated";
 }

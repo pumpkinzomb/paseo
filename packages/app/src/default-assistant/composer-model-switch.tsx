@@ -25,6 +25,7 @@ import { useHostFeature } from "@/runtime/host-features";
 import { useSessionStore } from "@/stores/session-store";
 import {
   assistantModelChangeKind,
+  needsAssistantRuntimeMigration,
   assistantModelGroups,
   filterAssistantModelGroups,
   type AssistantModelSelection,
@@ -57,6 +58,9 @@ export function AssistantComposerModelSwitch({
     (state) =>
       state.sessions[serverId]?.agents.get(agentId)?.labels?.["paseo.role"] === "assistant",
   );
+  const needsMigration = useSessionStore((state) =>
+    needsAssistantRuntimeMigration(state.sessions[serverId]?.agents.get(agentId)),
+  );
   const select = useCallback(
     (next: AssistantModelSelection) => {
       if (changingModel.current) return;
@@ -74,7 +78,13 @@ export function AssistantComposerModelSwitch({
         toast.error(t("defaultAssistant.handoffWaitIdle"));
         return;
       }
-      if (assistantModelChangeKind(source.provider, next.provider) === "in-place") {
+      if (
+        assistantModelChangeKind(
+          source.provider,
+          next.provider,
+          needsAssistantRuntimeMigration(source),
+        ) === "in-place"
+      ) {
         changingModel.current = true;
         void client
           .setAgentModel(agentId, next.model)
@@ -92,6 +102,15 @@ export function AssistantComposerModelSwitch({
     },
     [agentId, client, serverId, supportsHandoff, t, toast],
   );
+  const migrate = useCallback(() => {
+    const source = useSessionStore.getState().sessions[serverId]?.agents.get(agentId);
+    const model = source?.model ?? source?.runtimeInfo?.model;
+    if (!source || !model) {
+      toast.error(t("defaultAssistant.isolationChooseModel"));
+      return;
+    }
+    select({ provider: source.provider, model });
+  }, [agentId, serverId, select, t, toast]);
   const value = useMemo(
     () => (supported && isAssistant ? { serverId, select } : null),
     [supported, isAssistant, serverId, select],
@@ -99,6 +118,14 @@ export function AssistantComposerModelSwitch({
   return (
     <AssistantModelSwitchContext.Provider value={value}>
       <AssistantHandoffSource serverId={serverId} agentId={agentId} />
+      {supported && supportsHandoff && needsMigration ? (
+        <View testID="assistant-runtime-migration">
+          <Text style={styles.notice}>{t("defaultAssistant.isolationNotice")}</Text>
+          <Button variant="ghost" onPress={migrate} testID="assistant-runtime-migrate">
+            {t("defaultAssistant.isolationAction")}
+          </Button>
+        </View>
+      ) : null}
       {children}
       {selection ? (
         <AssistantHandoffPreview
@@ -106,6 +133,7 @@ export function AssistantComposerModelSwitch({
           serverId={serverId}
           sourceAgentId={agentId}
           selection={selection}
+          purpose={needsMigration && selection.provider === "codex" ? "isolation" : undefined}
           onClose={closePreview}
         />
       ) : null}

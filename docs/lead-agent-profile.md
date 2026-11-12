@@ -66,6 +66,15 @@ sessions without the marker retain their native home and expose
 the existing reviewed-context handoff. Do not describe an old native segment as
 fully isolated merely because it has a Sunny prompt.
 
+A runtime-confirmed legacy Codex lead shows **Continue with Sunny settings** in
+the composer. It uses the existing reviewed-context handoff, including when the
+selected provider and model stay the same. Confirmation creates a new segment
+in the same logical conversation and workspace, then opens it automatically.
+The original segment remains readable. The destination carries a visible
+isolation-transition label; reconnecting or opening a page does not silently
+create segments or start model turns. Once isolated, same-provider model changes
+remain in-place; cross-provider changes still use a reviewed handoff.
+
 The separate scope requires official Codex login once. Run the official login
 flow with exactly the live daemon's scope HOME/CODEX_HOME/cwd; logging into a test
 `.lab` scope does not authenticate the live app. Never copy credentials from the
