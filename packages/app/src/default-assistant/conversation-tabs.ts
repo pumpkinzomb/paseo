@@ -11,6 +11,7 @@ export function useConsolidateAssistantConversationTabs(
   serverId: string,
   conversation: AssistantConversation | null,
   visibleWorkspaceId: string,
+  isInteractive: boolean,
 ) {
   const active = useRetainedPanelActive();
   const anchorWorkspaceId = conversation?.segments[0]?.workspaceId;
@@ -21,7 +22,13 @@ export function useConsolidateAssistantConversationTabs(
     workspaceKey ? state.layoutByWorkspace[workspaceKey] : undefined,
   );
   useEffect(() => {
-    if (!active || !conversation || !workspaceKey || visibleWorkspaceId !== anchorWorkspaceId)
+    if (
+      !active ||
+      !isInteractive ||
+      !conversation ||
+      !workspaceKey ||
+      visibleWorkspaceId !== anchorWorkspaceId
+    )
       return;
     const tabs = useWorkspaceLayoutStore.getState().getWorkspaceTabs(workspaceKey);
     const agentIds = tabs.flatMap((tab) =>
@@ -30,5 +37,14 @@ export function useConsolidateAssistantConversationTabs(
     if (hasAssistantConversationAliasTab(conversation, agentIds)) {
       navigateAssistantConversation({ serverId, conversation });
     }
-  }, [active, anchorWorkspaceId, conversation, layout, serverId, visibleWorkspaceId, workspaceKey]);
+  }, [
+    active,
+    isInteractive,
+    anchorWorkspaceId,
+    conversation,
+    layout,
+    serverId,
+    visibleWorkspaceId,
+    workspaceKey,
+  ]);
 }

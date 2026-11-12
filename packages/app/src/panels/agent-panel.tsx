@@ -362,7 +362,7 @@ export function AgentConversationPanel() {
     target.kind === "agent" ? target.agentId : undefined,
   );
   const conversation = logical.data ?? null;
-  useConsolidateAssistantConversationTabs(serverId, conversation, workspaceId);
+  useConsolidateAssistantConversationTabs(serverId, conversation, workspaceId, isInteractive);
   useViewedAssistantSegment(serverId, pane.tabId, conversation?.activeAgentId);
   const resolvedTarget = useMemo(
     () =>

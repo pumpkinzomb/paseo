@@ -3,8 +3,16 @@ import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { useConsolidateAssistantConversationTabs } from "./conversation-tabs";
-const mocks = vi.hoisted(() => ({ active: true, workspaceId: "workspace", navigated: vi.fn() }));
-vi.mock("@/components/retained-panel", () => ({ useRetainedPanelActive: () => mocks.active }));
+const mocks = vi.hoisted(() => ({
+  active: true,
+  interactive: true,
+  workspaceId: "workspace",
+  navigated: vi.fn(),
+}));
+vi.mock("@/components/retained-panel", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/retained-panel")>()),
+  useRetainedPanelActive: () => mocks.active,
+}));
 vi.mock("@/utils/navigate-to-agent", () => ({
   navigateToAgent: (input: { serverId: string; workspaceId: string; agentId: string }) => {
     mocks.navigated(input);
@@ -14,6 +22,10 @@ vi.mock("@/utils/navigate-to-agent", () => ({
       intent: "reveal",
     });
   },
+}));
+// Plugin evaluation imports the complete app; agent-tab placement does not need it.
+vi.mock("@/plugins/workspace-panels/locations", () => ({
+  panelTargetSupportsHostForWorkspaceKey: () => true,
 }));
 const key = "host:workspace";
 const conversation = {
@@ -29,7 +41,12 @@ const conversation = {
   })),
 };
 function Harness() {
-  useConsolidateAssistantConversationTabs("host", conversation, mocks.workspaceId);
+  useConsolidateAssistantConversationTabs(
+    "host",
+    conversation,
+    mocks.workspaceId,
+    mocks.interactive,
+  );
   return <div>conversation</div>;
 }
 function open(agentId: string) {
@@ -46,6 +63,7 @@ function ids() {
 beforeEach(() => {
   vi.stubGlobal("React", React);
   mocks.active = true;
+  mocks.interactive = true;
   mocks.workspaceId = "workspace";
   mocks.navigated.mockClear();
   useWorkspaceLayoutStore.setState(useWorkspaceLayoutStore.getInitialState(), true);
@@ -73,6 +91,14 @@ describe("logical conversation restored tabs", () => {
     open("codex");
     open("claude");
     mocks.active = false;
+    render(<Harness />);
+    expect(ids()).toHaveLength(2);
+    expect(mocks.navigated).not.toHaveBeenCalled();
+  });
+  it("does not steal focus from another visible pane", () => {
+    open("codex");
+    open("claude");
+    mocks.interactive = false;
     render(<Harness />);
     expect(ids()).toHaveLength(2);
     expect(mocks.navigated).not.toHaveBeenCalled();
