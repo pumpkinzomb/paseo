@@ -1,4 +1,17 @@
 export const en = {
+  supervisedUpdate: {
+    cancel: "Cancel restart",
+    title: "Update ready",
+    saving: "Saving your work before restarting.",
+    canceling: "Canceling restart…",
+    cancelFailed: "Could not confirm cancellation. Try again.",
+    interrupted: "Restart canceled. Please repeat your last input.",
+    countdown: "Restarting in {{count}} seconds. Your saved work will reopen.",
+    browser: "Waiting for browser activity to finish before restarting.",
+    activity: "Waiting until you finish using the app.",
+    savingWait: "Checking that your work is saved.",
+    blocked: "Waiting until the app is ready to restart.",
+  },
   leadIdentity: {
     title: "Sunny identity",
     chooseHost: "Choose the host whose lead identity you want to edit.",

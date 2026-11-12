@@ -2,6 +2,7 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const zhCN: TranslationResources = {
+  supervisedUpdate: en.supervisedUpdate,
   leadIdentity: en.leadIdentity,
   workspaceSessionDeletion: en.workspaceSessionDeletion,
   browserDock: en.browserDock,

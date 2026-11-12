@@ -3,7 +3,10 @@ import { hasUncheckpointedFormInput } from "./browser-url-input";
 import { Button } from "@/components/ui/button";
 import { collectStoreUpdateBlockers } from "./blockers";
 import { useEffect, useState } from "react";
-import { Text, View, StyleSheet } from "react-native";
+import { Text, View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
+import { useTranslation } from "react-i18next";
+import { updateNoticeKey } from "./update-notice";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { PersistStorage } from "zustand/middleware";
 import { getIsElectron, isWeb } from "@/constants/platform";
@@ -71,6 +74,7 @@ function persistentSource<T, P>(store: {
 }
 
 export function SupervisedUpdateCheckpoint() {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<Status | null>(null);
   const [interruptedInput, setInterruptedInput] = useState(false);
   useEffect(() => {
@@ -307,42 +311,43 @@ export function SupervisedUpdateCheckpoint() {
     return null;
   return (
     <View accessibilityRole="alert" style={styles.notice}>
-      <Text style={styles.text}>{updateNotice(status, interruptedInput)}</Text>
-      <Button onPress={cancelRestart} variant="secondary">
-        Cancel restart
-      </Button>
+      <Text style={styles.title}>{t("supervisedUpdate.title")}</Text>
+      <Text style={styles.text}>
+        {t(`supervisedUpdate.${updateNoticeKey(status.state, status.blockers, interruptedInput)}`, {
+          count: status.countdownSeconds ?? 0,
+        })}
+      </Text>
+      <View style={styles.actions}>
+        <Button onPress={cancelRestart} variant="ghost" size="sm">
+          {t("supervisedUpdate.cancel")}
+        </Button>
+      </View>
     </View>
   );
-}
-
-function updateNotice(status: Status, interruptedInput: boolean): string {
-  if (status.state === "committing")
-    return "Saving your work for restart. Any input cancels the restart.";
-  if (status.state === "canceling") {
-    if (status.blockers?.includes("cancel-ack-failed"))
-      return "Cancellation is not confirmed. Input remains paused; press Cancel restart to retry.";
-    return "Canceling restart. Input is briefly paused; please try again when cancellation finishes.";
-  }
-  if (interruptedInput && status.state === "blocked")
-    return "Restart canceled. Please repeat your last input.";
-  if (status.state === "countdown")
-    return `Update ready. Restarting in ${status.countdownSeconds ?? 0}s. Your saved work will reopen.`;
-  return `Update waiting: ${status.blockers?.join(", ") || "checking saved work"}`;
 }
 
 function cancelRestart() {
   void window.paseoDesktop?.devUpdate?.cancel();
 }
-const styles = StyleSheet.create({
+const styles = StyleSheet.create((theme) => ({
   notice: {
     position: "absolute",
-    bottom: 16,
-    right: 16,
+    bottom: theme.spacing[4],
+    right: theme.spacing[4],
     maxWidth: 360,
-    padding: 12,
-    backgroundColor: "#20242b",
+    padding: theme.spacing[3],
+    gap: theme.spacing[2],
+    backgroundColor: theme.colors.surface2,
+    borderColor: theme.colors.border,
+    borderWidth: 1,
+    borderRadius: theme.borderRadius.lg,
     zIndex: 10000,
   },
-  text: { color: "white" },
-  cancel: { color: "#99caff", paddingTop: 8 },
-});
+  title: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  },
+  text: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  actions: { flexDirection: "row", justifyContent: "flex-end" },
+}));

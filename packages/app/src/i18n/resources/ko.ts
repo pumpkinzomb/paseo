@@ -2,6 +2,19 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
+  supervisedUpdate: {
+    cancel: "재시작 취소",
+    title: "업데이트 준비됨",
+    saving: "재시작 전에 작업 내용을 저장하고 있어요.",
+    canceling: "재시작을 취소하고 있어요.",
+    cancelFailed: "취소 여부를 확인하지 못했어요. 다시 눌러 주세요.",
+    interrupted: "재시작을 취소했어요. 마지막 입력을 다시 해 주세요.",
+    countdown: "{{count}}초 뒤 재시작해요. 저장된 작업은 다시 열려요.",
+    browser: "브라우저 사용이 끝나면 업데이트를 적용할게요.",
+    activity: "앱 사용을 마치면 업데이트를 적용할게요.",
+    savingWait: "작업이 저장되었는지 확인하고 있어요.",
+    blocked: "재시작할 수 있을 때 업데이트를 적용할게요.",
+  },
   leadIdentity: {
     title: "써니 아이덴티티",
     chooseHost: "아이덴티티를 편집할 기기를 선택해 주세요.",
