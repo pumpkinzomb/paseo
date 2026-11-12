@@ -3197,6 +3197,7 @@ export class AgentManager {
     });
     await this.appendTimelineItem(agentId, {
       type: role === "user" ? "user_message" : "assistant_message",
+      source: "native_voice",
       text,
       messageId,
     });
@@ -3211,7 +3212,18 @@ export class AgentManager {
       events.flatMap(({ item }) => ("messageId" in item && item.messageId ? [item.messageId] : [])),
     );
     for (const entry of saved) {
-      if (ids.has(entry.messageId)) continue;
+      if (ids.has(entry.messageId)) {
+        for (let index = 0; index < events.length; index++) {
+          const event = events[index];
+          const item = event.item;
+          if (
+            (item.type === "user_message" || item.type === "assistant_message") &&
+            item.messageId === entry.messageId
+          )
+            events[index] = { ...event, item: { ...item, source: "native_voice" } };
+        }
+        continue;
+      }
       ids.add(entry.messageId);
       events.push({
         type: "timeline",
@@ -3219,6 +3231,7 @@ export class AgentManager {
         timestamp: entry.timestamp,
         item: {
           type: entry.role === "user" ? "user_message" : "assistant_message",
+          source: "native_voice",
           text: entry.text,
           messageId: entry.messageId,
         },

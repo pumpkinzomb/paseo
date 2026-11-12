@@ -4780,9 +4780,9 @@ export class DaemonClient {
     return response;
   }
 
-  async startNativeVoice(agentId: string, offerSdp: string): Promise<string> {
+  async startNativeVoice(agentId: string, offerSdp: string, voice?: string): Promise<string> {
     const result = await this.sendCorrelatedSessionRequest({
-      message: { type: "voice.native.start.request", agentId, offerSdp },
+      message: { type: "voice.native.start.request", agentId, offerSdp, voice },
       responseType: "voice.native.start.response",
       timeout: 40000,
     });

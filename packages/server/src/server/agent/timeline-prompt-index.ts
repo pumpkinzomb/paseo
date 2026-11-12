@@ -28,7 +28,9 @@ export function buildTimelinePromptIndex(
   return {
     epoch,
     prompts: rows.flatMap((row) =>
-      row.item.type === "user_message"
+      row.item.type === "user_message" &&
+      row.item.source !== "native_voice" &&
+      row.item.source !== "realtime_handoff"
         ? [
             {
               seq: row.seq,

@@ -52,3 +52,12 @@ describe("buildTimelinePromptIndex", () => {
     expect(result.prompts[0]?.preview.endsWith("…")).toBe(true);
   });
 });
+
+it("does not expose call transcripts or provider handoffs in task prompt navigation", () => {
+  const rows: AgentTimelineRow[] = ["native_voice", "realtime_handoff"].map((source, index) => ({
+    seq: index + 1,
+    timestamp: "2026-01-01T00:00:00.000Z",
+    item: { type: "user_message", source, text: "private call transport" },
+  }));
+  expect(buildTimelinePromptIndex("epoch", rows).prompts).toEqual([]);
+});

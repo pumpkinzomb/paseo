@@ -1,3 +1,4 @@
+import { NativeCallSettings } from "@/voice/native-call-settings";
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -124,6 +125,7 @@ export function HostVoicePage({
 
   return (
     <View testID="voice-settings">
+      <NativeCallSettings serverId={serverId} />
       {!voiceOnly ? (
         <SettingsSection title={t("settings.voice.dictation.title")} testID="voice-dictation">
           <SettingsCard>

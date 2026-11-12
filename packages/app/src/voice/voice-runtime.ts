@@ -40,6 +40,8 @@ export type VoiceRuntimePhase =
 
 export interface VoiceRuntimeSnapshot {
   phase: VoiceRuntimePhase;
+  voiceRoute?: "native" | "speech";
+  effectiveVoice?: string;
   isVoiceMode: boolean;
   isVoiceSwitching: boolean;
   isMuted: boolean;
@@ -66,6 +68,7 @@ export interface VoiceRuntimeDeps {
   engine: AudioEngine;
   getServerInfo(serverId: string): DaemonServerInfo | null;
   onNativeVoiceError?(error: Error): void;
+  getNativeVoice?(): string;
   supportsNativeVoice?(serverId: string, agentId: string): boolean;
   startNativeVoice?(
     serverId: string,
@@ -156,6 +159,8 @@ let nextVoiceRuntimeInstanceId = 1;
 function snapshotsEqual(left: VoiceRuntimeSnapshot, right: VoiceRuntimeSnapshot): boolean {
   return (
     left.phase === right.phase &&
+    left.voiceRoute === right.voiceRoute &&
+    left.effectiveVoice === right.effectiveVoice &&
     left.isVoiceMode === right.isVoiceMode &&
     left.isVoiceSwitching === right.isVoiceSwitching &&
     left.isMuted === right.isMuted &&
@@ -808,6 +813,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         ...prev,
         isVoiceSwitching: true,
         phase: "starting",
+        voiceRoute: deps.supportsNativeVoice?.(serverId, agentId) ? "native" : "speech",
+        effectiveVoice: deps.getNativeVoice?.() || undefined,
         activeServerId: serverId,
         activeAgentId: agentId,
       }));

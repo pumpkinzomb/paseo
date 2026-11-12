@@ -518,7 +518,7 @@ export class VoiceSession {
     msg: Extract<SessionInboundMessage, { type: "voice.native.start.request" }>,
   ): Promise<void> {
     try {
-      const connection = await this.tryEnableNativeVoice(msg.agentId, msg.offerSdp);
+      const connection = await this.tryEnableNativeVoice(msg.agentId, msg.offerSdp, msg.voice);
       this.emit({
         type: "voice.native.start.response",
         payload: {
@@ -546,6 +546,7 @@ export class VoiceSession {
   private async tryEnableNativeVoice(
     agentId: string,
     offerSdp: string,
+    voice?: string,
   ): Promise<NativeVoiceConnection> {
     const agent = await this.host.loadAgent(agentId);
     if (this.closed) throw new Error("Voice source is closed");
@@ -560,10 +561,14 @@ export class VoiceSession {
     this.nativeVoiceSelected = true;
     this.voiceModeAgentId = agentId;
     try {
-      const connection = await agent.session.startNativeVoice(offerSdp, (event) => {
-        if (!this.closed && generation === this.nativeGeneration)
-          this.handleNativeVoiceEvent(agentId, event);
-      });
+      const connection = await agent.session.startNativeVoice(
+        offerSdp,
+        (event) => {
+          if (!this.closed && generation === this.nativeGeneration)
+            this.handleNativeVoiceEvent(agentId, event);
+        },
+        voice,
+      );
       if (this.closed || generation !== this.nativeGeneration) {
         await connection.stop();
         throw new Error("Native voice startup was cancelled");

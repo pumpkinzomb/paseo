@@ -40,7 +40,7 @@ export function resolveComposerSurfacePresentation(
 }
 
 interface StopRealtimeVoiceContext {
-  voice: { stopVoice: () => Promise<unknown> } | null | undefined;
+  voice: { stopVoice: () => Promise<unknown>; voiceRoute?: "native" | "speech" } | null | undefined;
   isRealtimeVoiceForCurrentAgent: boolean;
   isAgentRunning: boolean;
   client: { cancelAgent: (agentId: string) => Promise<unknown> } | null;
@@ -223,7 +223,7 @@ export function runMessageInputKeyboardAction(
 export async function stopRealtimeVoice(ctx: StopRealtimeVoiceContext): Promise<void> {
   if (!ctx.voice || !ctx.isRealtimeVoiceForCurrentAgent) return;
 
-  if (ctx.isAgentRunning) {
+  if (ctx.isAgentRunning && ctx.voice.voiceRoute !== "native") {
     if (!ctx.client || !ctx.voiceAgentId) {
       throw new Error("Cannot stop the running voice agent while the host is unavailable");
     }

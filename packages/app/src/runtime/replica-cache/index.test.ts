@@ -1220,3 +1220,28 @@ it("retains semantic agent messages across disk-cache reconstruction", async () 
   await writer.flush();
   expect(await createCache(storage).readTimeline(SERVER_ID, "agent-1")).toEqual(value);
 });
+
+it("retains canonical spoken origins and speakers through disk cache hydration", async () => {
+  const storage = new MemoryStorage();
+  const writer = createCache(storage);
+  const user: StreamItem = {
+    kind: "user_message",
+    id: "voice-u",
+    messageId: "voice-u",
+    source: "native_voice",
+    text: "spoken user",
+    timestamp: new Date(1000),
+  };
+  const assistant: StreamItem = {
+    kind: "assistant_message",
+    id: "voice-a",
+    messageId: "voice-a",
+    source: "native_voice",
+    text: "spoken assistant",
+    timestamp: new Date(2000),
+  };
+  writer.commitTimeline(SERVER_ID, "agent-1", { ...timeline(), items: [user, assistant] });
+  await writer.flush();
+  const restored = await createCache(storage).readTimeline(SERVER_ID, "agent-1");
+  expect(restored?.items).toEqual([user, assistant]);
+});

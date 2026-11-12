@@ -1,11 +1,10 @@
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, View } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Mic, MicOff, Square } from "lucide-react-native";
-import { FOOTER_HEIGHT } from "@/constants/layout";
-import { useVoiceTelemetry } from "@/contexts/voice-context";
+import { Text, View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
+import { Mic, MicOff, PhoneOff } from "lucide-react-native";
+import { useVoice, useVoiceTelemetry } from "@/contexts/voice-context";
+import { Button } from "@/components/ui/button";
+import { CallTranscript } from "@/voice/call-transcript";
 import { VolumeMeter } from "./volume-meter";
 
 interface RealtimeVoiceOverlayProps {
@@ -15,34 +14,32 @@ interface RealtimeVoiceOverlayProps {
   onStop: () => void;
 }
 
-const OVERLAY_BUTTON_SIZE = 44;
-const OVERLAY_VERTICAL_PADDING = (FOOTER_HEIGHT - OVERLAY_BUTTON_SIZE) / 2;
-
 export function RealtimeVoiceOverlay({
   isMuted,
   isSwitching,
   onToggleMute,
   onStop,
 }: RealtimeVoiceOverlayProps) {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const { volume, isSpeaking } = useVoiceTelemetry();
-  const muteButtonStyle = useMemo(
-    () => [
-      styles.actionButton,
-      styles.muteButton,
-      isMuted ? styles.muteButtonMuted : undefined,
-      isSwitching ? styles.buttonDisabled : undefined,
-    ],
-    [isMuted, isSwitching],
-  );
-  const stopButtonStyle = useMemo(
-    () => [styles.actionButton, styles.stopButton, isSwitching ? styles.buttonDisabled : undefined],
-    [isSwitching],
-  );
+  const voice = useVoice();
+  let status = "listening";
+  if (voice.phase === "starting") status = "connecting";
+  else if (voice.phase === "stopping") status = "ending";
+  else if (voice.phase === "playing") status = "speaking";
+  else if (isMuted) status = "muted";
+  else if (voice.phase === "waiting") status = "connected";
   return (
-    <View style={styles.container}>
-      <View style={styles.meterContainer}>
+    <View style={styles.container} testID="voice-call-controls">
+      <View style={styles.status}>
+        <Text style={styles.text}>
+          {voice.voiceRoute === "native"
+            ? `${t("voiceCall.routeNative")} · ${voice.effectiveVoice || t("voiceCall.providerDefault")}`
+            : t("voiceCall.routeSpeech")}
+        </Text>
+        <Text style={styles.text} accessibilityLiveRegion="polite">
+          {t(`voiceCall.${status}`)}
+        </Text>
         <VolumeMeter
           volume={volume}
           isMuted={isMuted}
@@ -50,93 +47,37 @@ export function RealtimeVoiceOverlay({
           orientation="horizontal"
         />
       </View>
-
-      <View style={styles.actionsContainer}>
-        <Pressable
-          onPress={onToggleMute}
-          disabled={isSwitching}
-          accessibilityRole="button"
-          accessibilityLabel={
-            isMuted ? t("realtimeVoice.actions.unmute") : t("realtimeVoice.actions.mute")
-          }
-          style={muteButtonStyle}
-        >
-          {isMuted ? (
-            <MicOff size={theme.iconSize.lg} color={theme.colors.palette.white} strokeWidth={2.5} />
-          ) : (
-            <Mic size={theme.iconSize.lg} color={theme.colors.foreground} strokeWidth={2.5} />
-          )}
-        </Pressable>
-
-        <Pressable
-          onPress={onStop}
-          disabled={isSwitching}
-          accessibilityRole="button"
-          accessibilityLabel={t("realtimeVoice.actions.stop")}
-          style={stopButtonStyle}
-        >
-          {isSwitching ? (
-            <LoadingSpinner size="small" color={theme.colors.palette.white} />
-          ) : (
-            <Square
-              size={theme.iconSize.lg}
-              color={theme.colors.palette.white}
-              fill={theme.colors.palette.white}
-              strokeWidth={2.5}
-            />
-          )}
-        </Pressable>
-      </View>
+      {voice.activeServerId && voice.activeAgentId ? (
+        <CallTranscript serverId={voice.activeServerId} agentId={voice.activeAgentId} />
+      ) : null}
+      <Button
+        variant="ghost"
+        leftIcon={isMuted ? MicOff : Mic}
+        onPress={onToggleMute}
+        disabled={isSwitching}
+        accessibilityLabel={
+          isMuted ? t("realtimeVoice.actions.unmute") : t("realtimeVoice.actions.mute")
+        }
+      />
+      <Button
+        variant="outline"
+        leftIcon={PhoneOff}
+        onPress={onStop}
+        loading={voice.phase === "stopping"}
+        accessibilityLabel={t("voiceCall.end")}
+      />
     </View>
   );
 }
-
 const styles = StyleSheet.create((theme) => ({
   container: {
     flexDirection: "row",
     alignItems: "center",
-    width: "100%",
-    height: FOOTER_HEIGHT,
-    borderRadius: theme.borderRadius["2xl"],
-    justifyContent: "space-between",
-    paddingHorizontal: theme.spacing[4],
-    paddingVertical: OVERLAY_VERTICAL_PADDING,
-    backgroundColor: theme.colors.surface1,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-  },
-  meterContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionsContainer: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: theme.spacing[2],
+    padding: theme.spacing[2],
+    backgroundColor: theme.colors.surface1,
+    borderRadius: theme.borderRadius.lg,
   },
-  actionButton: {
-    width: OVERLAY_BUTTON_SIZE,
-    height: OVERLAY_BUTTON_SIZE,
-    borderRadius: theme.borderRadius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  muteButton: {
-    backgroundColor: theme.colors.surface0,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-  },
-  muteButtonMuted: {
-    backgroundColor: theme.colors.palette.red[600],
-    borderColor: theme.colors.palette.red[800],
-  },
-  stopButton: {
-    backgroundColor: theme.colors.palette.red[600],
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.palette.red[800],
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
+  status: { flex: 1, gap: theme.spacing[1] },
+  text: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
 }));

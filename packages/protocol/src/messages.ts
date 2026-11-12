@@ -759,12 +759,14 @@ const ToolCallTimelineItemPayloadSchema: z.ZodType<ToolCallTimelineItem, unknown
 export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknown> = z.union([
   z.object({
     type: z.literal("user_message"),
+    source: z.string().optional(),
     text: z.string(),
     messageId: z.string().optional(),
     clientMessageId: z.string().optional(),
   }),
   z.object({
     type: z.literal("assistant_message"),
+    source: z.string().optional(),
     text: z.string(),
     messageId: z.string().optional(),
   }),
@@ -1196,6 +1198,7 @@ export const NativeVoiceStartRequestSchema = z.object({
   requestId: z.string(),
   agentId: z.guid(),
   offerSdp: z.string().min(1).max(131072),
+  voice: z.string().max(64).optional(),
 });
 export const NativeVoiceStartResponseSchema = z.object({
   type: z.literal("voice.native.start.response"),
@@ -4143,6 +4146,8 @@ export const ServerInfoStatusPayloadSchema = z
         daemonConfigReload: z.boolean().optional(),
         // COMPAT(speechSettings): added in v0.12.0, remove gate after 2027-04-18.
         speechSettings: z.boolean().optional(),
+        // COMPAT(nativeVoiceCalls): added in v0.15.4, remove gate after 2027-05-12.
+        nativeVoiceCalls: z.boolean().optional(),
         // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.
         relayConfig: z.boolean().optional(),
         // COMPAT(pushTokenRevocation): added in v0.3.2, remove gate after 2027-02-10.

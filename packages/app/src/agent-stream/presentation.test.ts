@@ -890,3 +890,131 @@ it.each([false, true])(
     expect(opened.groupsByHostId.size).toBe(0);
   },
 );
+
+it("keeps both canonical spoken roles for disclosure while excluding them and handoffs from task chat", () => {
+  const events: AgentStreamEventPayload[] = [
+    {
+      type: "timeline",
+      provider: "codex",
+      item: {
+        type: "user_message",
+        messageId: "spoken-user",
+        source: "native_voice",
+        text: "안녕",
+      },
+    },
+    {
+      type: "timeline",
+      provider: "codex",
+      item: {
+        type: "assistant_message",
+        messageId: "spoken-assistant",
+        source: "native_voice",
+        text: "Hello",
+      },
+    },
+    {
+      type: "timeline",
+      provider: "codex",
+      item: {
+        type: "user_message",
+        messageId: "handoff",
+        source: "realtime_handoff",
+        text: "internal",
+      },
+    },
+    {
+      type: "timeline",
+      provider: "codex",
+      item: { type: "user_message", messageId: "task", text: "<input>ordinary code</input>" },
+    },
+  ];
+  const source = hydrateStreamState(events.map((event) => ({ event, timestamp: new Date(1000) })));
+  expect(source).toHaveLength(4);
+  expect(source.filter((row) => "source" in row && row.source === "native_voice")).toHaveLength(2);
+  const present = createStreamPresentation();
+  for (const input of [
+    { tail: source, head: [] },
+    { tail: [], head: source },
+  ]) {
+    const result = present({ ...presentationOptions, ...input, transform: undefined });
+    expect(rows(result).map((row) => ("text" in row ? row.text : ""))).toEqual([
+      "<input>ordinary code</input>",
+    ]);
+  }
+});
+
+it("does not tag preexisting messages with missing IDs as call transcripts", () => {
+  const source = hydrateStreamState([
+    {
+      event: {
+        type: "timeline",
+        provider: "codex",
+        item: { type: "user_message", text: "ordinary" },
+      },
+      timestamp: new Date(1000),
+    },
+    {
+      event: {
+        type: "timeline",
+        provider: "codex",
+        item: { type: "user_message", source: "native_voice", text: "spoken" },
+      },
+      timestamp: new Date(2000),
+    },
+  ]);
+  expect(source[0]).not.toHaveProperty("source");
+  expect(source[1]).toMatchObject({ source: "native_voice", text: "spoken" });
+});
+
+it("retains voice source through canonical user upserts and separates untagged task replies", () => {
+  const source = hydrateStreamState([
+    {
+      event: {
+        type: "timeline",
+        provider: "codex",
+        item: { type: "user_message", messageId: "u", source: "native_voice", text: "spoken" },
+      },
+      timestamp: new Date(1),
+    },
+    {
+      event: {
+        type: "timeline",
+        provider: "codex",
+        item: { type: "user_message", messageId: "u", text: "spoken" },
+      },
+      timestamp: new Date(2),
+    },
+    {
+      event: {
+        type: "timeline",
+        provider: "codex",
+        item: {
+          type: "assistant_message",
+          messageId: "a",
+          source: "native_voice",
+          text: "spoken answer",
+        },
+      },
+      timestamp: new Date(3),
+    },
+    {
+      event: {
+        type: "timeline",
+        provider: "codex",
+        item: { type: "assistant_message", text: "task answer" },
+      },
+      timestamp: new Date(4),
+    },
+  ]);
+  expect(source).toHaveLength(3);
+  expect(source[0]).toMatchObject({ source: "native_voice" });
+  const result = createStreamPresentation()({
+    ...presentationOptions,
+    tail: source,
+    head: [],
+    transform: undefined,
+  });
+  expect(rows(result)).toHaveLength(1);
+  expect(rows(result)[0]).toMatchObject({ text: "task answer" });
+});

@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { useNativeVoicePreference } from "@/voice/native-voice-preference";
 import { shouldUseNativeVoice } from "@/voice/native-voice-routing";
 import { useVoiceUpdateBlocker } from "@/voice/voice-update-blocker";
 import { useToast } from "@/contexts/toast-context";
@@ -121,6 +123,7 @@ interface VoiceProviderProps {
 
 export function VoiceProvider({ children }: VoiceProviderProps) {
   const toast = useToast();
+  const { t } = useTranslation();
   const engineRef = useRef<AudioEngine | null>(null);
   const runtimeRef = useRef<VoiceRuntime | null>(null);
 
@@ -145,6 +148,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
 
     runtime = createVoiceRuntime({
       onNativeVoiceError: (error) => toast.error(error.message),
+      getNativeVoice: () => useNativeVoicePreference.getState().voice,
       engine,
       getServerInfo: (serverId) =>
         useSessionStore.getState().getSession(serverId)?.serverInfo ?? null,
@@ -154,11 +158,17 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
         return shouldUseNativeVoice(agent, nativeVoicePeerAvailable());
       },
       startNativeVoice: (serverId, agentId, signal, callbacks) => {
+        // COMPAT(nativeVoiceCalls): added in v0.15.4, remove gate after 2027-05-12.
+        if (
+          !useSessionStore.getState().getSession(serverId)?.serverInfo?.features?.nativeVoiceCalls
+        )
+          return Promise.reject(new Error(t("settings.voice.updateHost")));
         const client = getHostRuntimeStore().getClient(serverId);
         if (!client) return Promise.reject(new Error("Host is unavailable"));
+        const selectedVoice = useNativeVoicePreference.getState().voice || undefined;
         return startNativeVoicePeer({
           signal,
-          negotiate: (offer) => client.startNativeVoice(agentId, offer),
+          negotiate: (offer) => client.startNativeVoice(agentId, offer, selectedVoice),
           stopRemote: () => client.setVoiceMode(false),
           ...callbacks,
         });

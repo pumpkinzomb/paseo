@@ -1,3 +1,5 @@
+import { CallTranscript } from "@/voice/call-transcript";
+import { isTaskChatItem } from "./presentation";
 import { ChatFind, ChatFindExpansion } from "@/agent-stream/chat-find";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import React, {
@@ -616,8 +618,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       agentId,
       serverId: resolvedServerId,
       timelineEpoch,
-      tail: effectiveStreamItems,
-      head: effectiveStreamHead,
+      tail: effectiveStreamItems.filter(isTaskChatItem),
+      head: effectiveStreamHead?.filter(isTaskChatItem),
       enabled: supportsChatOutline && chatOutlineEnabled,
       viewportRef,
       onJumpError: handleTimelineHistoryLoadError,
@@ -1152,7 +1154,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
 
     const findItems = useMemo(
-      () => [...effectiveStreamItems, ...(effectiveStreamHead ?? [])],
+      () => [...effectiveStreamItems, ...(effectiveStreamHead ?? [])].filter(isTaskChatItem),
       [effectiveStreamItems, effectiveStreamHead],
     );
     return (
@@ -1167,6 +1169,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       >
         <ToolCallSheetProvider>
           <AssistantSelectionCopySurface style={stylesheet.container}>
+            {[...effectiveStreamItems, ...(effectiveStreamHead ?? [])].some(
+              (item) => "source" in item && item.source === "native_voice",
+            ) ? (
+              <CallTranscript serverId={resolvedServerId} agentId={agentId} />
+            ) : null}
             <MessageOuterSpacingProvider disableOuterSpacing>
               <ToolCallExpansionContext.Provider value={toolCallExpansion}>
                 {streamRenderStrategy.render({

@@ -612,3 +612,17 @@ describe("fullscreen glyph rail", () => {
     ).toBeCloseTo(1 / 6);
   });
 });
+
+it("ends a native phone call without cancelling the delegated coding task", async () => {
+  const stopVoice = vi.fn().mockResolvedValue(undefined);
+  const cancelAgent = vi.fn();
+  await stopRealtimeVoice({
+    voice: { stopVoice, voiceRoute: "native" },
+    isRealtimeVoiceForCurrentAgent: true,
+    isAgentRunning: true,
+    client: { cancelAgent },
+    voiceAgentId: "agent",
+  });
+  expect(stopVoice).toHaveBeenCalledOnce();
+  expect(cancelAgent).not.toHaveBeenCalled();
+});

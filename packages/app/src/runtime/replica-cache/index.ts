@@ -119,6 +119,7 @@ const StoredTimelineItemSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     ...TimelineItemBaseShape,
     kind: z.literal("user_message"),
+    source: z.string().optional(),
     clientMessageId: z.string().optional(),
     messageId: z.string().optional(),
     text: z.string(),
@@ -126,6 +127,7 @@ const StoredTimelineItemSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     ...TimelineItemBaseShape,
     kind: z.literal("assistant_message"),
+    source: z.string().optional(),
     messageId: z.string().optional(),
     text: z.string(),
     // Reject old caches containing display fragments; refetch the complete source text.
@@ -476,6 +478,7 @@ function serializeTimelineItem(item: StreamItem): StoredTimelineItem | null {
       return {
         ...base,
         kind: item.kind,
+        ...(item.source ? { source: item.source } : {}),
         ...(item.clientMessageId ? { clientMessageId: item.clientMessageId } : {}),
         ...(item.messageId ? { messageId: item.messageId } : {}),
         text: item.text,
@@ -484,6 +487,7 @@ function serializeTimelineItem(item: StreamItem): StoredTimelineItem | null {
       return {
         ...base,
         kind: item.kind,
+        ...(item.source ? { source: item.source } : {}),
         ...(item.messageId ? { messageId: item.messageId } : {}),
         text: item.text,
       };
@@ -569,6 +573,7 @@ function deserializeBuiltinTimelineItem(
       return {
         ...base,
         kind: item.kind,
+        ...(item.source ? { source: item.source } : {}),
         ...(item.clientMessageId ? { clientMessageId: item.clientMessageId } : {}),
         ...(item.messageId ? { messageId: item.messageId } : {}),
         text: item.text,
@@ -577,6 +582,7 @@ function deserializeBuiltinTimelineItem(
       return {
         ...base,
         kind: item.kind,
+        ...(item.source ? { source: item.source } : {}),
         ...(item.messageId ? { messageId: item.messageId } : {}),
         text: item.text,
       };

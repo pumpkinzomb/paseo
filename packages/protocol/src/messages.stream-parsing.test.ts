@@ -431,3 +431,40 @@ describe("shared messages stream parsing", () => {
     expect(highlightedParsed.success).toBe(false);
   });
 });
+
+it("preserves voice origins through actual message validation and wire serialization", async () => {
+  const { AgentTimelineItemPayloadSchema, NativeVoiceStartRequestSchema } =
+    await import("./messages.js");
+  for (const type of ["user_message", "assistant_message"]) {
+    const item = {
+      type,
+      source: "native_voice",
+      text: "Actual spoken words",
+      messageId: "voice-id",
+    };
+    expect(AgentTimelineItemPayloadSchema.parse(JSON.parse(JSON.stringify(item)))).toEqual(item);
+    const message = {
+      type: "agent_stream",
+      payload: {
+        agentId: "agent",
+        timestamp: "2026-11-12T00:00:00Z",
+        event: { type: "timeline", provider: "codex", item },
+      },
+    };
+    expect(SessionOutboundMessageSchema.parse(JSON.parse(JSON.stringify(message)))).toEqual(
+      message,
+    );
+  }
+  expect(
+    AgentTimelineItemPayloadSchema.parse({ type: "user_message", text: "ordinary XML" }),
+  ).not.toHaveProperty("source");
+  expect(
+    NativeVoiceStartRequestSchema.parse({
+      type: "voice.native.start.request",
+      requestId: "v",
+      agentId: "00000000-0000-4000-8000-000000000001",
+      offerSdp: "offer",
+      voice: "coral",
+    }),
+  ).toHaveProperty("voice", "coral");
+});

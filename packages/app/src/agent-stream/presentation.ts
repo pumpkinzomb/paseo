@@ -13,6 +13,13 @@ import type { StreamItem, UserMessageItem } from "@/types/stream";
 import { collapseTurns, type TurnCollapse } from "./turn-collapse/model";
 import type { ReadingRowReplacements } from "./reading-anchor";
 
+export function isTaskChatItem(item: StreamItem): boolean {
+  return !(
+    "source" in item &&
+    (item.source === "native_voice" || item.source === "realtime_handoff")
+  );
+}
+
 interface PresentationInput {
   tail: StreamItem[];
   head: StreamItem[];
@@ -163,14 +170,19 @@ export function createStreamPresentation() {
     const level: ToolCallDetailLevel = input.display === "full" ? "detailed" : "overview";
     // Retained history is not reprojected or regrouped on each live text update.
     if (historySource !== input.tail || historyTransform !== input.transform) {
-      historyRows = projectPluginTimelineItems(input.tail, input.transform).flatMap<StreamItem>(
-        (item) => presentRows(item),
-      );
+      historyRows = projectPluginTimelineItems(
+        input.tail.filter(isTaskChatItem),
+        input.transform,
+      ).flatMap<StreamItem>((item) => presentRows(item));
       historySource = input.tail;
       historyTransform = input.transform;
     }
     const head: StreamItem[] = [];
-    for (const item of projectPluginTimelineItems(input.head, input.transform, "streaming")) {
+    for (const item of projectPluginTimelineItems(
+      input.head.filter(isTaskChatItem),
+      input.transform,
+      "streaming",
+    )) {
       const blocks = presentRows(item);
       head.push(...blocks);
     }

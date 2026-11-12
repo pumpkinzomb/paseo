@@ -33,7 +33,19 @@ export class CodexNativeVoice {
     threadId: string,
     offerSdp: string,
     emit: (event: NativeVoiceEvent) => void,
+    voice?: string,
   ): Promise<NativeVoiceConnection> {
+    if (this.owner)
+      throw new Error("This Codex conversation already has an active voice connection");
+    // Installed Codex schema exposes a version-specific list. Enum membership alone
+    // does not establish that a voice is available to V3 or this account.
+    if (voice) {
+      const catalog = z
+        .object({ voices: z.object({ v3: z.array(z.string()).optional() }) })
+        .parse(await client.request("thread/realtime/listVoices", {}, 5000));
+      if (!catalog.voices.v3?.includes(voice))
+        throw new Error(`Codex realtime V3 voice is unavailable: ${voice}`);
+    }
     if (this.owner)
       throw new Error("This Codex conversation already has an active voice connection");
     let resolve!: (sdp: string) => void;
@@ -55,6 +67,7 @@ export class CodexNativeVoice {
           version: "v3",
           transport: { type: "webrtc", sdp: offerSdp },
           outputModality: "audio",
+          ...(voice ? { voice } : {}),
         },
         30000,
       );

@@ -363,7 +363,13 @@ export function selectAgentSentMessages(
   const messages: string[] = [];
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
-    if (item.kind !== "user_message" || item.text.trim().length === 0) continue;
+    if (
+      item.kind !== "user_message" ||
+      item.text.trim().length === 0 ||
+      item.source === "native_voice" ||
+      item.source === "realtime_handoff"
+    )
+      continue;
     if (messages[messages.length - 1] === item.text) continue;
     messages.push(item.text);
   }

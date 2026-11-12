@@ -2,6 +2,44 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
+  voiceCall: {
+    toneUnverified: "청감 미확인",
+    connecting: "연결 중...",
+    ending: "통화 종료 중...",
+    speaking: "말하는 중",
+    listening: "듣는 중",
+    connected: "연결됨",
+    muted: "마이크 음소거",
+    end: "통화 종료",
+    transcript: "대화 기록",
+    transcriptHint:
+      "불러온 통화 기록의 실제 발화 자막입니다. 자동 전사에는 오류가 있을 수 있습니다.",
+    empty: "아직 발화 기록이 없습니다",
+    you: "나",
+    assistant: "어시스턴트",
+    nativeTitle: "Codex 실시간 통화",
+    nativeHint:
+      "이 기기의 다음 Codex 통화에 적용됩니다. 음성을 바꾸려면 현재 통화를 종료하고 다시 연결하세요. 연결 시 Codex V3 지원 여부를 확인하며, 지원하지 않으면 다른 음성으로 바꾸지 않고 오류를 표시합니다.",
+    providerDefault: "Codex 설정 기본값 (음성 이름 미제공)",
+    previewUnavailable: "미리듣기 사용 불가",
+    nativePreviewHint:
+      "API TTS 샘플은 Codex 실시간 통화 음성과 다릅니다. 확인된 통화 미리듣기는 제공되지 않습니다.",
+    apiHint:
+      "API TTS 전용입니다. Codex 실시간 통화에는 적용되지 않습니다. 저장 후 음성 통화를 다시 연결하세요.",
+    apiPreview: "API 음성 참고 샘플",
+    apiPreviewHint:
+      "API 키나 생성 비용 없이 재생하는 OpenAI 공식 API 음성 샘플입니다. 모델에 따라 표현이 달라지며, Codex 통화 샘플이 아닙니다.",
+    previewFailed: "샘플을 불러오거나 재생하지 못했습니다. 다시 시도하세요.",
+    preview: "미리듣기",
+    stopPreview: "재생 중지",
+    cancelPreview: "불러오는 중... 취소",
+    toneHint: "주관적인 청감 설명이며 제공자가 지정한 성별이 아닙니다",
+    masculine: "남성적으로 들리는 음색",
+    feminine: "여성적으로 들리는 음색",
+    neutral: "중성적으로 들리는 음색",
+    routeNative: "Codex 실시간",
+    routeSpeech: "음성 서비스",
+  },
   supervisedUpdate: {
     cancel: "재시작 취소",
     title: "업데이트 준비됨",

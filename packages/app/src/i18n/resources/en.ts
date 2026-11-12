@@ -1,4 +1,42 @@
 export const en = {
+  voiceCall: {
+    toneUnverified: "Perceived tone not verified",
+    connecting: "Connecting...",
+    ending: "Ending call...",
+    speaking: "Speaking",
+    listening: "Listening",
+    connected: "Connected",
+    muted: "Microphone muted",
+    end: "End call",
+    transcript: "Conversation record",
+    transcriptHint:
+      "Spoken transcript from loaded call history. Automatic transcription may contain errors.",
+    empty: "No spoken transcript yet",
+    you: "You",
+    assistant: "Assistant",
+    nativeTitle: "Codex realtime calls",
+    nativeHint:
+      "Applies to your next Codex call on this device. End the current call and reconnect to change its voice. Availability is checked with Codex V3 at connection; unavailable choices fail without substituting another voice.",
+    providerDefault: "Codex configured default (voice not reported)",
+    previewUnavailable: "Preview unavailable",
+    nativePreviewHint:
+      "API TTS samples do not represent Codex realtime voices. No verified call preview is available.",
+    apiHint:
+      "API TTS only. Does not change a Codex realtime call. Reconnect speech calls after saving.",
+    apiPreview: "API voice reference",
+    apiPreviewHint:
+      "Official OpenAI API voice sample, without API keys or generation charges. Delivery varies by model; this is not a Codex call sample.",
+    previewFailed: "Unable to load or play preview. Try again.",
+    preview: "Play preview",
+    stopPreview: "Stop preview",
+    cancelPreview: "Loading... Cancel",
+    toneHint: "Subjective perceived tone, not a provider gender identity",
+    masculine: "masculine perceived tone",
+    feminine: "feminine perceived tone",
+    neutral: "neutral perceived tone",
+    routeNative: "Codex realtime",
+    routeSpeech: "Speech service",
+  },
   supervisedUpdate: {
     cancel: "Cancel restart",
     title: "Update ready",

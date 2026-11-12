@@ -400,8 +400,14 @@ export interface PluginTimelineItem {
 }
 
 export type AgentTimelineItem =
-  | { type: "user_message"; text: string; messageId?: string; clientMessageId?: string }
-  | { type: "assistant_message"; text: string; messageId?: string }
+  | {
+      type: "user_message";
+      source?: string;
+      text: string;
+      messageId?: string;
+      clientMessageId?: string;
+    }
+  | { type: "assistant_message"; source?: string; text: string; messageId?: string }
   | { type: "reasoning"; text: string }
   | ToolCallTimelineItem
   | { type: "todo"; items: AgentTaskItem[] }
@@ -695,6 +701,7 @@ export interface AgentSession {
   startNativeVoice?(
     offerSdp: string,
     emit: (event: NativeVoiceEvent) => void,
+    voice?: string,
   ): Promise<NativeVoiceConnection>;
   usageSession?(): AgentUsageSession | null;
   readonly provider: AgentProvider;

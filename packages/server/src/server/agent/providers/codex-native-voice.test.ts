@@ -138,3 +138,27 @@ it("keeps final transcripts during stop and shares concurrent stop acknowledgeme
   expect(emit).toHaveBeenCalledOnce();
   expect(voice.isActive).toBe(false);
 });
+
+it("checks V3 availability and forwards an explicit choice without substituting a default", async () => {
+  const { voice, client, emit } = setup();
+  client.request.mockResolvedValue({ voices: { v3: ["coral"] } });
+  const start = voice.start(client, "thread", "offer", emit, "coral");
+  await vi.waitFor(() =>
+    expect(client.request).toHaveBeenCalledWith(
+      "thread/realtime/start",
+      expect.objectContaining({ voice: "coral" }),
+      30000,
+    ),
+  );
+  voice.handle("thread/realtime/sdp", { threadId: "thread", sdp: "answer" });
+  await (await start).stop();
+  client.request.mockClear();
+  await expect(voice.start(client, "thread", "offer", emit, "ash")).rejects.toThrow(
+    "unavailable: ash",
+  );
+  expect(client.request).not.toHaveBeenCalledWith(
+    "thread/realtime/start",
+    expect.anything(),
+    expect.anything(),
+  );
+});

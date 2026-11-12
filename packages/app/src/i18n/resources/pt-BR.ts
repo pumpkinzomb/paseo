@@ -2,6 +2,7 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ptBR: TranslationResources = {
+  voiceCall: en.voiceCall,
   supervisedUpdate: en.supervisedUpdate,
   leadIdentity: en.leadIdentity,
   workspaceSessionDeletion: en.workspaceSessionDeletion,

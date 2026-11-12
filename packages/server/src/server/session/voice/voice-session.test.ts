@@ -343,7 +343,7 @@ describe("native voice offer", () => {
       agentId: VOICE_AGENT_ID,
       offerSdp: "offer-sdp",
     });
-    expect(startNativeVoice).toHaveBeenCalledWith("offer-sdp", expect.any(Function));
+    expect(startNativeVoice).toHaveBeenCalledWith("offer-sdp", expect.any(Function), undefined);
     expect(host.emitted).toContainEqual({
       type: "voice.native.start.response",
       payload: {
@@ -585,4 +585,34 @@ test("native voice stop reports transcript storage failure instead of confirming
     }),
   );
   await expect(voiceSession.cleanup()).resolves.toBeUndefined();
+});
+
+test("returns an explicit unsupported native choice failure to the calling client", async () => {
+  const { host, voiceSession } = createVoiceSession();
+  const agent = await host.loadAgent(VOICE_AGENT_ID);
+  const startNativeVoice = vi
+    .fn()
+    .mockRejectedValue(new Error("Codex realtime V3 voice is unavailable: coral"));
+  host.loadAgent = vi.fn(async () => ({
+    ...agent,
+    session: { ...agent.session!, startNativeVoice },
+  }));
+  await voiceSession.handleNativeVoiceOffer({
+    type: "voice.native.start.request",
+    requestId: "unsupported",
+    agentId: VOICE_AGENT_ID,
+    offerSdp: "offer",
+    voice: "coral",
+  });
+  expect(startNativeVoice).toHaveBeenCalledWith("offer", expect.any(Function), "coral");
+  expect(host.emitted).toContainEqual({
+    type: "voice.native.start.response",
+    payload: {
+      requestId: "unsupported",
+      agentId: VOICE_AGENT_ID,
+      accepted: false,
+      answerSdp: null,
+      error: "Codex realtime V3 voice is unavailable: coral",
+    },
+  });
 });

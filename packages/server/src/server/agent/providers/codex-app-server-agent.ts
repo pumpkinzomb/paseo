@@ -1,4 +1,5 @@
 import { resolveCodexLeadRuntime, type CodexLeadRuntime } from "./codex/lead-runtime.js";
+import { isCodexRealtimeHandoff } from "./codex-voice-projection.js";
 import { CodexNativeVoice } from "./codex-native-voice.js";
 import type { NativeVoiceConnection, NativeVoiceEvent } from "../native-voice.js";
 import type { ProviderOptions } from "@getpaseo/protocol/agent-types";
@@ -1866,6 +1867,7 @@ function mapCodexThreadUserMessageItem(
   );
   return {
     type: "user_message",
+    ...(isCodexRealtimeHandoff(text, clientMessageId) ? { source: "realtime_handoff" } : {}),
     text,
     ...(messageId ? { messageId } : {}),
     ...(clientMessageId ? { clientMessageId } : {}),
@@ -5423,13 +5425,14 @@ export class CodexAppServerAgentSession implements AgentSession {
   async startNativeVoice(
     offerSdp: string,
     emit: (event: NativeVoiceEvent) => void,
+    voice?: string,
   ): Promise<NativeVoiceConnection> {
     await this.connect();
     if (this.currentThreadId) await this.ensureThreadLoaded();
     else await this.ensureThread();
     if (!this.client || !this.currentThreadId)
       throw new Error("Codex thread is not ready for voice");
-    return this.nativeVoice.start(this.client, this.currentThreadId, offerSdp, emit);
+    return this.nativeVoice.start(this.client, this.currentThreadId, offerSdp, emit, voice);
   }
 
   async close(): Promise<void> {
@@ -7272,7 +7275,13 @@ export class CodexAppServerAgentSession implements AgentSession {
       return;
     }
     const clientMessageId = timelineItem.clientMessageId ?? this.activeClientMessageId;
-    const item = clientMessageId ? { ...timelineItem, clientMessageId } : timelineItem;
+    const item = clientMessageId
+      ? {
+          ...timelineItem,
+          clientMessageId,
+          source: timelineItem.source === "realtime_handoff" ? undefined : timelineItem.source,
+        }
+      : timelineItem;
     this.activeClientMessageId = null;
     this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item });
   }

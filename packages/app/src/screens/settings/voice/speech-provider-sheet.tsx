@@ -1,3 +1,4 @@
+import { VoicePreviewButton } from "@/voice/voice-preview-button";
 import {
   useCallback,
   useEffect,
@@ -150,7 +151,7 @@ export function SpeechProviderSheet({
           <LocalModelList state={state} model={model} localModels={localModels} />
         </>
       ) : (
-        <OpenAiFields state={state} model={model} />
+        <OpenAiFields state={state} model={model} visible={visible} />
       )}
     </AdaptiveModalSheet>
   );
@@ -207,13 +208,33 @@ function LanguageField({ state, model }: FormProps) {
 // OpenAI
 // ---------------------------------------------------------------------------
 
-function OpenAiFields({ state, model }: FormProps) {
+function OpenAiFields({ state, model, visible }: FormProps & { visible: boolean }) {
   const { t } = useTranslation();
   const modelOptions = useMemo(
     () => buildOpenAiModelOptions(state.kind, state.openAiModel),
     [state.kind, state.openAiModel],
   );
-  const voiceOptions = useMemo(() => buildOpenAiVoiceOptions(state.voice), [state.voice]);
+  const voiceOptions = useMemo(
+    () =>
+      buildOpenAiVoiceOptions(state.voice).map((option) => {
+        const tone = (
+          {
+            alloy: "neutral",
+            onyx: "masculine",
+            echo: "masculine",
+            ash: "masculine",
+            coral: "feminine",
+            nova: "feminine",
+            shimmer: "feminine",
+            sage: "feminine",
+          } as Record<string, string>
+        )[option.value];
+        return tone
+          ? Object.assign({}, option, { label: `${option.label} · ${t(`voiceCall.${tone}`)}` })
+          : option;
+      }),
+    [state.voice, t],
+  );
   const apiKeyInfo = useMemo(
     () => (
       <SettingsInfoTip
@@ -269,13 +290,16 @@ function OpenAiFields({ state, model }: FormProps) {
       ) : (
         <SettingsSelect
           label={t("settings.voice.voice")}
-          hint={setByHint(t, state.fields.voice)}
+          hint={setByHint(t, state.fields.voice) ?? t("voiceCall.apiHint")}
           value={state.voice}
           options={voiceOptions}
           onValueChange={model.setVoice}
           disabled={state.fields.voice.readOnly}
         />
       )}
+      {state.kind === "tts" && visible ? (
+        <VoicePreviewButton key={state.openAiModel} voice={state.voice} baseUrl={state.baseUrl} />
+      ) : null}
     </SettingsCard>
   );
 }

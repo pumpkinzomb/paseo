@@ -93,6 +93,7 @@ export type StreamItem =
 export type UserMessageImageAttachment = AttachmentMetadata;
 
 export interface UserMessageItem {
+  source?: string;
   /** Attribution added by presentation for received agent messages. */
   sender?: AgentMessage["sender"];
   kind: "user_message";
@@ -108,6 +109,7 @@ export interface UserMessageItem {
 }
 
 export interface UserMessageInput {
+  source?: string;
   id?: string;
   clientMessageId?: string;
   messageId?: string;
@@ -126,6 +128,7 @@ export function createUserMessage(input: UserMessageInput): UserMessageItem {
   }
   return {
     kind: "user_message",
+    ...(input.source ? { source: input.source } : {}),
     id,
     ...(input.clientMessageId ? { clientMessageId: input.clientMessageId } : {}),
     ...(input.messageId ? { messageId: input.messageId } : {}),
@@ -262,12 +265,14 @@ function produceUserMessage(
   const presentation = presentationPolicy === "incoming" ? incoming : existing;
   const merged = createUserMessage({
     ...presentation,
+    source: incoming.source ?? existing.source,
     clientMessageId: incoming.clientMessageId ?? existing.clientMessageId,
     messageId: incoming.messageId ?? existing.messageId,
     timelineCursor: incoming.timelineCursor ?? existing.timelineCursor,
   });
   if (
     existing.id === merged.id &&
+    existing.source === merged.source &&
     existing.clientMessageId === merged.clientMessageId &&
     existing.messageId === merged.messageId &&
     existing.timelineCursor === merged.timelineCursor &&
@@ -708,6 +713,7 @@ export function replaceWithCanonicalStream(
 }
 
 export interface AssistantMessageItem {
+  source?: string;
   kind: "assistant_message";
   id: string;
   messageId?: string;
@@ -960,7 +966,7 @@ function appendAssistantMessage(
   const shouldAppendToLast =
     last &&
     last.kind === "assistant_message" &&
-    (messageId === undefined || last.messageId === messageId);
+    (messageId === undefined ? last.source === undefined : last.messageId === messageId);
   if (shouldAppendToLast) {
     const updated: AssistantMessageItem = {
       ...last,
@@ -978,7 +984,7 @@ function appendAssistantMessage(
     source === "live" &&
     last?.kind === "user_message" &&
     secondLast?.kind === "assistant_message" &&
-    (messageId === undefined || secondLast.messageId === messageId)
+    (messageId === undefined ? secondLast.source === undefined : secondLast.messageId === messageId)
   ) {
     const updated: AssistantMessageItem = {
       ...secondLast,
@@ -1535,6 +1541,22 @@ function reduceTimelineEvent(
   timelineCursor?: TimelinePosition,
 ): StreamItem[] {
   const item = event.item;
+  if ((item.type === "user_message" || item.type === "assistant_message") && item.source) {
+    const projected = reduceTimelineEvent(
+      state,
+      { ...event, item: { ...item, source: undefined } },
+      timestamp,
+      source,
+      reservedItemIds,
+      timelineCursor,
+    );
+    return projected.map((row) =>
+      (row.kind === "user_message" || row.kind === "assistant_message") &&
+      (item.messageId ? row.messageId === item.messageId : !state.includes(row))
+        ? Object.assign({}, row, { source: item.source })
+        : row,
+    );
+  }
   switch (item.type) {
     case "user_message":
       return appendUserMessage(

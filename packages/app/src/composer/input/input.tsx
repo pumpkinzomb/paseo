@@ -1081,12 +1081,27 @@ function queueMessageImpl(ctx: QueueMessageContext): void {
 }
 
 function computeIsRealtimeVoiceForAgent(
-  voice: { isVoiceModeForAgent: (serverId: string, agentId: string) => boolean } | null | undefined,
+  voice:
+    | {
+        isVoiceModeForAgent: (serverId: string, agentId: string) => boolean;
+        isVoiceSwitching?: boolean;
+        activeServerId?: string | null;
+        activeAgentId?: string | null;
+      }
+    | null
+    | undefined,
   voiceServerId: string | undefined,
   voiceAgentId: string | undefined,
 ): boolean {
   if (!voice || !voiceServerId || !voiceAgentId) return false;
-  return voice.isVoiceModeForAgent(voiceServerId, voiceAgentId);
+  return (
+    voice.isVoiceModeForAgent(voiceServerId, voiceAgentId) ||
+    Boolean(
+      voice.isVoiceSwitching &&
+      voice.activeServerId === voiceServerId &&
+      voice.activeAgentId === voiceAgentId,
+    )
+  );
 }
 
 function computeShouldShowDictationOverlay(
