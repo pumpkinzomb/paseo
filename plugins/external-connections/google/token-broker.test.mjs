@@ -162,3 +162,25 @@ test("desktop client secret can come from host storage and is never returned", a
   assert.deepEqual(await authorize(), { scopes: [scopes.docs] });
   assert.equal(body.get("client_secret"), "fixture-client-secret");
 });
+
+import { googleWriteScopes } from "./write.mjs";
+test("stored and cached edit grants authorize reads without broadening consent", async () => {
+  const { broker, records } = setup({
+    request: async () =>
+      Response.json({
+        access_token: "edit-token",
+        token_type: "Bearer",
+        expires_in: 3600,
+        scope: googleWriteScopes.docs,
+      }),
+  });
+  records.set(
+    "one",
+    JSON.stringify({ clientId, refreshToken: "fixture-refresh", scopes: [googleWriteScopes.docs] }),
+  );
+  assert.equal(await broker.getAccessToken({ account: "one", scope: scopes.docs }), "edit-token");
+  assert.equal(await broker.getAccessToken({ account: "one", scope: scopes.docs }), "edit-token");
+  await assert.rejects(broker.getAccessToken({ account: "one", scope: scopes.gmail }), {
+    code: "SCOPE_NOT_GRANTED",
+  });
+});

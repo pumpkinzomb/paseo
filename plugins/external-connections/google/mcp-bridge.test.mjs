@@ -119,3 +119,31 @@ test("read-only session cannot use write tool even when guessing its name", asyn
   assert.equal(response.body.result.content[0].text, "SCOPE_NOT_GRANTED");
   assert.deepEqual(calls, []);
 });
+
+import { googleWriteScopes } from "./write.mjs";
+test("edit session lists and invokes read tools needed for revision-safe editing", async (t) => {
+  const { bridge } = await setup(t);
+  const session = bridge.openSession({
+    agentId: "editor",
+    provider: "claude",
+    scopes: [googleWriteScopes.docs, googleWriteScopes.sheets],
+  });
+  async function rpc(method, params) {
+    const response = await fetch(session.url, {
+      method: "POST",
+      headers: { ...session.headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method, params }),
+    });
+    return response.json();
+  }
+  const list = await rpc("tools/list");
+  assert.deepEqual(list.result.tools.map((tool) => tool.name).sort(), [
+    "docs.insertText",
+    "docs.read",
+    "sheets.read",
+    "sheets.updateValues",
+  ]);
+  const read = await rpc("tools/call", { name: "docs.read", arguments: { id: "fixture-doc" } });
+  assert.equal(read.result.isError, undefined);
+  assert.match(read.result.content[0].text, /fixture document/);
+});

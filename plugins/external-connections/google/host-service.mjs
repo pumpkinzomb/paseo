@@ -13,6 +13,7 @@ export function createGoogleConnectionService({
 } = {}) {
   const account = "paseo-google";
   let phase = null;
+  let lastError;
   let login = null;
   let disposed = false;
   let grantRevision = 0;
@@ -65,11 +66,13 @@ export function createGoogleConnectionService({
       if (reason) return { status: "setup-required", scopes: [], reason };
       ready();
       if (phase) return { status: phase, scopes: [] };
-      return broker.status(account);
+      const state = await broker.status(account);
+      return lastError ? { ...state, lastError } : state;
     },
     async begin(scopes) {
       ready();
       if (phase) throw new Error("GOOGLE_AUTH_ALREADY_ACTIVE");
+      lastError = undefined;
       phase = "authorizing";
       let flow;
       try {
@@ -97,7 +100,9 @@ export function createGoogleConnectionService({
           bridge.revokeAll();
           return null;
         })
-        .catch(() => {})
+        .catch(() => {
+          if (login === flow) lastError = "authorization-failed";
+        })
         .finally(() => {
           if (login === flow) {
             login = null;

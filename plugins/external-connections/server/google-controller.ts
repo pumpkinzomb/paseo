@@ -40,6 +40,7 @@ export function googleConnectionController(service?: GoogleConnectionService) {
           status: state.status,
           scopes: state.scopes,
           reason: state.reason,
+          lastError: state.lastError,
         });
       } catch {
         throw new Error("GOOGLE_STATUS_UNAVAILABLE");

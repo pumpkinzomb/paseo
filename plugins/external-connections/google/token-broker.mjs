@@ -1,3 +1,4 @@
+import { hasGoogleScope } from "./scopes.mjs";
 import { googleWriteScopes } from "./write.mjs";
 import { googleReadScopes } from "./rest.mjs";
 
@@ -163,11 +164,12 @@ export function createGoogleTokenBroker({
         if (!knownScopes.has(scope)) throw new GoogleTokenError("UNSUPPORTED_SCOPE");
         const active = cached.get(account);
         if (active && active.expiresAt > clock() + 30000) {
-          if (!active.scopes.includes(scope)) throw new GoogleTokenError("SCOPE_NOT_GRANTED");
+          if (!hasGoogleScope(active.scopes, scope))
+            throw new GoogleTokenError("SCOPE_NOT_GRANTED");
           return active.token;
         }
         const stored = await load(account);
-        if (!stored.scopes.includes(scope)) throw new GoogleTokenError("SCOPE_NOT_GRANTED");
+        if (!hasGoogleScope(stored.scopes, scope)) throw new GoogleTokenError("SCOPE_NOT_GRANTED");
         let body;
         try {
           body = await tokenRequest(
@@ -188,7 +190,7 @@ export function createGoogleTokenBroker({
         const scopes = responseScopes(body, stored.scopes);
         if (scopes.some((value) => !stored.scopes.includes(value)))
           throw new GoogleTokenError("UNEXPECTED_GRANTED_SCOPES");
-        if (!scopes.includes(scope)) throw new GoogleTokenError("SCOPE_NOT_GRANTED");
+        if (!hasGoogleScope(scopes, scope)) throw new GoogleTokenError("SCOPE_NOT_GRANTED");
         const refreshToken = body.refresh_token ?? stored.refreshToken;
         if (!secret(refreshToken)) throw new GoogleTokenError("INVALID_TOKEN_RESPONSE");
         await store.write(account, JSON.stringify({ clientId, refreshToken, scopes }));

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { provisionGoogleDevelopmentStore } from "./dev-helper.mjs";
@@ -61,7 +62,15 @@ export function createHostGoogleService({
             },
           });
         }
-        const service = createProvisioned({ stateDirectory, store });
+        // Isolate live, lab, and other profiles even though they share the OS Keychain.
+        // The host state path is stable across releases, never supplied through RPC.
+        const namespace = createHash("sha256").update(stateDirectory).digest("hex");
+        const scopedStore = {
+          read: (account) => store.read(`${namespace}-${account}`),
+          write: (account, value) => store.write(`${namespace}-${account}`, value),
+          delete: (account) => store.delete(`${namespace}-${account}`),
+        };
+        const service = createProvisioned({ stateDirectory, store: scopedStore });
         if (stopped) {
           await service.dispose();
           throw new Error("GOOGLE_SERVICE_STOPPED");

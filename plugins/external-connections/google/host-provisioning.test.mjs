@@ -67,3 +67,36 @@ test("packaged verification failure does not fall back to dev compile", async (t
   );
   await service.dispose();
 });
+
+test("different host profiles never overwrite or remove each other's Keychain entries", async (t) => {
+  const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), "paseo-host-isolation-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const records = new Map();
+  const store = {
+    read: async (key) => records.get(key) ?? null,
+    write: async (key, value) => records.set(key, value),
+    delete: async (key) => records.delete(key),
+  };
+  const make = (name) =>
+    createHostGoogleService({
+      stateDirectory: path.join(root, name),
+      runtimeMode: "development",
+      prepareDevelopmentStore: async () => store,
+    });
+  const live = make("live");
+  const lab = make("lab");
+  t.after(async () => {
+    await live.dispose();
+    await lab.dispose();
+  });
+  const clientId = "fixture.apps.googleusercontent.com";
+  await live.configure({ clientId, clientSecret: "live-secret" });
+  const liveEntry = [...records.entries()][0];
+  await lab.configure({ clientId, clientSecret: "lab-secret" });
+  assert.equal(records.size, 2);
+  assert.equal(records.get(liveEntry[0]), liveEntry[1]);
+  await lab.forget();
+  await lab.configure({ clientId, clientSecret: "lab-reconfigured" });
+  assert.equal(records.get(liveEntry[0]), liveEntry[1]);
+  assert.ok([...records.keys()].every((key) => /^[a-f0-9]{64}-/.test(key)));
+});

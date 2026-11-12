@@ -116,3 +116,27 @@ test("host lifecycle lease survives normal long work but retains hard 24-hour ca
     code: "SESSION_UNAUTHORIZED",
   });
 });
+
+import { googleWriteScopes } from "./write.mjs";
+test("edit grants imply same-service reads but read grants never imply edits", () => {
+  const sessions = new GoogleBridgeSessions();
+  for (const service of ["docs", "sheets"]) {
+    const edit = sessions.openSession({
+      agentId: "edit-" + service,
+      provider: "codex",
+      scopes: [googleWriteScopes[service]],
+    });
+    assert.doesNotThrow(() => sessions.authorize(edit.authorization, googleReadScopes[service]));
+    assert.throws(() => sessions.authorize(edit.authorization, googleReadScopes.gmail), {
+      code: "SCOPE_NOT_GRANTED",
+    });
+    const read = sessions.openSession({
+      agentId: "read-" + service,
+      provider: "codex",
+      scopes: [googleReadScopes[service]],
+    });
+    assert.throws(() => sessions.authorize(read.authorization, googleWriteScopes[service]), {
+      code: "SCOPE_NOT_GRANTED",
+    });
+  }
+});

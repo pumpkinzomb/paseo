@@ -1,3 +1,4 @@
+import { hasGoogleScope } from "./scopes.mjs";
 function invalidRpcMessage(message) {
   return (
     !message ||
@@ -195,7 +196,7 @@ export function createGoogleMcpBridge({
     if (message.method === "tools/list") {
       result({
         tools: tools
-          .filter((tool) => session.scopes.includes(tool.scope))
+          .filter((tool) => hasGoogleScope(session.scopes, tool.scope))
           .map(({ scope: _scope, ...tool }) => tool),
       });
       return;

@@ -18,6 +18,7 @@ export const googleStatusSchema = z.object({
     "credentials-stored",
   ]),
   scopes: z.array(googleScopeSchema),
+  lastError: z.enum(["authorization-failed"]).optional(),
   reason: z.enum(["oauth-client-missing", "secure-store-unavailable"]).optional(),
 });
 export type GoogleConnectionStatus = z.infer<typeof googleStatusSchema>;

@@ -69,7 +69,7 @@ function setup() {
     resolve(value);
     await new Promise((yes) => setImmediate(yes));
   }
-  return { service, records, issued, revoked, finish, stopped: () => stopped };
+  return { service, records, issued, revoked, finish, reject, stopped: () => stopped };
 }
 test("missing config fails closed and never pretends connected", async () => {
   assert.deepEqual(await createGoogleConnectionService().status(), {
@@ -125,4 +125,15 @@ test("cancel ends login; dispose stops bridge and forbids future work", async ()
   await service.dispose();
   assert.equal(stopped(), true);
   await assert.rejects(service.begin([googleReadScopes.docs]), /GOOGLE_SERVICE_STOPPED/);
+});
+
+test("authorization failure survives status without exposing upstream secrets", async () => {
+  const { service, reject } = setup();
+  await service.begin([googleReadScopes.docs]);
+  reject(new Error("token=do-not-expose"));
+  await new Promise((resolve) => setImmediate(resolve));
+  const state = await service.status();
+  assert.equal(state.lastError, "authorization-failed");
+  assert.equal(JSON.stringify(state).includes("do-not-expose"), false);
+  await service.dispose();
 });

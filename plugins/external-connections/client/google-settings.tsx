@@ -265,6 +265,12 @@ export function GoogleSettings() {
           />
         ) : null}
         {notice ? <SettingsRow label="안내" hint={notice} /> : null}
+        {status?.lastError ? (
+          <SettingsRow
+            label="최근 Google 인증 실패"
+            error="새 Google 승인을 완료하지 못했습니다. OAuth Desktop 앱 설정, API 활성화, 테스트 사용자 등록을 확인한 뒤 다시 로그인하세요. 이전 인증이 표시되어도 이번 승인이 성공한 것은 아닙니다."
+          />
+        ) : null}
       </SettingsCard>
     );
   }

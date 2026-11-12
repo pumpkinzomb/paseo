@@ -1,3 +1,4 @@
+import { hasGoogleScope } from "./scopes.mjs";
 import { googleWriteScopes } from "./write.mjs";
 import { randomBytes, createHash } from "node:crypto";
 import { googleReadScopes } from "./rest.mjs";
@@ -61,7 +62,7 @@ export class GoogleBridgeSessions {
 
   authorize(authorization, scope) {
     const session = this.describeSession(authorization);
-    if (!session.scopes.includes(scope)) throw new GoogleBridgeError("SCOPE_NOT_GRANTED");
+    if (!hasGoogleScope(session.scopes, scope)) throw new GoogleBridgeError("SCOPE_NOT_GRANTED");
     return { agentId: session.agentId, provider: session.provider };
   }
 
