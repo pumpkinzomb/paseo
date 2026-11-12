@@ -1,183 +1,101 @@
-# Google REST connection foundation
+# Google connection foundation
 
-This is an offline-tested read adapter, NOT an installed Google connection or a
-running MCP bridge. No Google credentials are read or stored by this module.
-No new dependency, build output, listener, or authentication side effect exists.
+These host modules are not yet wired into the running app. They do not install
+anything, open a listener, read credentials, or contact Google on import.
+No production Google login has been performed. Connection must remain
+setup-required until trusted client configuration, native helper and host
+lifecycle wiring are supplied.
 
-Supported operations: Gmail message search/read, Docs read, Sheets range read.
-All requests are GET, fixed Google origins, no redirects, and time-limited.
-The caller must supply an access-token function that authorizes the exact scope.
-Gmail sending/drafting and document writes are deliberately unsupported.
+## Components
 
-Run targeted tests without installing dependencies:
+- `rest.mjs`: Gmail message search/read, Docs read, Sheets range read. Fixed
+  Google origins, GET only, redirect rejection, timeout and sanitized errors.
+- `write.mjs`: separately granted Docs `documents` scope and Sheets
+  `spreadsheets` scope. Docs insertion requires a revision ID and uses
+  `requiredRevisionId`. Sheets updates are limited to a bounded range of RAW
+  values, never USER_ENTERED formulas. No arbitrary batch operations, file
+  sharing, deletion or mail sending. Read scopes remain separate; clients
+  wanting both must explicitly request both relevant capabilities.
+- `oauth.mjs`: S256 PKCE, random state, five-minute one-use attempts, exact
+  loopback callback validation. Requested scopes are explicitly selected.
+- `oauth-callback.mjs`: binds an ephemeral 127.0.0.1 callback before producing
+  the authorization URL. GET/Host/Origin/path/state checks; no secret reflection.
+  No browser is opened automatically. Cancellation returns false after valid
+  callback exchange begins; UI must not claim that in-flight exchange stopped.
+- `token-broker.mjs`: fixed Google token endpoint, refresh rotation, serialized
+  account operations, in-memory access-token cache, granted-scope validation.
+  Refresh material is persisted before exposing an access token. Invalid grants
+  clear credentials and notify host revocation. `forget()` is LOCAL removal,
+  not Google-side permission revocation. `status()` means credentials-stored,
+  not proof of connectivity. Desktop client secret, when required, comes from
+  the host's `getClientSecret()` callback, never plugin preferences.
+- `keychain-helper.swift`: fixed macOS Keychain service, bounded stdin/stdout,
+  no secret argv/logging/plaintext fallback, non-synchronizable items, no
+  surprise Keychain dialogs. `keychain-store.mjs` provides minimal environment,
+  private pipes, timeout and output limits. Helper path must come from the
+  trusted app bundle, not editable connection settings.
+- `session-broker.mjs`: hashed random 256-bit bridge bearers, agent/provider/
+  scope binding, five-minute expiry, revocation and bounded session count.
+- `mcp-bridge.mjs`: explicit loopback lifecycle, stateless JSON MCP transport,
+  authentication before JSON parsing, granted-scope tool lists, second auth
+  check before execution, Host/Origin/body/time boundaries. Mutation tools have
+  write/destructive annotations; provider approval gates must stay enabled.
 
-```
-node --test plugins/external-connections/google/rest.test.mjs
-```
-
-## Required next integration slice
-
-1. Obtain user-approved Google Cloud project/API/desktop OAuth client setup.
-   Never reuse another product's OAuth client or copy its refresh tokens.
-2. Native browser OAuth authorization-code + PKCE, random state, short-lived
-   loopback callback, explicit scope selection. Never put tokens in logs, URL
-   settings, source control, or model-visible tool responses.
-3. Store refresh credentials in macOS Keychain via an audited OS binding; fail
-   closed if unavailable. No plaintext fallback. Access tokens remain in memory.
-   Serialize refresh, retain rotated refresh tokens, and make invalid_grant an
-   actionable login-required state. Testing-mode OAuth can expire after 7 days.
-4. Authenticated local MCP bridge with strict Origin/Host validation, bounded
-   requests, and a daemon-owned lifecycle. The existing URL-only registry must
-   gain a secure per-session header mechanism before exposing private Google
-   tools: loopback alone is not authorization against other local clients.
-5. UI login/reconnect/disconnect and live connection probe. Revocation is an
-   explicit operation. Do not label a saved URL as connected.
-6. Expose tools only for granted services; preserve provider tool approvals.
-   Treat retrieved mail/docs as untrusted content, not new user instructions.
-7. Add document editing only as a separately consented capability with its own
-   tools and scopes. Mail sending remains absent by default.
-
-Official remote MCP is an alternative but currently requires Google Workspace
-Developer Preview membership and separate OAuth implementation:
-https://developers.google.com/workspace/guides/configure-mcp-servers
-
-Native OAuth reference:
-https://developers.google.com/identity/protocols/oauth2/native-app
-
-## OAuth foundation implemented
-
-`oauth.mjs` creates a five-minute, one-use PKCE S256 authorization attempt.
-It accepts only selected read scopes and an explicit 127.0.0.1 HTTP callback
-port. Callback origin/path/state and duplicate parameters are validated;
-consent denial, cancellation and expiration invalidate the attempt. The caller
-receives token-exchange form data, not a token. No browser/socket/HTTP request
-is started by this module. Keep returned form data host-private and never log it.
-
-## Confirmed integration boundary
-
-Both existing provider adapters already propagate runtime MCP HTTP headers:
-Codex uses `http_headers`; Claude uses `headers`. A separate host-owned hook can
-request `bridge.openSession({ agentId, provider })` and inject its `{ url,
-headers }` only into the provider launch. The generic saved connection registry
-must remain credential-free. Existing provider approval gates must remain active.
-The bridge bearer is unrelated to Google OAuth tokens and must expire/revoke
-on agent close; request authorization must check it before processing MCP JSON.
-Bridge sessions need a server-side agent/granted-scope binding, not bearer
-claims trusted from arbitrary clients. Limit loopback listeners and reject
-unexpected Origin/Host and redirects; never expose them via LAN or relay.
-
-No existing Keychain binding was found in server/desktop source. Do not use
-`security ... -w <token>` because process arguments can disclose tokens. Use
-an OS-native credential helper with bounded stdin/stdout and fixed service/account
-names, or an audited native binding. Helper selection, packaging and OS access
-behavior remain unimplemented; fail closed until this exists. Do not claim that
-refresh tokens are securely stored yet. Do not write them to plugin preferences.
-
-The callback listener may only finish a pending OAuth attempt; it is not a
-credential-bearing MCP endpoint. It must bind its chosen port before producing
-the OAuth URL, close on completion/timeout, and never treat a callback as an
-agent tool request. Token exchange must verify actual granted scopes, store
-refresh material only after successful secure storage, and expose only account
-metadata/status to the UI. No broad Drive access or write scope is implied by
-these three read scopes. Requested document writes and spreadsheet writes need
-separate opt-in capabilities and tools; mail sending is not in this design.
-
-## Native storage and broker groundwork
-
-`keychain-helper.swift` now implements fixed-service macOS Security.framework
-read/write/delete via bounded stdin JSON and stdout JSON. No secret argv,
-shell invocation, logging, synchronizable item, or plaintext storage fallback.
-`LAContext.interactionNotAllowed` fails closed instead of opening surprise OS
-prompts. `--validate-only` exits before all Keychain operations. Build + six
-input-validation fixtures passed without touching the user's Keychain. This
-is NOT an end-to-end Keychain test. Signed helper packaging, caller pipe timeout/
-output limits, Keychain ACL behavior and host integration remain to be verified.
-The helper is not installed or invoked by the running app.
-
-Run native validation (temporary compiled binary is removed):
-
-```
-python3 plugins/external-connections/google/keychain-validation.py
-```
-
-`session-broker.mjs` stores only digests of random 256-bit session bearers,
-binds each to agent/provider/read scopes, limits active sessions to 128, prunes
-expired entries, and supports agent/all revocation. Its five-minute bearer
-expiry is deliberately short; provider launch headers are static, so future
-host integration must renew/reopen its bridge session at the agent lifecycle
-boundary rather than silently extending expired authority. No listener exists.
-The request guard permits only exact loopback Host, absent Origin and POST /mcp;
-future MCP HTTP integration must either support this restricted JSON response
-transport or deliberately extend the method policy with equivalent auth checks.
-No unauthenticated tools/list, tools/call, or metadata endpoint is provided.
-
-## Host wrapper and authenticated transport (latest implementation)
-
-The earlier "no listener" groundwork description refers to the pure session
-store. `mcp-bridge.mjs` now supplies an explicitly started, ephemeral loopback
-HTTP listener with stateless JSON MCP initialize/ping/tools-list/tools-call.
-It authenticates requests before JSON parsing, filters tools to granted scopes,
-checks authorization again before tool execution, limits input bodies and
-request duration, and sanitizes broker/tool failures. Start creates no Google
-connection; an explicit trusted caller must supply its access-token broker.
-`stop()` revokes every session and closes connections; `revokeAgent()` ends
-one agent's authority. No startup import activates it and no app plugin hook
-is wired yet. Local transport tests inject fake Google responses and tokens.
-
-`keychain-store.mjs` invokes a trusted packaged helper path with empty argv,
-private pipes, minimal environment, no shell/stderr logging, timeout and output
-limits. Tests replace the child process and never access Keychain. The helper
-must come from the signed application bundle, not user-entered settings or a
-writable downloaded path. Signing/packaging and actual OS ACL remain untested.
-
-Integration shape:
+## Host integration
 
 ```
 const bridge = createGoogleMcpBridge({ getAccessToken: hostTokenBroker });
 await bridge.start();
-const launchOnly = bridge.openSession({ agentId, provider, scopes: grantedScopes });
-// Inject launchOnly.url + launchOnly.headers into agent.open.before.
-// Never persist headers. Never pass Google tokens to the provider.
+const session = bridge.openSession({ agentId, provider, scopes: grantedScopes });
+// Inject session.url + session.headers into agent.open.before; do not persist.
 bridge.revokeAgent(agentId); // agent close / permission withdrawal
 await bridge.stop(); // host shutdown
 ```
 
-Remaining: actual OAuth token exchange/refresh broker, signed helper packaging,
-OAuth callback listener + UI, per-account granted-scope tracking, bridge session
-renewal at provider lifecycle boundaries, SDK-level MCP interoperability tests,
-and real user-approved authentication. Nothing here creates a Cloud project,
-enables an API or obtains an OAuth client ID. Supply a user-owned approved
-Desktop OAuth client configuration; no other product's credentials are reused.
+Codex already propagates runtime `http_headers`; Claude propagates `headers`.
+Only the short-lived bridge bearer reaches providers, never Google credentials.
+The generic URL registry remains credential-free. Host account/grant mapping
+must be authoritative, never taken from agent arguments. Provider launch
+headers are static: expiry renewal needs an explicit lifecycle reconnect, not
+silently extended authority. Read scopes are default; writes require separate
+opt-in. Retrieved mail/docs are untrusted content, not user instructions.
 
-## OAuth exchange/refresh and callback (latest implementation)
+## macOS packaging and validation
 
-`token-broker.mjs` now implements fixed Google token-endpoint exchange and refresh
-with injectable transport, timeout, redirect rejection, validated token shape,
-separate read scopes, per-account serialized requests, cached short-lived access
-tokens, and refresh-token rotation persisted before returning access. Refresh
-`invalid_grant` clears local credentials and notifies the host to revoke bridge
-sessions. `forget()` is LOCAL disconnection, not Google-side grant revocation.
-`status()` reports credentials-stored, not verified connectivity. All credentials
-stay in the injected host store/cache. Optional desktop client secret is supplied
-by `getClientSecret()` from host storage; it is not a registry preference.
+Desktop `afterPack` compiles the native helper to
+`Paseo.app/Contents/Helpers/paseo-google-keychain` for the app architecture.
+Electron-builder signs the app/helper afterward; `afterSign` verifies the helper
+signature even when UI smoke tests are disabled. This hook was not exercised
+against a complete signed release. Developer ID distribution/notarization and
+ACL continuity across updates still require release validation.
 
-`oauth-callback.mjs` explicitly starts a five-minute loopback listener for a user
-login action, then produces its Google authorization URL after binding the port.
-GET/Host/Origin/path/state checks precede exchange. Invalid/forged callbacks do
-not consume the valid attempt. Responses never reflect codes/tokens/errors.
-Completion, denial, timeout or cancellation close the listener. Cancellation
-returns false once the valid callback has entered token exchange, which itself
-must be bounded (the supplied broker uses 15 seconds). UI must not falsely claim
-that an already-exchanging login was cancelled; disconnect after completion.
+A temporary ad-hoc signed helper passed an actual OS write/read/update/delete
+roundtrip using only a unique, synthetic fixture account. Its Keychain item and
+temporary binary were removed. No existing user credential was read. The
+`--validate-only` harness performs no Keychain operations at all.
 
-Tests use real temporary loopback sockets, fake Google token/API responses and
-memory stores or fake Keychain processes. They do NOT establish SDK, Google or
-Keychain production interoperability. No actual user auth or Cloud configuration
-was performed. Known local gws client config and gcloud ADC locations were absent
-when checked; no credential contents were read.
+```
+node --test plugins/external-connections/google/*.test.mjs packages/desktop/scripts/google-keychain.test.cjs
+python3 plugins/external-connections/google/keychain-validation.py
+```
 
-Still required before app enablement: trusted signed helper packaging + actual
-Keychain behavior checks, authenticated app RPC/UI wiring, client configuration,
-agent grant/account mapping, bridge expiry renewal, SDK interoperability testing,
-and user-approved Google login. Docs/Sheets writes and Gmail sending remain
-unsupported rather than silently acquiring broader scopes.
+Network tests use temporary local listeners and injected fake Google responses.
+They are not Google production or Codex/Claude SDK interoperability tests.
+
+## Remaining setup and validation
+
+1. User-owned Cloud project, enabled APIs, approved Desktop OAuth client ID and
+   any client secret required by that client configuration. No external account
+   creation, API enablement or credential copying is performed by this code.
+2. Trusted signed helper packaging, runtime path injection and ACL behavior
+   across app updates; actual app RPC/UI integration and authenticated sessions.
+3. SDK-level transport validation and provider session renewal handling.
+4. Explicit user Google consent and real account checks. Testing-mode OAuth can
+   expire after seven days; show login-required rather than an unexplained error.
+
+Known gws client-config and gcloud ADC paths were absent when inspected; no
+credential contents were read. Official remote Google MCP is an alternative,
+but currently requires separate Workspace Developer Preview access and OAuth.
+
+https://developers.google.com/identity/protocols/oauth2/native-app
+https://developers.google.com/workspace/guides/configure-mcp-servers

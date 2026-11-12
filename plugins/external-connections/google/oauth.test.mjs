@@ -31,8 +31,8 @@ function callback(flow) {
 for (const redirectUri of ['https://evil.example/callback', 'http://localhost:49152/callback', 'http://127.0.0.1/callback', 'http://user@127.0.0.1:49152/callback', 'http://127.0.0.1:49152/callback?x=1']) {
   test(`rejects redirect ${redirectUri}`, () => assert.throws(() => attempt({ redirectUri }), { code: 'INVALID_REDIRECT' }));
 }
-test('write scopes require a separate implementation and approval', () => {
-  assert.throws(() => attempt({ scopes: ['https://www.googleapis.com/auth/spreadsheets'] }), { code: 'UNSUPPORTED_SCOPE' });
+test('Gmail sending scope stays unsupported', () => {
+  assert.throws(() => attempt({ scopes: ['https://www.googleapis.com/auth/gmail.send'] }), { code: 'UNSUPPORTED_SCOPE' });
 });
 test('wrong state does not consume a valid attempt', () => {
   const flow = attempt();

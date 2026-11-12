@@ -24,10 +24,10 @@ test('revocation affects only the selected agent, revokeAll ends remaining sessi
   sessions.revokeAll();
   assert.throws(() => sessions.authorize(two.authorization, googleReadScopes.docs), { code: 'SESSION_UNAUTHORIZED' });
 });
-test('forged bearers and write scopes are refused', () => {
+test('forged bearers and unsupported mail scopes are refused', () => {
   const sessions = new GoogleBridgeSessions();
   assert.throws(() => sessions.authorize('Bearer ' + 'x'.repeat(43), googleReadScopes.docs), { code: 'SESSION_UNAUTHORIZED' });
-  assert.throws(() => sessions.openSession({ agentId: 'one', provider: 'codex', scopes: ['https://www.googleapis.com/auth/documents'] }), { code: 'INVALID_SCOPES' });
+  assert.throws(() => sessions.openSession({ agentId: 'one', provider: 'codex', scopes: ['https://www.googleapis.com/auth/gmail.send'] }), { code: 'INVALID_SCOPES' });
 });
 test('session count is bounded and expired entries are reclaimed', () => {
   let time = 0;

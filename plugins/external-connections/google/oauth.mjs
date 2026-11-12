@@ -1,3 +1,4 @@
+import { googleWriteScopes } from './write.mjs';
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { googleReadScopes } from './rest.mjs';
 
@@ -28,7 +29,7 @@ export class GoogleOAuthAttempt {
     try { redirect = new URL(redirectUri); } catch { throw new GoogleOAuthError('INVALID_REDIRECT'); }
     const invalid = redirect.protocol !== 'http:' || redirect.hostname !== '127.0.0.1' || !redirect.port || redirect.username || redirect.password || redirect.search || redirect.hash;
     if (invalid) throw new GoogleOAuthError('INVALID_REDIRECT');
-    const allowed = new Set(Object.values(googleReadScopes));
+    const allowed = new Set([...Object.values(googleReadScopes), ...Object.values(googleWriteScopes)]);
     if (!Array.isArray(scopes) || !scopes.length || scopes.some(scope => !allowed.has(scope))) {
       throw new GoogleOAuthError('UNSUPPORTED_SCOPE');
     }

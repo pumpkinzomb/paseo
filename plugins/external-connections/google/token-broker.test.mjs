@@ -49,7 +49,7 @@ test('unsupported/ungranted scopes do not contact token endpoint', async () => {
   const { authorize, broker, calls } = setup();
   await authorize();
   await assert.rejects(broker.getAccessToken({ account: 'one', scope: scopes.gmail }), { code: 'SCOPE_NOT_GRANTED' });
-  await assert.rejects(broker.getAccessToken({ account: 'one', scope: 'https://www.googleapis.com/auth/documents' }), { code: 'UNSUPPORTED_SCOPE' });
+  await assert.rejects(broker.getAccessToken({ account: 'one', scope: 'https://www.googleapis.com/auth/gmail.send' }), { code: 'UNSUPPORTED_SCOPE' });
   assert.equal(calls.length, 1);
 });
 test('storage failure prevents presenting newly authorized credentials', async () => {

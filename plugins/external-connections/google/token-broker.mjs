@@ -1,3 +1,4 @@
+import { googleWriteScopes } from './write.mjs';
 import { googleReadScopes } from './rest.mjs';
 
 export class GoogleTokenError extends Error {
@@ -8,7 +9,7 @@ export class GoogleTokenError extends Error {
   }
 }
 
-const knownScopes = new Set(Object.values(googleReadScopes));
+const knownScopes = new Set([...Object.values(googleReadScopes), ...Object.values(googleWriteScopes)]);
 function validScopes(scopes) {
   return Array.isArray(scopes) && scopes.length > 0 && scopes.every(scope => knownScopes.has(scope));
 }

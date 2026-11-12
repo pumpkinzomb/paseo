@@ -66,3 +66,10 @@ test('stop disallows issuing new capabilities', async t => {
   await bridge.stop();
   assert.throws(() => bridge.openSession({ agentId: 'x', provider: 'codex', scopes: [googleReadScopes.docs] }), { message: 'BRIDGE_NOT_STARTED' });
 });
+
+test('read-only session cannot use write tool even when guessing its name', async t => {
+  const { rpc, calls } = await setup(t);
+  const response = await rpc('tools/call', { name: 'docs.insertText', arguments: { id: 'x', text: 'y', revisionId: 'r' } });
+  assert.equal(response.body.result.content[0].text, 'SCOPE_NOT_GRANTED');
+  assert.deepEqual(calls, []);
+});

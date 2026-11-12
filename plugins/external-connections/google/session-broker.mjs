@@ -1,3 +1,4 @@
+import { googleWriteScopes } from './write.mjs';
 import { randomBytes, createHash } from 'node:crypto';
 import { googleReadScopes } from './rest.mjs';
 
@@ -31,7 +32,7 @@ export class GoogleBridgeSessions {
     this.#prune();
     const validAgent = typeof agentId === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(agentId);
     if (!validAgent || !['codex', 'claude'].includes(provider)) throw new GoogleBridgeError('INVALID_SESSION');
-    const allowed = new Set(Object.values(googleReadScopes));
+    const allowed = new Set([...Object.values(googleReadScopes), ...Object.values(googleWriteScopes)]);
     if (!Array.isArray(scopes) || !scopes.length || scopes.some(scope => !allowed.has(scope))) throw new GoogleBridgeError('INVALID_SCOPES');
     if (this.#sessions.size >= 128) throw new GoogleBridgeError('SESSION_LIMIT');
     const token = randomBytes(32).toString('base64url');
