@@ -31,3 +31,22 @@ it("clears a failed login for retry", async () => {
   await login("cursor");
   expect(run).toHaveBeenCalledTimes(2);
 });
+
+it.each(["codex", "claude", "grok"])(
+  "starts %s native sign-in and permits another provider",
+  async (source) => {
+    const run = vi.fn().mockResolvedValue(undefined);
+    const login = createUsageAuthenticator(run);
+    await Promise.all([login(source), login("cursor")]);
+    expect(run).toHaveBeenCalledWith(source);
+    expect(run).toHaveBeenCalledWith("cursor");
+  },
+);
+it.each(["__proto__", "toString", "opencode", null])(
+  "rejects unsupported provider %s",
+  async (source) => {
+    const run = vi.fn();
+    await expect(createUsageAuthenticator(run)(source)).rejects.toThrow();
+    expect(run).not.toHaveBeenCalled();
+  },
+);

@@ -46,7 +46,10 @@ function useUsageAuthentication(
   const isLocal = useIsLocalDaemon(serverId);
   const [authPending, setAuthPending] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const canAuthenticate = isLocal && sourceId === "cursor" && !!getElectronHost()?.usageAuth;
+  const canAuthenticate =
+    isLocal &&
+    ["cursor", "codex", "claude", "grok"].includes(sourceId) &&
+    !!getElectronHost()?.usageAuth;
   const reconnect = useCallback(async () => {
     if (authPending) return;
     setAuthError(null);

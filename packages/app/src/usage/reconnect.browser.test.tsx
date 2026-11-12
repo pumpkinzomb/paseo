@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   refresh: vi.fn(),
   refreshAfterLogin: vi.fn().mockResolvedValue(undefined),
   login: vi.fn().mockResolvedValue(undefined),
+  isLocal: true,
   refreshState: "idle" as "idle" | "pending",
 }));
 // Keep real tooltip and React Native text validation; only omit animation timing.
@@ -35,7 +36,7 @@ vi.mock("@/components/ui/floating", async (importOriginal) => {
   };
 });
 vi.mock("@/hooks/use-is-local-daemon", () => ({
-  useIsLocalDaemon: () => true,
+  useIsLocalDaemon: () => state.isLocal,
 }));
 vi.mock("@/desktop/electron/host", () => ({
   getElectronHost: () => ({ usageAuth: { start: state.login } }),
@@ -55,6 +56,8 @@ let root: Root;
 let container: HTMLDivElement;
 beforeEach(async () => {
   vi.stubGlobal("React", React);
+  state.isLocal = true;
+  entry.sourceId = "cursor";
   state.refresh.mockClear();
   state.refreshAfterLogin.mockClear();
   state.login.mockReset().mockResolvedValue(undefined);
@@ -143,4 +146,26 @@ it("waits for authentication, disables duplicate clicks and shows cancellation f
   await act(async () => fail(new Error("cancelled")));
   expect(container.querySelector('[data-testid="usage-auth-error"]')).not.toBeNull();
   expect(state.refresh).not.toHaveBeenCalled();
+});
+
+it.each(["claude", "codex", "grok"])(
+  "starts %s login then rediscovers accounts",
+  async (source) => {
+    entry.sourceId = source;
+    render();
+    await act(async () =>
+      container.querySelector<HTMLElement>('[data-testid="usage-reconnect"]')!.click(),
+    );
+    expect(state.login).toHaveBeenCalledWith(source);
+    expect(state.refreshAfterLogin).toHaveBeenCalledOnce();
+  },
+);
+it("never starts a local login for a remote host", async () => {
+  state.isLocal = false;
+  render();
+  await act(async () =>
+    container.querySelector<HTMLElement>('[data-testid="usage-reconnect"]')!.click(),
+  );
+  expect(state.login).not.toHaveBeenCalled();
+  expect(container.textContent).toContain("Sign in on that host");
 });
