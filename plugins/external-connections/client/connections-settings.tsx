@@ -10,6 +10,7 @@ import {
   SettingsSwitch,
 } from "@getpaseo/plugin/client/ui";
 import { preferences } from "../shared/preferences.js";
+import { GoogleSettings } from "./google-settings.js";
 
 type ReadySettings = Extract<SettingsState<typeof preferences.schema>, { status: "ready" }>;
 type Connection = ReadySettings["values"]["connections"][number];
@@ -261,6 +262,7 @@ export function ConnectionsSettings({ theme }: PluginSurfaceProps) {
           hint="Google Docs·Sheets·Gmail은 신뢰할 수 있는 Google MCP 서버와 별도 OAuth 인증이 필요합니다. 이 화면은 Google 로그인이나 계정 권한 승인을 대신하지 않습니다. 인증이 필요한 서버는 별도 구성이 필요합니다."
         />
       </SettingsSection>
+      <GoogleSettings />
       <ConnectionList settings={settings} />
     </>
   );
