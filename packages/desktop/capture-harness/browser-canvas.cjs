@@ -17,15 +17,16 @@ function pixel(image) {
   const offset = (50 * image.getSize().width + 50) * 4;
   return [data[offset + 2], data[offset + 1], data[offset], data[offset + 3]];
 }
-app.whenReady().then(async () => {
+async function main() {
+  await app.whenReady();
   let win;
   const server = http.createServer((request, response) => {
-    const style =
-      request.url === "/dark"
-        ? "html,body{background:rgb(20,40,60);color:white}"
-        : request.url === "/scheme-dark"
-          ? "html{color-scheme:dark}"
-          : "";
+    let style = "";
+    if (request.url === "/dark") {
+      style = "html,body{background:rgb(20,40,60);color:white}";
+    } else if (request.url === "/scheme-dark") {
+      style = "html{color-scheme:dark}";
+    }
     response.setHeader("Content-Type", "text/html");
     response.end(
       `<!doctype html><html><head><style>html,body{margin:0;min-height:100%}${style}</style></head><body>Readable page text</body></html>`,
@@ -113,4 +114,8 @@ app.whenReady().then(async () => {
     server.close();
     app.exit(process.exitCode || 0);
   }
+}
+main().catch((error) => {
+  console.error(error);
+  app.exit(1);
 });

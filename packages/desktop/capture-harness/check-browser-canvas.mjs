@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
+import { build as bundle } from "esbuild";
 import { resolvePlan, assertLocalPaths, labEnv } from "../../../scripts/isolated-lab.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -13,7 +13,7 @@ const plan = resolvePlan(
 assertLocalPaths(plan);
 const out = path.join(plan.state, "browser-canvas-test");
 fs.mkdirSync(out, { recursive: true });
-await build({
+await bundle({
   entryPoints: [path.join(root, "packages/app/src/desktop/browser/resident-webviews.ts")],
   outfile: path.join(out, "resident-webviews.js"),
   bundle: true,

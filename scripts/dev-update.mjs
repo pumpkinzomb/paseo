@@ -105,6 +105,36 @@ export async function prepareStageDependencies(
   }
 }
 
+async function runStageChecks({ checks, staging, env, minFreeBytes, stagingIdentity, revision }) {
+  try {
+    for (const [command, args] of checks) {
+      await assertDiskReserve(staging, minFreeBytes);
+      await run(command, args, staging, env);
+    }
+  } catch (error) {
+    // A timeout/unknown child lifetime must never become a deletion signal.
+    // Preserve source and diagnostics; discard only this invocation's generated outputs.
+    if (error.commandStopped) {
+      try {
+        error.dependencyCleanup = await reclaimOwnedBuildOutputs({
+          root: staging,
+          identity: stagingIdentity,
+          sourceRevision: revision,
+        });
+      } catch (cleanupError) {
+        error.dependencyCleanupError = cleanupError.message;
+      }
+    }
+    await atomicJson(path.join(staging, "failed-stage.json"), {
+      state: error.commandStopped ? "failed-stopped" : "failed-unknown",
+      error: error.message,
+      cleanup: error.dependencyCleanup ?? null,
+      cleanupError: error.dependencyCleanupError ?? null,
+    });
+    throw error;
+  }
+}
+
 export async function stageRelease({
   source,
   releases,
@@ -213,33 +243,7 @@ export async function stageRelease({
       ],
     ],
   ];
-  try {
-    for (const [command, args] of checks) {
-      await assertDiskReserve(staging, minFreeBytes);
-      await run(command, args, staging, env);
-    }
-  } catch (error) {
-    // A timeout/unknown child lifetime must never become a deletion signal.
-    // Preserve source and diagnostics; discard only this invocation's generated outputs.
-    if (error.commandStopped) {
-      try {
-        error.dependencyCleanup = await reclaimOwnedBuildOutputs({
-          root: staging,
-          identity: stagingIdentity,
-          sourceRevision: revision,
-        });
-      } catch (cleanupError) {
-        error.dependencyCleanupError = cleanupError.message;
-      }
-    }
-    await atomicJson(path.join(staging, "failed-stage.json"), {
-      state: error.commandStopped ? "failed-stopped" : "failed-unknown",
-      error: error.message,
-      cleanup: error.dependencyCleanup ?? null,
-      cleanupError: error.dependencyCleanupError ?? null,
-    });
-    throw error;
-  }
+  await runStageChecks({ checks, staging, env, minFreeBytes, stagingIdentity, revision });
   if (dependencies.mode === "reuse") {
     await verifyDependencyEntries(staging, dependencies.entries);
     await verifyRelease(releases, dependencyDonor.id, dependencyDonor.digest);

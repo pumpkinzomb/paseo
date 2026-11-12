@@ -9,12 +9,7 @@ import {
   processesUsing,
 } from "./stopped-build-dependencies.mjs";
 
-// Legacy lab copies predate the managed worktree registry. Adoption is explicit,
-// never based on age, file names, completion labels or a recursive delete.
-export async function cleanupLegacyLab(
-  { lab, candidate, control, donor, apply = false },
-  deps = {},
-) {
+async function validateLegacyCandidate(lab, candidate, control) {
   for (const root of [lab, control]) {
     if (!path.isAbsolute(root) || (await fs.realpath(root)) !== root)
       throw new Error("Legacy lab paths must be canonical");
@@ -33,6 +28,16 @@ export async function cleanupLegacyLab(
     )
       throw new Error("Legacy candidate is not an owned directory");
   }
+  return { managedRoot, scratchRoot };
+}
+
+// Legacy lab copies predate the managed worktree registry. Adoption is explicit,
+// never based on age, file names, completion labels or a recursive delete.
+export async function cleanupLegacyLab(
+  { lab, candidate, control, donor, apply = false },
+  deps = {},
+) {
+  const { managedRoot, scratchRoot } = await validateLegacyCandidate(lab, candidate, control);
   const roots = await dependencyRootsIn(scratchRoot);
   if (!apply)
     return { state: "planned", root: scratchRoot, dependencyRoots: roots, sourcePreserved: true };
