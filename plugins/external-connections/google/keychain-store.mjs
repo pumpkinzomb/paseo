@@ -10,7 +10,7 @@ export class GoogleKeychainError extends Error {
 }
 
 /** helperPath must come from the trusted app package, never plugin/user settings. */
-export function createGoogleKeychainStore({ helperPath, spawnProcess = spawn, timeoutMs = 5000 }) {
+export function createGoogleKeychainStore({ helperPath, spawnProcess = spawn, timeoutMs = 5000, verifyHelper = () => {} }) {
   if (typeof helperPath !== 'string' || !isAbsolute(helperPath)) throw new GoogleKeychainError('INVALID_HELPER_PATH');
   function invoke(operation, account, value) {
     if (typeof account !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(account)) throw new GoogleKeychainError('INVALID_ACCOUNT');
@@ -18,6 +18,7 @@ export function createGoogleKeychainStore({ helperPath, spawnProcess = spawn, ti
     return new Promise((resolve, reject) => {
       let child;
       try {
+        verifyHelper();
         child = spawnProcess(helperPath, [], { shell: false, stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', HOME: process.env.HOME, USER: process.env.USER, TMPDIR: process.env.TMPDIR } });
       } catch { reject(new GoogleKeychainError('KEYCHAIN_HELPER_UNAVAILABLE')); return; }
       let finished = false;

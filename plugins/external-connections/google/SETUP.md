@@ -46,3 +46,11 @@ Official references:
 https://developers.google.com/identity/protocols/oauth2/native-app
 https://developers.google.com/workspace/guides/create-credentials
 https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification
+
+Development-mode update: a separate host-only `dev-helper.mjs` provisioner now
+exists and passed a synthetic OS Keychain roundtrip. Trusted development startup
+must explicitly select this path and its isolated private state directory.
+Production signature verification is unchanged. This provisioning function must
+not be exposed to renderer configuration or triggered as a silent fallback.
+Installed desktop clients re-request the full selected permission set, not an
+incremental scope delta; client secrets are not confidential proof of identity.

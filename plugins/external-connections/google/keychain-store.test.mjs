@@ -56,3 +56,10 @@ test('oversized helper output is killed and never returned', async () => {
   await assert.rejects(store.read('account'), { code: 'KEYCHAIN_INVALID_RESPONSE' });
   assert.equal(killed, true);
 });
+
+test('trusted helper verifier runs before each spawn and refuses tampered helper', async () => {
+  let spawned = false;
+  const store = createGoogleKeychainStore({ helperPath: '/trusted/helper', verifyHelper: () => { throw new Error('digest mismatch'); }, spawnProcess: () => { spawned = true; } });
+  await assert.rejects(store.read('account'), { code: 'KEYCHAIN_HELPER_UNAVAILABLE' });
+  assert.equal(spawned, false);
+});

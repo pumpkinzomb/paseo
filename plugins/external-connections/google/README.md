@@ -131,3 +131,28 @@ through the host facade, with fake Google token/document responses and an
 in-memory secure-store contract: login, provider launch header, document read,
 revision-protected write, and disconnect/revocation. It is not an actual provider
 SDK or Google-account test.
+
+## Separate development-mode provisioning
+
+`dev-helper.mjs` is the explicit trusted-host alternative for development
+Electron, without weakening the production signature resolver. It compiles the
+fixed helper source from this module's checkout into a private owned directory,
+ad-hoc signs/verifies it, retains its binary digest only in host memory, and
+verifies ownership/path/digest before every pipe invocation. Temporary build
+files are removed; one current helper remains. No renderer/RPC may select the
+source, helper path or expected digest. It must be invoked by trusted dev startup
+with the isolated host state directory, not automatically because production
+signature verification failed. An unsupported platform fails closed.
+
+A synthetic account passed the actual development provisioner → private-pipe
+store → Keychain write/read/delete path. The test item, helper and temporary
+folder were removed. No existing user credential was read. This is a same-user
+trusted development workflow, not an OS sandbox against arbitrary malicious
+processes running with the user's authority. A changed helper may encounter
+Keychain ACL refusal; never bypass it or copy credentials from another product.
+
+Installed-app OAuth must re-request the complete user-selected scope set;
+incremental authorization is not supported. Desktop client secrets cannot be
+considered confidential client authentication; PKCE remains essential. Keep
+such configuration out of chats/logs regardless. Expired testing grants require
+re-login; do not silently broaden permissions or claim a refresh succeeded.
