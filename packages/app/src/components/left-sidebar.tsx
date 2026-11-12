@@ -4,7 +4,7 @@ import { SidebarViewSlot } from "@/plugins/sidebar-view";
 import { useAddHost } from "@/hosts/add-host";
 import { router } from "expo-router";
 import {
-  Fingerprint,
+  CircleUserRound,
   CircleGauge,
   FolderPlus,
   GitBranch,
@@ -507,7 +507,7 @@ function SidebarFooter({
               onPress={openIdentity}
               testID="sidebar-identity"
               label={t("leadIdentity.title")}
-              icon={Fingerprint}
+              icon={CircleUserRound}
             />
           ) : null}
           <SidebarLeadIdentitySheet visible={identityOpen} onClose={closeIdentity} />

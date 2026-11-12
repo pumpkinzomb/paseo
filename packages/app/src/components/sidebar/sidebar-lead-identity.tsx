@@ -96,7 +96,13 @@ function HostIdentity({
     gcTime: 0,
     retry: false,
   });
-  const header = useMemo(() => ({ title: t("leadIdentity.title"), subtitle: name }), [t, name]);
+  const header = useMemo(
+    () => ({
+      title: t("leadIdentity.title"),
+      subtitle: <Text style={styles.detail}>{name}</Text>,
+    }),
+    [t, name],
+  );
   const persist = useCallback(
     async (text: string, previous: string) => {
       if (!connected || !client) throw new Error("offline");
@@ -185,7 +191,13 @@ function IdentityEditor({
   const save = useCallback(() => {
     void model.save(persist);
   }, [model, persist]);
-  const header = useMemo(() => ({ title: t("leadIdentity.title"), subtitle: name }), [t, name]);
+  const header = useMemo(
+    () => ({
+      title: t("leadIdentity.title"),
+      subtitle: <Text style={styles.detail}>{name}</Text>,
+    }),
+    [t, name],
+  );
   const footer = useMemo(
     () => (
       <View style={styles.actions}>

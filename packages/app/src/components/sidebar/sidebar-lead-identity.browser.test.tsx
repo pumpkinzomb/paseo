@@ -30,14 +30,17 @@ vi.mock("@/utils/confirm-dialog", () => ({ confirmDialog: state.confirm }));
 vi.mock("@/components/adaptive-modal-sheet", () => ({
   AdaptiveModalSheet: ({
     children,
+    header,
     footer,
     onClose,
   }: {
     children: React.ReactNode;
+    header: { subtitle?: React.ReactNode };
     footer?: React.ReactNode;
     onClose(): void;
   }) => (
     <section>
+      <div data-testid="identity-subtitle">{header.subtitle}</div>
       <button type="button" onClick={onClose}>
         Close
       </button>
@@ -132,4 +135,12 @@ it("reopening a dismissed sheet discards only its unsaved draft", () => {
   state.persona = "Newest saved identity";
   view.rerender(<SidebarLeadIdentitySheet visible onClose={close} />);
   expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("Newest saved identity");
+});
+
+it("wraps the host subtitle in themed Text rather than a raw View text node", () => {
+  render(<SidebarLeadIdentitySheet visible onClose={vi.fn()} />);
+  const subtitle = screen.getByTestId("identity-subtitle");
+  expect(subtitle.textContent).toBe("Mac");
+  expect(subtitle.firstChild?.nodeType).toBe(Node.ELEMENT_NODE);
+  expect(getComputedStyle(subtitle.firstElementChild!).color).not.toBe("rgb(0, 0, 0)");
 });
