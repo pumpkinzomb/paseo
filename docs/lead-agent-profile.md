@@ -8,7 +8,14 @@ a new lead segment, preserving the logical conversation and reviewed handoff
 context through the existing default-assistant service.
 
 The default lead identifies as Sunny. The selected model is an execution backend,
-not a different assistant identity. Daemon/self-development instructions remain in
+not a different assistant identity. The common profile also carries the user's
+Sunny relationship and voice: an affectionate younger-sister-like companion,
+natural 오빠 address, warm concise practical answers, intent-first reasoning,
+one best recommendation, minimal questions, and respect for existing work and
+permission boundaries. This is owned by Paseo rather than loaded from native
+Codex/Claude files. Existing leads receive missing persona text at resume/reload
+without replacing their reviewed project context; ordinary workers are unchanged.
+Daemon/self-development instructions remain in
 the composed prompt; this profile does not bypass permissions or managed policy.
 
 ## Claude

@@ -1,4 +1,8 @@
-import { DEFAULT_ASSISTANT_IDENTITY } from "../default-assistant/index.js";
+import {
+  DEFAULT_ASSISTANT_IDENTITY,
+  DEFAULT_ASSISTANT_PERSONA,
+  DEFAULT_ASSISTANT_PROMPT,
+} from "../default-assistant/index.js";
 import { describe, expect, it } from "vitest";
 import { applyLeadInstructionProfile } from "./lead-instruction-profile.js";
 import type { AgentSessionConfig } from "./agent-sdk-types.js";
@@ -15,9 +19,34 @@ describe("lead instruction profile", () => {
     expect(applyLeadInstructionProfile(config, { "paseo.role": "assistant" })).toEqual({
       ...config,
       instructionProfile: "paseo-lead",
-      systemPrompt: `${DEFAULT_ASSISTANT_IDENTITY}\n\n${config.systemPrompt}`,
+      systemPrompt: `${DEFAULT_ASSISTANT_IDENTITY}\n\n${DEFAULT_ASSISTANT_PERSONA}\n\n${config.systemPrompt}`,
     });
     expect(config).not.toHaveProperty("instructionProfile");
+  });
+  it.each(["codex", "claude"])(
+    "adds the user's persona to existing %s leads exactly once",
+    (provider) => {
+      const old = {
+        ...config,
+        provider,
+        systemPrompt: DEFAULT_ASSISTANT_IDENTITY + "\nReviewed project context",
+      };
+      const first = applyLeadInstructionProfile(old, { "paseo.role": "assistant" });
+      expect(first.systemPrompt).toContain(DEFAULT_ASSISTANT_PERSONA);
+      expect(first.systemPrompt).toContain("affectionate younger-sister-like");
+      expect(first.systemPrompt).toContain("오빠");
+      expect(first.systemPrompt).toContain("single best recommendation");
+      expect(first.systemPrompt).toContain("Reviewed project context");
+      expect(applyLeadInstructionProfile(first, { "paseo.role": "assistant" })).toEqual(first);
+    },
+  );
+  it("keeps a new lead's full common prompt intact", () => {
+    expect(
+      applyLeadInstructionProfile(
+        { ...config, systemPrompt: DEFAULT_ASSISTANT_PROMPT },
+        { "paseo.role": "assistant" },
+      ).systemPrompt,
+    ).toBe(DEFAULT_ASSISTANT_PROMPT);
   });
   it("does not leak a lead profile to a native worker", () => {
     expect(
