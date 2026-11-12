@@ -34,9 +34,7 @@ import {
 } from "./dev-update-runtime.mjs";
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(
-    path.join(await fs.realpath(os.tmpdir()), "paseo-update-test-"),
-  );
+  const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), "paseo-update-test-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const releases = path.join(root, "releases"),
     control = path.join(root, "control");
@@ -125,24 +123,15 @@ export function registerDevUpdateTests() {
     const f = await fixture(t),
       r = await release(f.releases, "one");
     await verifyRelease(f.releases, r.id, r.digest);
-    await assert.rejects(
-      verifyRelease(f.releases, r.id, "0".repeat(64)),
-      /approval digest/,
-    );
+    await assert.rejects(verifyRelease(f.releases, r.id, "0".repeat(64)), /approval digest/);
     await fs.writeFile(path.join(r.root, "extra.js"), "unapproved");
     await assert.rejects(
       verifyRelease(f.releases, r.id, r.digest),
       /Release contents changed after validation: one; 1 changed entries;.*extra.js/,
     );
     await fs.unlink(path.join(r.root, "extra.js"));
-    await fs.writeFile(
-      path.join(r.root, "packages/app/src/view.ts"),
-      "changed",
-    );
-    await assert.rejects(
-      verifyRelease(f.releases, r.id, r.digest),
-      /contents changed/,
-    );
+    await fs.writeFile(path.join(r.root, "packages/app/src/view.ts"), "changed");
+    await assert.rejects(verifyRelease(f.releases, r.id, r.digest), /contents changed/);
   });
   test("Metro-generated type references do not invalidate immutable runtime inputs", async (t) => {
     const f = await fixture(t),
@@ -197,10 +186,7 @@ export function registerDevUpdateTests() {
     assert.equal((await fs.stat(staged)).mode & 0o777, 0o755);
     await fs.writeFile(staged, "changed");
     assert.equal(await fs.readFile(source, "utf8"), "original");
-    assert.equal(
-      await fs.readFile(path.join(r.root, "binary-alias"), "utf8"),
-      "original",
-    );
+    assert.equal(await fs.readFile(path.join(r.root, "binary-alias"), "utf8"), "original");
     await scanRelease(r.root);
   });
   test("renderer-only classification includes removed and added backend files and dependencies", async (t) => {
@@ -226,10 +212,7 @@ export function registerDevUpdateTests() {
     await assert.rejects(acquireLock(f.control, "lock"), /Never auto-clear/);
     await atomicJson(path.join(f.control, "lock"), { token: "different" });
     await assert.rejects(unlock(), /ownership changed/);
-    assert.equal(
-      (await readJson(path.join(f.control, "lock"))).token,
-      "different",
-    );
+    assert.equal((await readJson(path.join(f.control, "lock"))).token, "different");
   });
   test("private control directories reject permissions and symlink aliases", async (t) => {
     const f = await fixture(t);
@@ -243,17 +226,11 @@ export function registerDevUpdateTests() {
     const f = await initialized(t, { "packages/app/src/view.ts": "new" });
     await queueRelease(f.control, selection(f.after));
     await queueRelease(f.control, selection(f.after));
-    await assert.rejects(
-      queueRelease(f.control, { id: "other", digest: "b" }),
-      /already pending/,
-    );
+    await assert.rejects(queueRelease(f.control, { id: "other", digest: "b" }), /already pending/);
     const state = await readJson(path.join(f.control, "state.json"));
     state.transition = { phase: "starting" };
     await atomicJson(path.join(f.control, "state.json"), state);
-    await assert.rejects(
-      queueRelease(f.control, selection(f.after)),
-      /reconciliation/,
-    );
+    await assert.rejects(queueRelease(f.control, selection(f.after)), /reconciliation/);
   });
   test("runtime environment fixes endpoints and clears inherited seed/reset injection", () => {
     const config = {
@@ -283,17 +260,11 @@ export function registerDevUpdateTests() {
       "gen",
       {},
     );
-    assert.equal(
-      managed.PASEO_DEV_UPDATE_DAEMON_CONTROL,
-      "/control/daemon-control",
-    );
+    assert.equal(managed.PASEO_DEV_UPDATE_DAEMON_CONTROL, "/control/daemon-control");
   });
   test("managed runtime validates persisted listen and CORS before launching", () => {
     const config = { daemonPort: 19781, metroPort: 19091 };
-    assert.throws(
-      () => validateManagedSettings(config, {}),
-      /persisted listen/,
-    );
+    assert.throws(() => validateManagedSettings(config, {}), /persisted listen/);
     assert.throws(
       () =>
         validateManagedSettings(config, {
@@ -321,10 +292,7 @@ export function registerDevUpdateTests() {
         }),
       /collide/,
     );
-    assert.throws(
-      () => validateConfig({ schemaVersion: 1, releases: "relative" }),
-      /absolute/,
-    );
+    assert.throws(() => validateConfig({ schemaVersion: 1, releases: "relative" }), /absolute/);
   });
 
   // Real independent Node children exercise exit/relaunch. No live Paseo state,
@@ -478,10 +446,7 @@ export function registerDevUpdateTests() {
       "replacement-ready",
       "lease-release",
     ]);
-    assert.equal(
-      (await readJson(path.join(f.control, "state.json"))).current.id,
-      "new",
-    );
+    assert.equal((await readJson(path.join(f.control, "state.json"))).current.id, "new");
   });
   test("automatic updates require explicit opt-in and reject daemon mode", () => {
     const config = {
@@ -523,8 +488,7 @@ export function registerDevUpdateTests() {
       "/control/daemon-control",
     );
     assert.equal(
-      runtimeEnvironment(config, "/control/generation-one", "one")
-        .PASEO_DEV_UPDATE_DAEMON_CONTROL,
+      runtimeEnvironment(config, "/control/generation-one", "one").PASEO_DEV_UPDATE_DAEMON_CONTROL,
       undefined,
     );
   });
@@ -546,10 +510,7 @@ export function registerDevUpdateTests() {
       },
     });
     assert.equal(launches, 2);
-    assert.equal(
-      (await readJson(path.join(f.control, "state.json"))).current.id,
-      "new",
-    );
+    assert.equal((await readJson(path.join(f.control, "state.json"))).current.id, "new");
   });
   test("full update with surviving daemon remains pending and does not restart or kill it", async (t) => {
     const f = await initialized(t, {
@@ -566,10 +527,7 @@ export function registerDevUpdateTests() {
       },
     });
     assert.equal(launches, 1);
-    assert.equal(
-      (await readJson(path.join(f.control, "state.json"))).current.id,
-      "old",
-    );
+    assert.equal((await readJson(path.join(f.control, "state.json"))).current.id, "old");
     assert.equal(
       (await readJson(path.join(f.control, "status.json"))).state,
       "waiting-for-daemon-stop",
@@ -593,10 +551,7 @@ export function registerDevUpdateTests() {
       },
     });
     assert.equal(launches, 1);
-    assert.equal(
-      (await readJson(path.join(f.control, "status.json"))).state,
-      "interrupted",
-    );
+    assert.equal((await readJson(path.join(f.control, "status.json"))).state, "interrupted");
   });
   test("lost readiness leaves a durable transition and never rolls user data backward", async (t) => {
     const f = await initialized(t, { "packages/app/src/view.ts": "new" });
@@ -631,10 +586,7 @@ export function registerDevUpdateTests() {
     const state = await readJson(path.join(f.control, "state.json"));
     assert.equal(state.current.id, "old");
     assert.equal(state.transition.to.id, "new");
-    assert.equal(
-      (await readJson(path.join(f.control, "status.json"))).state,
-      "recovery-required",
-    );
+    assert.equal((await readJson(path.join(f.control, "status.json"))).state, "recovery-required");
     await assert.rejects(runSupervisor(f.control), /Lock exists/);
   });
 
@@ -645,10 +597,7 @@ export function registerDevUpdateTests() {
       /overlap/,
     );
     await assert.rejects(
-      validateRuntimePaths(
-        { ...f.config, userData: path.join(f.releases, "profile") },
-        f.control,
-      ),
+      validateRuntimePaths({ ...f.config, userData: path.join(f.releases, "profile") }, f.control),
       /overlap/,
     );
   });
@@ -689,10 +638,7 @@ export function registerDevUpdateTests() {
         return childRuntime(t, { ready: (owned) => owned.child.send("quit") });
       },
     });
-    assert.equal(
-      (await readJson(path.join(f.control, "state.json"))).bootstrap,
-      undefined,
-    );
+    assert.equal((await readJson(path.join(f.control, "state.json"))).bootstrap, undefined);
   });
   test("bootstrap cannot adopt a different daemon or resurrect a missing daemon", async (t) => {
     const f = await initialized(t, {});
@@ -727,10 +673,7 @@ export function registerDevUpdateTests() {
       }),
       /partial launch/,
     );
-    await assert.rejects(
-      acquireLock(f.control, "supervisor.lock"),
-      /Lock exists/,
-    );
+    await assert.rejects(acquireLock(f.control, "supervisor.lock"), /Lock exists/);
   });
   test("acknowledged UI handoff detects daemon replacement across exit", async (t) => {
     const f = await initialized(t, { "packages/app/src/view.ts": "new" });
@@ -754,10 +697,7 @@ export function registerDevUpdateTests() {
       /changed across acknowledged/,
     );
     assert.equal(launches, 1);
-    assert.equal(
-      (await readJson(path.join(f.control, "state.json"))).current.id,
-      "old",
-    );
+    assert.equal((await readJson(path.join(f.control, "state.json"))).current.id, "old");
   });
   test("Metro failure is surfaced without killing an active desktop", async (t) => {
     const f = await initialized(t, {});
@@ -772,10 +712,7 @@ export function registerDevUpdateTests() {
       }),
       /Metro died/,
     );
-    assert.equal(
-      (await readJson(path.join(f.control, "status.json"))).state,
-      "recovery-required",
-    );
+    assert.equal((await readJson(path.join(f.control, "status.json"))).state, "recovery-required");
   });
 
   test("ordinary quit during renderer update may start a fresh daemon", async (t) => {
@@ -784,18 +721,14 @@ export function registerDevUpdateTests() {
     let launches = 0;
     await runSupervisor(f.control, {
       pollMs: 5,
-      inspectDaemon: async () =>
-        launches < 2 ? null : { pid: 456, serverId: "stable" },
+      inspectDaemon: async () => (launches < 2 ? null : { pid: 456, serverId: "stable" }),
       launch: async () => {
         launches++;
         return childRuntime(t, { ready: (owned) => owned.child.send("quit") });
       },
     });
     assert.equal(launches, 2);
-    assert.equal(
-      (await readJson(path.join(f.control, "state.json"))).current.id,
-      "new",
-    );
+    assert.equal((await readJson(path.join(f.control, "state.json"))).current.id, "new");
   });
 
   test("real init installs complete controller before publishing selection and never overwrites it", async (t) => {
@@ -827,10 +760,7 @@ export function registerDevUpdateTests() {
     ];
     const exec = promisify(execFile);
     await exec(process.execPath, args);
-    assert.equal(
-      (await readJson(path.join(f.control, "state.json"))).current.id,
-      "initial",
-    );
+    assert.equal((await readJson(path.join(f.control, "state.json"))).current.id, "initial");
     const status = await exec(process.execPath, [
       path.join(f.control, "controller/dev-update.mjs"),
       "status",
@@ -842,8 +772,7 @@ export function registerDevUpdateTests() {
   });
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url))
-  registerDevUpdateTests();
+if (process.argv[1] === fileURLToPath(import.meta.url)) registerDevUpdateTests();
 
 test("Finder metadata alone does not invalidate a sealed release", async (t) => {
   const f = await fixture(t);
@@ -855,16 +784,10 @@ test("Finder metadata alone does not invalidate a sealed release", async (t) => 
   await fs.writeFile(path.join(r.root, "packages/.DS_Store"), metadata);
   await verifyRelease(f.releases, r.id, r.digest);
   await fs.writeFile(path.join(r.root, "unknown"), "extra");
-  await assert.rejects(
-    verifyRelease(f.releases, r.id, r.digest),
-    /contents changed/,
-  );
+  await assert.rejects(verifyRelease(f.releases, r.id, r.digest), /contents changed/);
   await fs.unlink(path.join(r.root, "unknown"));
   await fs.writeFile(path.join(r.root, "packages/app/src/view.ts"), "changed");
-  await assert.rejects(
-    verifyRelease(f.releases, r.id, r.digest),
-    /contents changed/,
-  );
+  await assert.rejects(verifyRelease(f.releases, r.id, r.digest), /contents changed/);
 });
 test("Finder metadata exemption rejects malformed, executable, linked and oversized entries", async (t) => {
   const f = await fixture(t);
@@ -879,28 +802,16 @@ test("Finder metadata exemption rejects malformed, executable, linked and oversi
     Buffer.concat([metadata, Buffer.alloc(1024 * 1024)]),
   ]) {
     await fs.writeFile(target, content);
-    await assert.rejects(
-      verifyRelease(f.releases, r.id, r.digest),
-      /contents changed/,
-    );
+    await assert.rejects(verifyRelease(f.releases, r.id, r.digest), /contents changed/);
   }
   await fs.writeFile(target, metadata);
   await fs.chmod(target, 0o755);
-  await assert.rejects(
-    verifyRelease(f.releases, r.id, r.digest),
-    /contents changed/,
-  );
+  await assert.rejects(verifyRelease(f.releases, r.id, r.digest), /contents changed/);
   await fs.unlink(target);
   await fs.symlink("packages/app/src/view.ts", target);
-  await assert.rejects(
-    verifyRelease(f.releases, r.id, r.digest),
-    /contents changed/,
-  );
+  await assert.rejects(verifyRelease(f.releases, r.id, r.digest), /contents changed/);
   await fs.unlink(target);
   await fs.writeFile(target, metadata);
   await fs.link(target, path.join(f.root, "metadata-hardlink"));
-  await assert.rejects(
-    verifyRelease(f.releases, r.id, r.digest),
-    /Shared hardlink/,
-  );
+  await assert.rejects(verifyRelease(f.releases, r.id, r.digest), /Shared hardlink/);
 });
