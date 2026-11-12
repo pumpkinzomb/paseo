@@ -4,6 +4,7 @@ const path = require("path");
 const { smokePackagedDesktopApp } = require("../e2e/packaged-app-smoke.js");
 
 const { installLinuxLauncher } = require("./linux-sandbox");
+const { buildGoogleKeychainHelper } = require("./google-keychain");
 
 const EXECUTABLE_NAME = "Paseo";
 
@@ -116,6 +117,10 @@ exports.default = async function afterPack(context) {
   const arch = ARCH_MAP[context.arch] || process.arch;
 
   pruneNativeModules(context.appOutDir, platform, arch);
+
+  if (platform === "darwin") {
+    buildGoogleKeychainHelper({ appOutDir: context.appOutDir, arch });
+  }
 
   if (platform === "linux") {
     installLinuxLauncher(context.appOutDir);

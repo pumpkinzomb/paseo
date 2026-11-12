@@ -41,6 +41,7 @@ import {
 import { PluginSessionSocket } from "./session-socket.js";
 import { InternalPluginChild } from "./internal-child.js";
 import { evaluateBundle } from "./bundle-evaluator.js";
+import { builtinHostContext } from "./builtin/host-context.js";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 const TOOL_CALL_TIMEOUT_MS = 10 * 60_000;
@@ -131,6 +132,7 @@ interface RemoteProviderConnection {
 }
 
 interface PluginRuntimeDependencies {
+  builtinRuntimeMode?: "development" | "packaged";
   settingsDirectory?: string;
   onSettingsChanged?: (pluginId: string, settingsId: string) => void;
   spawnChild?: () => PluginChild;
@@ -404,11 +406,15 @@ export class PluginRuntime {
     const bundles = await compileDirectoryPlugin(directory, this.daemonVersion, input.id);
     const { manifest } = bundles;
     if (!bundles.serverBundle) throw new Error(`Built-in plugin ${input.id} needs a server entry`);
+    const contribute = evaluateBundle(bundles.serverBundle);
+    // Credential helpers must never take a path from settings, RPC or environment.
+    // Only this trusted built-in receives a daemon-owned state directory.
+    const builtinHost = builtinHostContext(input.id, directory, this.dependencies.settingsDirectory, this.dependencies.builtinRuntimeMode);
     const loaded = await this.launchPlugin({
       pluginId: input.id,
       pluginDirectory: directory,
       requirements: manifest.requirements,
-      child: new InternalPluginChild(evaluateBundle(bundles.serverBundle)),
+      child: new InternalPluginChild((server) => contribute({ ...server, builtinHost })),
       bundle: "",
       clientBundle: bundles.clientBundle ?? "",
     });
