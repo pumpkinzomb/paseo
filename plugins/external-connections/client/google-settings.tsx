@@ -183,6 +183,7 @@ export function GoogleSettings() {
       </> : null}
     </SettingsCard>
     <SettingsCard>
+      <SettingsRow label="오래 열린 에이전트의 도구 연결" hint="Google 로그인과 별개로 에이전트의 도구 연결은 최대 24시간 유지됩니다. 만료되면 에이전트를 다시 연결하세요. Google 로그인 자체가 만료된 경우에만 다시 로그인해야 합니다." />
       <SettingsRow label="요청할 Google 권한" hint="새 연결의 수정 권한은 기본으로 꺼져 있습니다. 기존 인증이 있으면 실제 승인된 권한을 처음 한 번 불러옵니다. 이번에 필요한 전체 권한을 선택하세요. 변경분만 추가하는 방식이 아니며 로그인 후 Google에서 다시 승인해야 적용됩니다." />
       <SettingsSwitch label="Google Docs 읽기" value={docs} onValueChange={changeDocs} disabled={!status || busy || pending} />
       <SettingsSwitch label="Google Docs 수정도 허용" hint="전체 문서 읽기·수정 권한을 요청합니다." value={docsWrite} onValueChange={setDocsWrite} disabled={!status || !docs || busy || pending} />
