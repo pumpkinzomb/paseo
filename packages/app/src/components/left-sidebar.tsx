@@ -1,8 +1,10 @@
+import { SidebarLeadIdentitySheet } from "./sidebar/sidebar-lead-identity";
 import { SidebarConnectedDevicesMenu } from "./sidebar/sidebar-connected-devices";
 import { SidebarViewSlot } from "@/plugins/sidebar-view";
 import { useAddHost } from "@/hosts/add-host";
 import { router } from "expo-router";
 import {
+  Fingerprint,
   CircleGauge,
   FolderPlus,
   GitBranch,
@@ -447,6 +449,10 @@ function SidebarFooter({
   handleOpenHostSettings: (serverId: string) => void;
   onBeforeNavigate?: () => void;
 }) {
+  const [identityOpen, setIdentityOpen] = useState(false);
+  const openIdentity = useCallback(() => setIdentityOpen(true), []);
+  const closeIdentity = useCallback(() => setIdentityOpen(false), []);
+  const { t } = useTranslation();
   const newAgentKeys = useShortcutKeys("new-agent");
   const settingsKeys = useShortcutKeys("toggle-settings");
   const isCompactLayout = useIsCompactFormFactor();
@@ -496,10 +502,20 @@ function SidebarFooter({
             />
           ) : null}
           {isInline("devices") ? <SidebarConnectedDevicesMenu /> : null}
+          {isInline("identity") ? (
+            <FooterIconButton
+              onPress={openIdentity}
+              testID="sidebar-identity"
+              label={t("leadIdentity.title")}
+              icon={Fingerprint}
+            />
+          ) : null}
+          <SidebarLeadIdentitySheet visible={identityOpen} onClose={closeIdentity} />
           <View style={styles.footerSpacer} />
           {isInline("help") ? <SidebarHelpMenu /> : null}
           {overflow.length > 0 ? (
             <SidebarFooterOverflowMenu
+              onIdentity={openIdentity}
               actions={overflow}
               labels={labels}
               onAddProject={handleOpenProject}

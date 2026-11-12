@@ -2,6 +2,33 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
+  leadIdentity: {
+    title: "써니 아이덴티티",
+    chooseHost: "아이덴티티를 편집할 기기를 선택해 주세요.",
+    noHosts: "기기를 연결하면 아이덴티티를 편집할 수 있어요.",
+    persona: "공통 아이덴티티",
+    scope:
+      "이 기기의 Codex·Claude 리드 에이전트가 함께 사용해요. 하위 에이전트와 기존 공급자 설정은 바꾸지 않아요.",
+    application:
+      "저장하면 새로 만들거나 다시 연결하는 리드 세션에 적용돼요. 실행 중인 작업은 중단하지 않으며, 기존 모델 세션은 새 리드 구간으로 이어가야 할 수 있어요.",
+    saved: "저장했어요. 새 리드 세션이나 다시 연결할 때 적용되며 실행 중인 작업은 그대로예요.",
+    save: "저장",
+    saving: "저장 중…",
+    reset: "기본값 복원",
+    resetConfirm: "저장된 아이덴티티를 기본 써니 아이덴티티로 바꿀까요?",
+    discardTitle: "수정 내용을 버릴까요?",
+    discard: "저장하지 않은 아이덴티티 수정 내용이 사라져요.",
+    discardAction: "버리기",
+    cancel: "취소",
+    offline:
+      "기기 연결이 끊겼어요. 다시 연결하면 불러오거나 저장할 수 있어요. 작성한 내용은 유지돼요.",
+    unsupported: "공통 아이덴티티를 편집하려면 이 기기의 앱을 업데이트해 주세요.",
+    loading: "아이덴티티 불러오는 중…",
+    failed: "불러오기 또는 저장에 실패했어요. 연결을 확인하고 다시 시도해 주세요.",
+    conflict: "다른 곳에서 아이덴티티가 변경됐어요. 창을 닫고 다시 열어 최신 내용을 확인해 주세요.",
+    invalid: "1~12,000자로 입력해 주세요.",
+    retry: "다시 시도",
+  },
   workspaceSessionDeletion: {
     completedMenu: "완료된 세션 삭제",
     completedTitle: "완료된 하위 세션을 모두 삭제할까요?",

@@ -1,4 +1,31 @@
 export const en = {
+  leadIdentity: {
+    title: "Sunny identity",
+    chooseHost: "Choose the host whose lead identity you want to edit.",
+    noHosts: "Connect a host to edit its identity.",
+    persona: "Common identity",
+    scope:
+      "Shared by Codex and Claude lead agents on this host. Worker agents and native provider settings are unchanged.",
+    application:
+      "Changes apply to new or resumed lead sessions. Running turns are not interrupted; native threads may need a new lead segment.",
+    saved: "Saved. New or resumed lead sessions use this identity; running turns are unchanged.",
+    save: "Save",
+    saving: "Saving…",
+    reset: "Restore default",
+    resetConfirm: "Replace the saved identity with the built-in Sunny identity?",
+    discardTitle: "Discard changes?",
+    discard: "Your unsaved identity edits will be lost.",
+    discardAction: "Discard",
+    cancel: "Cancel",
+    offline: "Host disconnected. Reconnect to load or save; your edits stay here.",
+    unsupported: "Update this host to edit the common lead identity.",
+    loading: "Loading identity…",
+    failed: "Could not load or save. Check the connection and retry.",
+    conflict:
+      "The identity changed elsewhere. Close and reopen to review the latest version before saving.",
+    invalid: "Enter between 1 and 12,000 characters.",
+    retry: "Retry",
+  },
   workspaceSessionDeletion: {
     completedMenu: "Delete completed sessions",
     completedTitle: "Delete all completed sub-sessions?",

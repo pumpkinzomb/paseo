@@ -4,6 +4,7 @@ export const SIDEBAR_FOOTER_ACTIONS = [
   "usage",
   "hosts",
   "devices",
+  "identity",
   "help",
   "settings",
 ] as const;
@@ -16,6 +17,7 @@ const KEEP_ORDER: readonly SidebarFooterAction[] = [
   "add-project",
   "hosts",
   "devices",
+  "identity",
   "usage",
   "help",
 ];

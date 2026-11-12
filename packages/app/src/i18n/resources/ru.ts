@@ -2,6 +2,7 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ru: TranslationResources = {
+  leadIdentity: en.leadIdentity,
   workspaceSessionDeletion: en.workspaceSessionDeletion,
   browserDock: en.browserDock,
   connectedDevices: en.connectedDevices,

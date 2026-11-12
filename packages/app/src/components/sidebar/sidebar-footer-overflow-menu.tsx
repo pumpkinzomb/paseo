@@ -54,6 +54,7 @@ export interface SidebarFooterOverflowMenuProps {
   labels: { addProject: string; hosts: string; settings: string; usage: string };
   onAddProject: () => void;
   onSettings: () => void;
+  onIdentity: () => void;
   onAddHost: () => void;
   onOpenHostSettings: (serverId: string) => void;
 }
@@ -68,6 +69,7 @@ export function SidebarFooterOverflowMenu({
   labels,
   onAddProject,
   onSettings,
+  onIdentity,
   onAddHost,
   onOpenHostSettings,
 }: SidebarFooterOverflowMenuProps): ReactElement {
@@ -149,6 +151,12 @@ export function SidebarFooterOverflowMenu({
           <DropdownMenuSubTrigger key={action} id="devices" testID="sidebar-devices-trigger">
             {t("connectedDevices.title")}
           </DropdownMenuSubTrigger>
+        );
+      case "identity":
+        return (
+          <DropdownMenuItem key={action} testID="sidebar-identity" onSelect={onIdentity}>
+            {t("leadIdentity.title")}
+          </DropdownMenuItem>
         );
       case "help":
         return (

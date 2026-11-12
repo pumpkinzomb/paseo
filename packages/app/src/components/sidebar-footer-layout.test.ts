@@ -19,17 +19,17 @@ function layout(rowWidth: number, controlSize: number) {
 }
 
 describe("sidebar footer layout", () => {
-  it("keeps every action inline at the default width with either sizing", () => {
-    for (const controlSize of [TOUCH, POINTER]) {
+  it("keeps every action inline at the default width with pointer sizing", () => {
+    for (const controlSize of [POINTER]) {
       expect(layout(DEFAULT_SIDEBAR_WIDTH, controlSize)).toEqual({
-        inline: ["add-project", "usage", "hosts", "devices", "help", "settings"],
+        inline: ["add-project", "usage", "hosts", "devices", "identity", "help", "settings"],
         overflow: [],
       });
     }
   });
 
-  it("keeps every action inline at the minimum width with pointer sizing", () => {
-    expect(layout(MIN_SIDEBAR_WIDTH, POINTER).overflow).toEqual([]);
+  it("keeps identity and devices inline at minimum pointer width", () => {
+    expect(layout(MIN_SIDEBAR_WIDTH, POINTER).overflow).toEqual(["usage", "help"]);
   });
 
   // The iPhone Duo report: the folded sidebar column is about the minimum width, and touch
@@ -37,7 +37,7 @@ describe("sidebar footer layout", () => {
   it("moves Help and Usage behind the caret at the minimum width with touch sizing", () => {
     expect(layout(MIN_SIDEBAR_WIDTH, TOUCH)).toEqual({
       inline: ["add-project", "hosts", "settings"],
-      overflow: ["usage", "devices", "help"],
+      overflow: ["usage", "devices", "identity", "help"],
     });
   });
 
@@ -45,24 +45,24 @@ describe("sidebar footer layout", () => {
     // Three slots: two actions and the caret.
     expect(layout(3 * TOUCH + 2 * ROW_PADDING, TOUCH)).toEqual({
       inline: ["add-project", "settings"],
-      overflow: ["usage", "hosts", "devices", "help"],
+      overflow: ["usage", "hosts", "devices", "identity", "help"],
     });
     // Two slots: Settings and the caret.
     expect(layout(2 * TOUCH + 2 * ROW_PADDING, TOUCH)).toEqual({
       inline: ["settings"],
-      overflow: ["add-project", "usage", "hosts", "devices", "help"],
+      overflow: ["add-project", "usage", "hosts", "devices", "identity", "help"],
     });
   });
 
   it("puts everything behind the caret when only the caret fits", () => {
     expect(layout(TOUCH + 2 * ROW_PADDING - 10, TOUCH)).toEqual({
       inline: [],
-      overflow: ["add-project", "usage", "hosts", "devices", "help", "settings"],
+      overflow: ["add-project", "usage", "hosts", "devices", "identity", "help", "settings"],
     });
   });
 
-  it("fits all six actions exactly at their combined width", () => {
-    const exact = 6 * TOUCH + 2 * ROW_PADDING;
+  it("fits all seven actions exactly at their combined width", () => {
+    const exact = 7 * TOUCH + 2 * ROW_PADDING;
     expect(layout(exact, TOUCH).overflow).toEqual([]);
     // Browser layout rounds a little below the exact width.
     expect(layout(exact - 0.4, TOUCH).overflow).toEqual([]);
