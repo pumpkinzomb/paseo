@@ -70,9 +70,9 @@ export function selfDevelopmentPrompt(policy: SelfDevelopmentPolicy | undefined)
   if (!policy) return "";
   return [
     "Paseo self-development boundary (workflow guidance, not an OS sandbox):",
-    `For changes to Paseo itself, use only the independent development checkout ${JSON.stringify(
+    `For changes to Paseo itself, use the independent development checkout ${JSON.stringify(
       policy.labRoot,
-    )}, including delegated agents, builds and tests.`,
+    )} as the source baseline. For delegated agents, create each editing subtask in a separate managed branch/worktree; do not have multiple agents edit the shared lab. Keep builds and tests in that task checkout.`,
     `During autonomous development, do not edit, build, install dependencies, restart, terminate or replace the running Paseo or these protected paths: ${JSON.stringify(
       policy.protectedRoots,
     )}. Do not change live data/auth or runtime-control launchers.`,

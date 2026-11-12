@@ -1,3 +1,9 @@
+import { runGitCommand } from "../../../utils/run-git-command.js";
+import {
+  isolateDevelopmentTask,
+  developmentTaskPrompt,
+  developmentTaskResultGuidance,
+} from "./development-task.js";
 import { connectProviderSession, listImportableProviderSessions } from "../import-sessions.js";
 import type { WorkspaceProvisioningService } from "../../session/workspace-provisioning/workspace-provisioning-service.js";
 import { RecentProviderSessionDescriptorPayloadSchema } from "@getpaseo/protocol/messages";
@@ -1188,6 +1194,12 @@ function createToolCatalog(
       .describe("Create a new workspace for the agent."),
   ]);
   const commonCreateAgentFields = {
+    taskKind: z
+      .enum(["development", "read-only"])
+      .optional()
+      .describe(
+        "For subagents, Git projects default to development: create a separate branch/worktree from committed HEAD. Use read-only for research/review without edits. Non-Git conversations stay shared. Existing sessions are not moved.",
+      ),
     title: z
       .string()
       .trim()
@@ -1612,7 +1624,7 @@ function createToolCatalog(
     {
       title: "Create agent",
       description:
-        "Create an agent. Agent-scoped creation defaults to your workspace and creates your subagent. Top-level creation without workspaceId creates a new local workspace. Requires provider/model (for example codex/gpt-5.4) and an initial prompt. For a different provider, set settings.modeId from inspect_provider; omission is accepted for targets with no modes and for unattended execution supported by the target. Do not guess; call list_providers and list_models first if uncertain.",
+        "Create an agent. Agent-scoped Git development creates a new branch and worktree by default, including when workspaceId selects the source. Use taskKind read-only only for non-editing tasks. Non-Git tasks share the selected workspace. Top-level creation without workspaceId creates a new local workspace. Requires provider/model (for example codex/gpt-5.4) and an initial prompt. For a different provider, set settings.modeId from inspect_provider; omission is accepted for targets with no modes and for unattended execution supported by the target. Do not guess; call list_providers and list_models first if uncertain.",
       inputSchema: createAgentInputSchema,
       outputSchema: {
         agentId: z.string(),
@@ -1628,14 +1640,21 @@ function createToolCatalog(
     async (args: unknown) => {
       const resolvedArgs = await resolveCreateAgentToolArgs(args);
       const { parsedArgs } = resolvedArgs;
+      const selectedProvider = resolveRequiredProviderModel(parsedArgs.provider).provider;
+      const inheritedConfig = resolveInheritedProviderConfig(selectedProvider);
+      const isolated = await provisionDevelopmentTask(
+        resolvedArgs,
+        selectedProvider,
+        inheritedConfig,
+      );
       let notifyOnFinish: boolean;
       if (resolvedArgs.kind === "agent-scoped") {
         notifyOnFinish = parsedArgs.notifyOnFinish;
       } else {
         notifyOnFinish = resolvedArgs.parsedArgs.notifyOnFinish ?? false;
       }
-      const selectedProvider = resolveRequiredProviderModel(parsedArgs.provider).provider;
-      const inheritedConfig = resolveInheritedProviderConfig(selectedProvider);
+      const placement = isolated ?? resolvedArgs;
+      let createdAgentId: string | undefined;
       const { snapshot, initialPromptStarted } = await createAgentCommand(
         {
           agentManager,
@@ -1653,12 +1672,17 @@ function createToolCatalog(
         },
         {
           kind: "mcp",
+          onCreated: ({ agentId }) => {
+            createdAgentId = agentId;
+          },
           provider: parsedArgs.provider,
           title: parsedArgs.title,
-          initialPrompt: parsedArgs.initialPrompt,
+          initialPrompt: isolated
+            ? developmentTaskPrompt(isolated, parsedArgs.initialPrompt)
+            : parsedArgs.initialPrompt,
           config: inheritedConfig,
-          cwd: resolvedArgs.cwd,
-          workspaceId: resolvedArgs.workspaceId,
+          cwd: placement.cwd,
+          workspaceId: placement.workspaceId,
           thinking: parsedArgs.settings?.thinkingOptionId,
           providerOptions: parsedArgs.settings?.features,
           labels: {
@@ -1675,14 +1699,21 @@ function createToolCatalog(
           callerAgentId,
           callerContext,
         },
-      );
+      ).catch((error: unknown) => {
+        if (!isolated) throw error;
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `${detail}. Isolated task workspace preserved: ${isolated.workspaceId} (${isolated.cwd}), branch ${isolated.branchName}${createdAgentId ? `, agent ${createdAgentId}; inspect and resume that agent rather than creating a duplicate` : "; inspect this workspace before retrying"}`,
+        );
+      });
 
       // Return immediately for async creation.
       const currentSnapshot = agentManager.getAgent(snapshot.id) ?? snapshot;
-      const guidance =
+      const completionGuidance =
         callerAgentId && notifyOnFinish && initialPromptStarted
           ? "You will get notified when the created agent finishes, errors, or needs permission. Do not poll for status; continue with other work until the notification arrives."
           : "Creation acknowledged. Observe completion using get_agent_status/get_agent_activity or SDK/RPC subscriptions and wait APIs.";
+      const guidance = completionGuidance + developmentTaskResultGuidance(isolated);
       const response = {
         content: [],
         structuredContent: ensureValidJson({
@@ -1715,6 +1746,72 @@ function createToolCatalog(
         cwd: string | undefined;
         workspaceId: string | undefined;
       };
+
+  async function provisionDevelopmentTask(
+    resolvedArgs: ResolvedCreateAgentToolArgs,
+    selectedProvider: string,
+    inheritedConfig: Partial<AgentSessionConfig> | undefined,
+  ) {
+    const { parsedArgs } = resolvedArgs;
+    const caller = resolveCallerAgent();
+    const sourceWorkspace = resolvedArgs.workspaceId
+      ? await options.workspaceRegistry?.get(resolvedArgs.workspaceId)
+      : undefined;
+    const sourceCwd = resolvedArgs.cwd
+      ? resolveScopedCwd(resolvedArgs.cwd, { required: true })
+      : (sourceWorkspace?.cwd ?? caller?.cwd);
+    return sourceCwd && resolvedArgs.workspaceId
+      ? await isolateDevelopmentTask(
+          {
+            source: { cwd: sourceCwd, workspaceId: resolvedArgs.workspaceId },
+            isSubagent: Boolean(callerAgentId && !resolvedArgs.detached),
+            taskKind: parsedArgs.taskKind,
+            lockedCwd:
+              callerContext?.allowCustomCwd === false ? sourceCwd : callerContext?.lockedCwd,
+          },
+          async (source, slug) => {
+            await providerSnapshotManager.resolveCreateConfig({
+              cwd: source.cwd,
+              provider: selectedProvider,
+              requestedMode: parsedArgs.settings?.modeId ?? inheritedConfig?.modeId,
+              providerOptions: {
+                ...inheritedConfig?.providerOptions,
+                ...parsedArgs.settings?.features,
+              },
+              parent: caller,
+              unattended: false,
+            });
+            const head = await runGitCommand(["symbolic-ref", "--quiet", "--short", "HEAD"], {
+              cwd: source.cwd,
+            });
+            const result = await createPaseoWorktreeCommand(
+              {
+                paseoHome: options.paseoHome,
+                worktreesRoot: options.worktreesRoot,
+                createPaseoWorktreeWorkflow: options.createPaseoWorktree,
+              },
+              {
+                cwd: source.cwd,
+                ...(sourceWorkspace?.projectId ? { projectId: sourceWorkspace.projectId } : {}),
+                action: "branch-off",
+                refName: head.stdout.trim(),
+                branchName: slug,
+                worktreeSlug: slug,
+                title: parsedArgs.title,
+                firstAgentContext: { prompt: parsedArgs.initialPrompt },
+                ...workspaceBackgroundIntent(parsedArgs.background),
+              },
+            );
+            if (!result.ok) throw result.cause;
+            return {
+              cwd: result.createdWorktree.workspace.cwd,
+              workspaceId: result.createdWorktree.workspace.workspaceId,
+              branchName: result.createdWorktree.worktree.branchName,
+            };
+          },
+        )
+      : null;
+  }
 
   async function resolveCreateAgentToolArgs(args: unknown): Promise<ResolvedCreateAgentToolArgs> {
     const placement = args as {
