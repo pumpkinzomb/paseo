@@ -118,3 +118,16 @@ from trusted host provisioning with a packaged helper-backed store and approved
 OAuth configuration. Do not turn arbitrary environment/user-supplied helper
 paths into trusted executables. Missing production provisioning is a real setup
 requirement, not a reason to mock connected status in the UI.
+
+`helper-trust.mjs` now derives the helper path from the real host executable's
+outer app bundle, verifies strict code signatures, requires sh.paseo.desktop
+and matching app/helper TeamIdentifier, and rejects symlink escapes. This
+production resolver deliberately rejects ad-hoc development Electron and
+standalone Node. It is tested with injected signature metadata; a complete
+Developer-ID-signed app remains untested. See SETUP.md for user and host setup.
+
+`connection-e2e.test.mjs` exercises real local OAuth callback and MCP sockets
+through the host facade, with fake Google token/document responses and an
+in-memory secure-store contract: login, provider launch header, document read,
+revision-protected write, and disconnect/revocation. It is not an actual provider
+SDK or Google-account test.
