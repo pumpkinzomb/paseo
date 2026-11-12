@@ -143,6 +143,8 @@ test("completed release provenance chains do not retain intermediate donors", as
     sourceRevision: "a".repeat(40),
     stateCompatibility: "preserve",
     dependencies: { mode: "reuse", donor: { id: "old" } },
+    base: "old",
+    hotfix: { baselineRelease: path.join(f.releases, "old") },
     entries: await scanRelease(current),
   };
   await fs.writeFile(path.join(current, "release.json"), JSON.stringify(manifest));

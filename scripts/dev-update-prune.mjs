@@ -265,7 +265,7 @@ async function retainDonors(candidates, references, exclude) {
         if (!stat.isFile() || stat.isSymbolicLink())
           throw new Error(`Release metadata alias:${file}`);
         const value = await readJson(file);
-        if (name === "release.json" && value.dependencies) delete value.dependencies.donor;
+        if (name === "release.json") omitProvenance(value);
         references(value, `release-reference:${item.id}/${name}`, item.id);
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
@@ -291,4 +291,11 @@ function referencePath(value, root) {
   if (!path.isAbsolute(value)) return false;
   const normalized = path.resolve(value);
   return normalized === root || normalized.startsWith(`${root}/`);
+}
+
+function omitProvenance(manifest) {
+  if (manifest.dependencies) delete manifest.dependencies.donor;
+  // Legacy sealed runtime manifests recorded copy/hotfix ancestry here.
+  delete manifest.base;
+  if (manifest.hotfix) delete manifest.hotfix.baselineRelease;
 }
