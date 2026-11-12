@@ -40,12 +40,17 @@ export class GoogleBridgeSessions {
     return { authorization: `Bearer ${token}`, expiresAt };
   }
 
-  authorize(authorization, scope) {
+  describeSession(authorization) {
     this.#prune();
     if (typeof authorization !== 'string' || !/^Bearer [A-Za-z0-9_-]{43}$/.test(authorization)) throw new GoogleBridgeError('SESSION_UNAUTHORIZED');
     const session = this.#sessions.get(digest(authorization.slice(7)));
     if (!session) throw new GoogleBridgeError('SESSION_UNAUTHORIZED');
-    if (!session.scopes.has(scope)) throw new GoogleBridgeError('SCOPE_NOT_GRANTED');
+    return { agentId: session.agentId, provider: session.provider, scopes: [...session.scopes] };
+  }
+
+  authorize(authorization, scope) {
+    const session = this.describeSession(authorization);
+    if (!session.scopes.includes(scope)) throw new GoogleBridgeError('SCOPE_NOT_GRANTED');
     return { agentId: session.agentId, provider: session.provider };
   }
 

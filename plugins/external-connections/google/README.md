@@ -110,3 +110,41 @@ The request guard permits only exact loopback Host, absent Origin and POST /mcp;
 future MCP HTTP integration must either support this restricted JSON response
 transport or deliberately extend the method policy with equivalent auth checks.
 No unauthenticated tools/list, tools/call, or metadata endpoint is provided.
+
+## Host wrapper and authenticated transport (latest implementation)
+
+The earlier "no listener" groundwork description refers to the pure session
+store. `mcp-bridge.mjs` now supplies an explicitly started, ephemeral loopback
+HTTP listener with stateless JSON MCP initialize/ping/tools-list/tools-call.
+It authenticates requests before JSON parsing, filters tools to granted scopes,
+checks authorization again before tool execution, limits input bodies and
+request duration, and sanitizes broker/tool failures. Start creates no Google
+connection; an explicit trusted caller must supply its access-token broker.
+`stop()` revokes every session and closes connections; `revokeAgent()` ends
+one agent's authority. No startup import activates it and no app plugin hook
+is wired yet. Local transport tests inject fake Google responses and tokens.
+
+`keychain-store.mjs` invokes a trusted packaged helper path with empty argv,
+private pipes, minimal environment, no shell/stderr logging, timeout and output
+limits. Tests replace the child process and never access Keychain. The helper
+must come from the signed application bundle, not user-entered settings or a
+writable downloaded path. Signing/packaging and actual OS ACL remain untested.
+
+Integration shape:
+
+```
+const bridge = createGoogleMcpBridge({ getAccessToken: hostTokenBroker });
+await bridge.start();
+const launchOnly = bridge.openSession({ agentId, provider, scopes: grantedScopes });
+// Inject launchOnly.url + launchOnly.headers into agent.open.before.
+// Never persist headers. Never pass Google tokens to the provider.
+bridge.revokeAgent(agentId); // agent close / permission withdrawal
+await bridge.stop(); // host shutdown
+```
+
+Remaining: actual OAuth token exchange/refresh broker, signed helper packaging,
+OAuth callback listener + UI, per-account granted-scope tracking, bridge session
+renewal at provider lifecycle boundaries, SDK-level MCP interoperability tests,
+and real user-approved authentication. Nothing here creates a Cloud project,
+enables an API or obtains an OAuth client ID. Supply a user-owned approved
+Desktop OAuth client configuration; no other product's credentials are reused.
