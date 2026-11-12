@@ -111,7 +111,7 @@ function ConnectionEditor({
         <SettingsSwitch
           label="도구 제공 활성화"
           value={draft.enabled}
-          hint="신뢰하는 서버만 활성화하세요. 선택한 공급자의 이 기기 내 모든 리드·하위 에이전트에 도구가 제공됩니다."
+          hint="신뢰하는 서버만 활성화하세요. 선택한 공급자의 이 기기 내 모든 리드·하위 에이전트에 도구가 제공됩니다. 도구 호출 시 해당 서버로 데이터가 전달될 수 있습니다."
           onValueChange={changeEnabled}
           disabled={settings.saving}
         />
@@ -254,7 +254,7 @@ export function ConnectionsSettings({ theme }: PluginSurfaceProps) {
         />
         <SettingsRow
           label="적용 시점"
-          hint="변경은 다음에 새로 열리는 에이전트 실행부터 적용됩니다. 이미 실행 중인 세션의 도구는 즉시 바뀌지 않습니다."
+          hint="읽기 전용이나 호출별 승인을 강제하는 설정이 아닙니다. 실제 권한은 서버와 에이전트 승인 모드에 따릅니다. 변경은 다음에 새로 열리는 에이전트 실행부터 적용됩니다. 이미 실행 중인 세션의 도구는 즉시 바뀌지 않습니다."
         />
         <SettingsRow
           label="Google 및 기타 서비스"

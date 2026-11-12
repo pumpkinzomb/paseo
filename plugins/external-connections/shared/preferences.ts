@@ -5,9 +5,16 @@ import { z } from "zod";
 export const endpointSchema = z
   .string()
   .trim()
+  .max(2048)
   .url()
   .refine((value) => {
-    if (!URL.canParse(value)) return false;
+    if (
+      !URL.canParse(value) ||
+      Array.from(value).some(
+        (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+      )
+    )
+      return false;
     const url = new URL(value);
     const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
     return (

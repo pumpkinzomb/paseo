@@ -15,6 +15,8 @@ describe("external connections", () => {
   });
   it.each([
     "not a url",
+    "https://exa\nmple.com/mcp",
+    `https://example.com/${"x".repeat(2048)}`,
     "http://remote.example/mcp",
     "https://user:password@example.com/mcp",
     "https://example.com/mcp?token=secret",
