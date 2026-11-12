@@ -51,18 +51,24 @@ async function fixture(t) {
   ])
     await exec("git", args, { cwd: source });
   const revision = (await exec("git", ["rev-parse", "HEAD"], { cwd: source })).stdout.trim();
-  await fs.mkdir(path.join(donorRoot, "node_modules/electron/dist"), { recursive: true });
+  await fs.mkdir(path.join(donorRoot, "node_modules/electron/dist"), {
+    recursive: true,
+  });
   await fs.writeFile(
     path.join(donorRoot, "node_modules/electron/dist/electron"),
     "fixture executable",
     { mode: 0o755 },
   );
-  await fs.mkdir(path.join(donorRoot, "packages/app/node_modules/pkg"), { recursive: true });
+  await fs.mkdir(path.join(donorRoot, "packages/app/node_modules/pkg"), {
+    recursive: true,
+  });
   await fs.writeFile(
     path.join(donorRoot, "packages/app/node_modules/pkg/index.js"),
     "fixture nested",
   );
-  await fs.mkdir(path.join(donorRoot, "node_modules/.vite"), { recursive: true });
+  await fs.mkdir(path.join(donorRoot, "node_modules/.vite"), {
+    recursive: true,
+  });
   await fs.writeFile(path.join(donorRoot, "node_modules/.vite/results.json"), "cache");
   await fs.mkdir(path.join(donorRoot, "packages/app/dist"));
   await fs.writeFile(path.join(donorRoot, "packages/app/dist/package.json"), "generated");
@@ -143,7 +149,13 @@ test("missing donor needs explicit installation; clone failure never falls back"
   const f = await fixture(t);
   await assert.rejects(prepareDependencies({ ...f.options, donor: undefined }), /explicitly/);
   assert.equal(
-    (await prepareDependencies({ ...f.options, donor: undefined, allowInstall: true })).mode,
+    (
+      await prepareDependencies({
+        ...f.options,
+        donor: undefined,
+        allowInstall: true,
+      })
+    ).mode,
     "install",
   );
   await assert.rejects(
@@ -208,7 +220,9 @@ test("clone refuses collisions, path traversal, aliases and insufficient reserve
     cloneDependencyEntries({
       source: f.donorRoot,
       destination: f.source,
-      entries: { "node_modules/../../escape": { sha256: hash("x"), executable: false } },
+      entries: {
+        "node_modules/../../escape": { sha256: hash("x"), executable: false },
+      },
       minFreeBytes: 0,
     }),
     /Unsafe/,
@@ -308,4 +322,57 @@ test("native clone input/spawn errors do not permit cleanup before child close",
     child.emit("close", 1);
     assert.match((await result).message, /early error/);
   }
+});
+
+test("final scan detects payload, permission, link and missing dependency changes", async (t) => {
+  const { verifyDependencyMetadata, assertDependencyManifest } =
+    await import("./dev-update-dependencies.mjs");
+  const root = await fs.mkdtemp(
+    path.join(await fs.realpath(os.tmpdir()), "dependency-final-scan-"),
+  );
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = path.join(root, "payload");
+  await fs.writeFile(file, "before");
+  await fs.symlink("payload", path.join(root, "link"));
+  const expected = await scanRelease(root);
+  await verifyDependencyMetadata(root, expected);
+  assertDependencyManifest(expected, await scanRelease(root));
+  await fs.writeFile(file, "after!");
+  // Cheap metadata pass is deliberately not a content check.
+  await verifyDependencyMetadata(root, expected);
+  assert.throws(() => assertDependencyManifest(expected, {}), /payload changed/);
+  assert.throws(
+    () =>
+      assertDependencyManifest(expected, {
+        ...expected,
+        payload: { ...expected.payload, sha256: "changed" },
+      }),
+    /payload changed/,
+  );
+  assert.throws(
+    () =>
+      assertDependencyManifest(expected, {
+        ...expected,
+        payload: {
+          ...expected.payload,
+          executable: !expected.payload.executable,
+        },
+      }),
+    /payload changed/,
+  );
+  assert.throws(
+    () =>
+      assertDependencyManifest(expected, {
+        ...expected,
+        link: { link: "elsewhere" },
+      }),
+    /payload changed/,
+  );
+  const changed = await scanRelease(root);
+  assert.throws(() => assertDependencyManifest(expected, changed), /payload changed/);
+  await fs.chmod(file, 0o755);
+  await assert.rejects(verifyDependencyMetadata(root, expected), /payload changed/);
+  await fs.chmod(file, 0o644);
+  await fs.link(file, path.join(root, "hardlink"));
+  await assert.rejects(verifyDependencyMetadata(root, expected), /payload changed/);
 });
