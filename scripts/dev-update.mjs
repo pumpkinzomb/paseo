@@ -35,6 +35,7 @@ import {
 } from "./dev-update-dependencies.mjs";
 import { registerDependencyScratch, withDependencyScratchLease } from "./dev-update-cleanup.mjs";
 import { pruneReleases } from "./dev-update-prune.mjs";
+import { reuseTypecheckCaches } from "./typecheck-cache.mjs";
 import { reclaimOwnedBuildOutputs } from "./owned-build-outputs.mjs";
 function pruneFromOptions(options, required) {
   return pruneReleases({
@@ -213,6 +214,8 @@ export async function stageRelease({
     managedRoot,
     protectedPaths: [source, ...plan.protectedRoots],
   });
+  const typecheckCache = await reuseTypecheckCaches({ source, staging, revision });
+  console.log("Typecheck cache reuse:", JSON.stringify(typecheckCache));
   const checks = [
     ...(dependencies.mode === "install" ? [["npm", ["ci"]]] : []),
     [
@@ -263,6 +266,7 @@ export async function stageRelease({
     stateCompatibility: "preserve",
     validatedAt: new Date().toISOString(),
     checks: checks.map(([command, args]) => [command, ...args].join(" ")),
+    typecheckCache,
     dependencies: {
       mode: dependencies.mode,
       ...(dependencies.donor ? { donor: dependencies.donor } : {}),
@@ -388,6 +392,7 @@ async function main() {
       "managed-worktree-maintenance.mjs",
       "managed-worktree-retirement.mjs",
       "dev-update-validation.mjs",
+      "typecheck-cache.mjs",
       "isolated-lab.mjs",
     ])
       await fs.copyFile(
