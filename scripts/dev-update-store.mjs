@@ -3,7 +3,8 @@ import { constants } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 
-export const hash = (value) => crypto.createHash("sha256").update(value).digest("hex");
+export const hash = (value) =>
+  crypto.createHash("sha256").update(value).digest("hex");
 // Bound I/O and memory while still reading every byte on every verification.
 // Never use timestamps or a previous successful scan as content evidence.
 export async function mapVerification(items, visit, concurrency = 4) {
@@ -99,7 +100,9 @@ export async function privateDirectory(directory) {
     (info.mode & 0o077) !== 0 ||
     (process.getuid && info.uid !== process.getuid())
   )
-    throw new Error(`Control directory must be owned by this user with mode 0700: ${directory}`);
+    throw new Error(
+      `Control directory must be owned by this user with mode 0700: ${directory}`,
+    );
   if ((await fs.realpath(directory)) !== path.resolve(directory))
     throw new Error("Control directory aliases are not allowed");
 }
@@ -121,7 +124,8 @@ export async function acquireLock(directory, name, owner = {}) {
   await handle.sync();
   await handle.close();
   return async () => {
-    if ((await readJson(file)).token !== token) throw new Error("Lock ownership changed");
+    if ((await readJson(file)).token !== token)
+      throw new Error("Lock ownership changed");
     await fs.unlink(file);
   };
 }
@@ -142,7 +146,11 @@ export async function detachStagingHardlinks(root) {
       else if (info.isFile() && info.nlink > 1) {
         const temporary = `${file}.independent-${crypto.randomUUID()}`;
         try {
-          await fs.copyFile(file, temporary, constants.COPYFILE_FICLONE | constants.COPYFILE_EXCL);
+          await fs.copyFile(
+            file,
+            temporary,
+            constants.COPYFILE_FICLONE | constants.COPYFILE_EXCL,
+          );
           await fs.chmod(temporary, info.mode & 0o777);
           await fs.rename(temporary, file);
           detached++;
@@ -180,7 +188,9 @@ async function isFinderMetadata(file, info) {
     const header = Buffer.alloc(8);
     const { bytesRead } = await handle.read(header, 0, 8, 0);
     return (
-      bytesRead === 8 && header.readUInt32BE(0) === 1 && header.toString("ascii", 4, 8) === "Bud1"
+      bytesRead === 8 &&
+      header.readUInt32BE(0) === 1 &&
+      header.toString("ascii", 4, 8) === "Bud1"
     );
   } finally {
     await handle.close();
@@ -189,32 +199,43 @@ async function isFinderMetadata(file, info) {
 
 export async function scanRelease(root) {
   const canonical = await fs.realpath(root);
-  if (canonical !== path.resolve(root)) throw new Error("Release root must not be an alias");
+  if (canonical !== path.resolve(root))
+    throw new Error("Release root must not be an alias");
   const entries = {};
   async function walk(directory, prefix = "") {
-    const children = await mapVerification((await fs.readdir(directory)).sort(), async (name) => {
-      const relative = prefix ? `${prefix}/${name}` : name;
-      if (mutable(relative)) return null;
-      const file = path.join(directory, name);
-      const info = await fs.lstat(file);
-      if (name === ".DS_Store" && (await isFinderMetadata(file, info))) return null;
-      if (info.isSymbolicLink()) {
-        const target = await fs.readlink(file);
-        if (path.isAbsolute(target) || !inside(canonical, await fs.realpath(file)))
-          throw new Error(`Release link escapes its tree: ${relative}`);
-        return { relative, entry: { link: target } };
-      } else if (info.isDirectory()) return { relative, directory: file };
-      else if (info.isFile()) {
-        if (info.nlink !== 1) throw new Error(`Shared hardlink is not a release file: ${relative}`);
-        return {
-          relative,
-          entry: {
-            sha256: await hashFile(file),
-            executable: Boolean(info.mode & 0o111),
-          },
-        };
-      } else throw new Error(`Unsupported release entry: ${relative}`);
-    });
+    const children = await mapVerification(
+      (await fs.readdir(directory)).sort(),
+      async (name) => {
+        const relative = prefix ? `${prefix}/${name}` : name;
+        if (mutable(relative)) return null;
+        const file = path.join(directory, name);
+        const info = await fs.lstat(file);
+        if (name === ".DS_Store" && (await isFinderMetadata(file, info)))
+          return null;
+        if (info.isSymbolicLink()) {
+          const target = await fs.readlink(file);
+          if (
+            path.isAbsolute(target) ||
+            !inside(canonical, await fs.realpath(file))
+          )
+            throw new Error(`Release link escapes its tree: ${relative}`);
+          return { relative, entry: { link: target } };
+        } else if (info.isDirectory()) return { relative, directory: file };
+        else if (info.isFile()) {
+          if (info.nlink !== 1)
+            throw new Error(
+              `Shared hardlink is not a release file: ${relative}`,
+            );
+          return {
+            relative,
+            entry: {
+              sha256: await hashFile(file),
+              executable: Boolean(info.mode & 0o111),
+            },
+          };
+        } else throw new Error(`Unsupported release entry: ${relative}`);
+      },
+    );
     // Preserve the original sorted depth-first manifest insertion order.
     // Recurse only after this batch drains, so nested directories cannot multiply concurrency.
     for (const child of children) {
@@ -245,19 +266,43 @@ export async function verifyRelease(releases, id, expectedDigest) {
     throw new Error("Invalid release manifest");
   if (manifestDigest(manifest) !== expectedDigest)
     throw new Error("Release approval digest changed");
-  if (JSON.stringify(await scanRelease(root)) !== JSON.stringify(manifest.entries))
-    throw new Error("Release contents changed after validation");
+  const actualEntries = await scanRelease(root);
+  if (JSON.stringify(actualEntries) !== JSON.stringify(manifest.entries)) {
+    const changed = [
+      ...new Set([
+        ...Object.keys(manifest.entries ?? {}),
+        ...Object.keys(actualEntries),
+      ]),
+    ].filter(
+      (name) =>
+        JSON.stringify(actualEntries[name]) !==
+        JSON.stringify(manifest.entries?.[name]),
+    );
+    // Include bounded evidence, never file contents, so maintenance failures identify
+    // which sealed release changed instead of leaving an unactionable generic skip.
+    const details = changed.length
+      ? `${changed.length} changed entries; ${JSON.stringify(changed.slice(0, 3)).slice(0, 240)}`
+      : "manifest entry order differs";
+    throw new Error(
+      `Release contents changed after validation: ${id}; ${details}`,
+    );
+  }
   return { root, manifest };
 }
-const rendererPath = (file) => /^(packages\/app\/(src|assets|dist)\/)/.test(file);
+const rendererPath = (file) =>
+  /^(packages\/app\/(src|assets|dist)\/)/.test(file);
 export function isRendererOnly(before, after) {
   // Metro config, package metadata, native/preload, all daemon/provider code and
   // every dependency must match. A change outside renderer files waits for quit.
-  const paths = new Set([...Object.keys(before.entries), ...Object.keys(after.entries)]);
+  const paths = new Set([
+    ...Object.keys(before.entries),
+    ...Object.keys(after.entries),
+  ]);
   for (const file of paths)
     if (
       !rendererPath(file) &&
-      JSON.stringify(before.entries[file]) !== JSON.stringify(after.entries[file])
+      JSON.stringify(before.entries[file]) !==
+        JSON.stringify(after.entries[file])
     )
       return false;
   return true;
@@ -268,13 +313,20 @@ export async function queueRelease(control, release) {
   try {
     const state = await readJson(path.join(control, "state.json"));
     if (state.transition)
-      throw new Error("An interrupted update needs reconciliation before another can be queued");
+      throw new Error(
+        "An interrupted update needs reconciliation before another can be queued",
+      );
     if (
       state.pending &&
-      (state.pending.id !== release.id || state.pending.digest !== release.digest)
+      (state.pending.id !== release.id ||
+        state.pending.digest !== release.digest)
     )
       throw new Error("An update is already pending");
-    if (state.current.id === release.id && state.current.digest === release.digest) return state;
+    if (
+      state.current.id === release.id &&
+      state.current.digest === release.digest
+    )
+      return state;
     state.pending = release;
     await atomicJson(path.join(control, "state.json"), state);
     return state;
