@@ -27,3 +27,12 @@ export const googleBeginRpc = defineRpc({
 });
 export const googleCancelRpc = defineRpc({ name: "google.cancel", input: z.object({}).strict(), output: z.object({ cancelled: z.boolean() }) });
 export const googleForgetRpc = defineRpc({ name: "google.forget", input: z.object({}).strict(), output: z.object({ forgotten: z.boolean() }) });
+
+export const googleConfigureRpc = defineRpc({
+  name: "google.configure",
+  input: z.object({
+    clientId: z.string().trim().regex(/^[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/).max(256),
+    clientSecret: z.string().min(1).max(4096).optional(),
+  }).strict(),
+  output: z.object({ configured: z.literal(true) }),
+});

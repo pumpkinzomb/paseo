@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
-import { SettingsAction, SettingsCard, SettingsRow, SettingsSection, SettingsSwitch } from "@getpaseo/plugin/client/ui";
-import { googleBeginRpc, googleCancelRpc, googleForgetRpc, googleStatusRpc, type GoogleConnectionStatus, type GoogleScope } from "../shared/google-rpc.js";
+import { SettingsAction, SettingsCard, SettingsInput, SettingsRow, SettingsSection, SettingsSwitch } from "@getpaseo/plugin/client/ui";
+import { googleBeginRpc, googleConfigureRpc, googleCancelRpc, googleForgetRpc, googleStatusRpc, type GoogleConnectionStatus, type GoogleScope } from "../shared/google-rpc.js";
 
 const scopeLabels: Record<GoogleScope, string> = {
   "https://www.googleapis.com/auth/documents.readonly": "Google Docs 읽기",
@@ -21,6 +21,7 @@ const statusLabels: Record<GoogleConnectionStatus["status"], string> = {
 export function GoogleSettings() {
   const getStatus = useRpc(googleStatusRpc);
   const begin = useRpc(googleBeginRpc);
+  const configure = useRpc(googleConfigureRpc);
   const cancel = useRpc(googleCancelRpc);
   const forget = useRpc(googleForgetRpc);
   const [status, setStatus] = useState<GoogleConnectionStatus | null>(null);
@@ -28,6 +29,11 @@ export function GoogleSettings() {
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [confirmForget, setConfirmForget] = useState(false);
+  const [editConfiguration, setEditConfiguration] = useState(false);
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [secretInputVersion, setSecretInputVersion] = useState(0);
+  const scopesInitialized = useRef(false);
   const [docs, setDocs] = useState(true);
   const [docsWrite, setDocsWrite] = useState(false);
   const [sheets, setSheets] = useState(false);
@@ -41,6 +47,19 @@ export function GoogleSettings() {
       const result = await getStatus({});
       if (mounted.current && request === statusRequest.current) {
         setStatus(result);
+        if (!scopesInitialized.current && result.status !== "authorizing" && result.status !== "exchanging") {
+          scopesInitialized.current = true;
+          if (result.status === "credentials-stored") {
+            const grants = result.scopes;
+            const savedDocsWrite = grants.includes("https://www.googleapis.com/auth/documents");
+            const savedSheetsWrite = grants.includes("https://www.googleapis.com/auth/spreadsheets");
+            setDocs(savedDocsWrite || grants.includes("https://www.googleapis.com/auth/documents.readonly"));
+            setDocsWrite(savedDocsWrite);
+            setSheets(savedSheetsWrite || grants.includes("https://www.googleapis.com/auth/spreadsheets.readonly"));
+            setSheetsWrite(savedSheetsWrite);
+            setGmail(grants.includes("https://www.googleapis.com/auth/gmail.readonly"));
+          }
+        }
         setError(undefined);
       }
     } catch {
@@ -113,6 +132,34 @@ export function GoogleSettings() {
       if (mounted.current) setBusy(false);
     }
   }, [confirmForget, forget, refresh]);
+  const clearSecret = useCallback(() => {
+    setClientSecret("");
+    // SettingsInput owns its text buffer. Remount as well as clearing React state.
+    setSecretInputVersion((version) => version + 1);
+  }, []);
+  const openConfiguration = useCallback(() => setEditConfiguration(true), []);
+  const closeConfiguration = useCallback(() => {
+    clearSecret();
+    setEditConfiguration(false);
+  }, [clearSecret]);
+  const saveConfiguration = useCallback(async () => {
+    if (busy || pending) return;
+    setBusy(true);
+    setNotice(undefined);
+    try {
+      await configure({ clientId: clientId.trim(), ...(clientSecret ? { clientSecret } : {}) });
+      if (mounted.current) {
+        setNotice("OAuth 앱 설정을 저장했습니다. 계정 인증은 아직 완료되지 않았습니다. 권한을 선택한 후 Google 로그인으로 진행하세요.");
+        setEditConfiguration(false);
+      }
+    } catch {
+      if (mounted.current) setNotice("OAuth 앱 설정을 저장하지 못했습니다. Desktop 클라이언트 ID와 안전한 인증 저장소 준비 상태를 확인해 주세요.");
+    } finally {
+      if (mounted.current) clearSecret();
+      await refresh();
+      if (mounted.current) setBusy(false);
+    }
+  }, [busy, pending, configure, clientId, clientSecret, clearSecret, refresh]);
   const cancelForget = useCallback(() => setConfirmForget(false), []);
   const setupHint = status?.reason === "secure-store-unavailable"
     ? "이 기기에 안전한 인증 정보 저장소가 준비되지 않아 로그인을 시작할 수 없습니다. 비밀번호나 토큰을 일반 설정에 저장하지 않습니다."
@@ -126,12 +173,23 @@ export function GoogleSettings() {
       {notice ? <SettingsRow label="안내" hint={notice} /> : null}
     </SettingsCard>
     <SettingsCard>
-      <SettingsRow label="요청할 Google 권한" hint="수정 권한은 기본으로 꺼져 있습니다. 아래 선택은 로그인 버튼을 눌러 Google에서 승인해야 적용됩니다." />
-      <SettingsSwitch label="Google Docs 읽기" value={docs} onValueChange={changeDocs} disabled={busy || pending} />
-      <SettingsSwitch label="Google Docs 수정도 허용" hint="전체 문서 읽기·수정 권한을 요청합니다." value={docsWrite} onValueChange={setDocsWrite} disabled={!docs || busy || pending} />
-      <SettingsSwitch label="Google Sheets 읽기" value={sheets} onValueChange={changeSheets} disabled={busy || pending} />
-      <SettingsSwitch label="Google Sheets 수정도 허용" hint="전체 스프레드시트 읽기·수정 권한을 요청합니다." value={sheetsWrite} onValueChange={setSheetsWrite} disabled={!sheets || busy || pending} />
-      <SettingsSwitch label="Gmail 읽기" hint="메일 발송 권한은 요청하지 않습니다." value={gmail} onValueChange={setGmail} disabled={busy || pending} />
+      <SettingsAction label="Google OAuth Desktop 앱 설정" actionLabel="설정" onPress={openConfiguration} disabled={busy || pending} />
+      {editConfiguration || status?.status === "setup-required" ? <>
+        <SettingsRow label="Desktop 클라이언트가 필요합니다" hint="Google Cloud에서 만든 Desktop 유형 OAuth 클라이언트 정보를 입력하세요. 공개 클라이언트 ID는 호스트 설정에, 비밀 값은 이 기기의 안전한 인증 저장소에만 저장합니다. 변경하면 기존 계정 인증이 해제되어 다시 로그인해야 합니다." />
+        <SettingsInput label="OAuth 클라이언트 ID" initialValue={clientId} placeholder="…apps.googleusercontent.com" onChangeText={setClientId} disabled={busy || pending} />
+        <SettingsInput key={secretInputVersion} label="클라이언트 비밀 값 (필요한 경우)" initialValue="" secureTextEntry onChangeText={setClientSecret} disabled={busy || pending} hint="일반 설정이나 로그에 저장하지 않습니다. 저장 시도 후 이 입력은 비워집니다." />
+        <SettingsAction label="OAuth 앱 설정 저장" actionLabel="설정 저장" onPress={saveConfiguration} disabled={busy || pending || !clientId.trim()} />
+        {editConfiguration ? <SettingsAction label="설정 편집 닫기" actionLabel="닫기" onPress={closeConfiguration} disabled={busy} /> : null}
+      </> : null}
+    </SettingsCard>
+    <SettingsCard>
+      <SettingsRow label="요청할 Google 권한" hint="새 연결의 수정 권한은 기본으로 꺼져 있습니다. 기존 인증이 있으면 실제 승인된 권한을 처음 한 번 불러옵니다. 이번에 필요한 전체 권한을 선택하세요. 변경분만 추가하는 방식이 아니며 로그인 후 Google에서 다시 승인해야 적용됩니다." />
+      <SettingsSwitch label="Google Docs 읽기" value={docs} onValueChange={changeDocs} disabled={!status || busy || pending} />
+      <SettingsSwitch label="Google Docs 수정도 허용" hint="전체 문서 읽기·수정 권한을 요청합니다." value={docsWrite} onValueChange={setDocsWrite} disabled={!status || !docs || busy || pending} />
+      <SettingsSwitch label="Google Sheets 읽기" value={sheets} onValueChange={changeSheets} disabled={!status || busy || pending} />
+      <SettingsSwitch label="Google Sheets 수정도 허용" hint="전체 스프레드시트 읽기·수정 권한을 요청합니다." value={sheetsWrite} onValueChange={setSheetsWrite} disabled={!status || !sheets || busy || pending} />
+      <SettingsSwitch label="Gmail 읽기" hint="메일 발송 권한은 요청하지 않습니다." value={gmail} onValueChange={setGmail} disabled={!status || busy || pending} />
+      <SettingsRow label="재로그인이 필요할 수 있습니다" hint="Google OAuth 앱이 Testing 상태이면 갱신 토큰이 7일 후 만료될 수 있습니다. 연결이 해제되면 Google 로그인으로 다시 승인하세요." />
       <SettingsRow label="이번에 요청할 범위" hint={scopes.length ? scopes.map((scope) => `${scopeLabels[scope]}\n${scope}`).join("\n\n") : "최소 한 가지 권한을 선택하세요."} />
       <SettingsAction label="선택한 권한으로 Google 인증" actionLabel={busy ? "처리 중…" : "Google 로그인"} onPress={start} disabled={busy || pending || !status || status.status === "setup-required" || scopes.length === 0} />
       {pending ? <SettingsAction label="진행 중인 인증 요청" actionLabel="취소" onPress={cancelAuthorization} disabled={busy} /> : null}

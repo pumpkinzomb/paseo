@@ -42,3 +42,11 @@ it("allows explicit Docs/Sheets write scopes but no Gmail send", () => {
   expect(googleBeginRpc.input.safeParse({ scopes: ["https://www.googleapis.com/auth/documents", "https://www.googleapis.com/auth/spreadsheets"] }).success).toBe(true);
   expect(googleBeginRpc.input.safeParse({ scopes: ["https://www.googleapis.com/auth/gmail.send"] }).success).toBe(false);
 });
+
+it("configuration is explicit, returns only configured flag and sanitizes failures", async () => {
+  const configure = vi.fn(async () => ({ configured: true as const }));
+  const controller = googleConnectionController(service({ configure }));
+  await controller.status(); expect(configure).not.toHaveBeenCalled();
+  expect(await controller.configure({ clientId: "desktop.apps.googleusercontent.com", clientSecret: "transient-test" })).toEqual({ configured: true });
+  await expect(googleConnectionController(service({ configure: async () => { throw new Error("secret-test"); } })).configure({ clientId: "desktop.apps.googleusercontent.com" })).rejects.toThrow(/^GOOGLE_SETUP_FAILED$/);
+});

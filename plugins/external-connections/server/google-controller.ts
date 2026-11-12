@@ -1,15 +1,21 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
-import { googleStatusRpc, googleBeginRpc, googleCancelRpc, googleForgetRpc, googleStatusSchema, type GoogleConnectionStatus, type GoogleScope } from "../shared/google-rpc.js";
+import { googleStatusRpc, googleConfigureRpc, googleBeginRpc, googleCancelRpc, googleForgetRpc, googleStatusSchema, type GoogleConnectionStatus, type GoogleScope } from "../shared/google-rpc.js";
 
 /** Host-owned implementation only. Never expose access/refresh tokens across this boundary. */
 export interface GoogleConnectionService {
   status(): Promise<GoogleConnectionStatus>;
+  configure?(input: { clientId: string; clientSecret?: string }): Promise<{ configured: true }>;
   begin(scopes: GoogleScope[]): Promise<{ authorizationUrl: string }>;
   cancel(): Promise<boolean>;
   forget(): Promise<void>;
 }
 export function googleConnectionController(service?: GoogleConnectionService) {
   return {
+    async configure(input: { clientId: string; clientSecret?: string }) {
+      if (!service?.configure) throw new Error("GOOGLE_SETUP_REQUIRED");
+      try { return googleConfigureRpc.output.parse(await service.configure(googleConfigureRpc.input.parse(input))); }
+      catch { throw new Error("GOOGLE_SETUP_FAILED"); }
+    },
     async status(): Promise<GoogleConnectionStatus> {
       if (!service) return { status: "setup-required", scopes: [], reason: "secure-store-unavailable" };
       try {
@@ -42,6 +48,7 @@ export function googleConnectionController(service?: GoogleConnectionService) {
 export function registerGoogleConnectionRpc(server: PluginServerContext, service?: GoogleConnectionService) {
   const controller = googleConnectionController(service);
   server.handle(googleStatusRpc, controller.status);
+  server.handle(googleConfigureRpc, controller.configure);
   server.handle(googleBeginRpc, controller.begin);
   server.handle(googleCancelRpc, controller.cancel);
   server.handle(googleForgetRpc, controller.forget);

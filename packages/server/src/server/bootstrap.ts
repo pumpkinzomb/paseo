@@ -1,3 +1,4 @@
+import { resolvePaseoNodeEnv } from "./paseo-env.js";
 import { resolveLeadPersona } from "./default-assistant/persona.js";
 import {
   UpdateAdmissionFence,
@@ -701,6 +702,7 @@ export async function createPaseoDaemon(
     }),
     builtinPlugins: resolveBuiltinPluginLoader(dependencies),
     settingsDirectory: path.join(config.paseoHome, "plugin-settings"),
+    builtinRuntimeMode: resolvePaseoNodeEnv(process.env) === "development" ? "development" : "packaged",
   });
   pluginRuntime.setUpdateActivityListener(() => updateAdmission.interrupt());
 
