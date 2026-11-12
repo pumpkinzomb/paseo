@@ -711,7 +711,7 @@ describe("WorkspaceDirectory empty projects", () => {
     });
     const directory = makeDirectory({
       projects: ["deleted-children", "fresh", "root-history", "archived-child", "mixed"].map(
-        (projectId) => project({ projectId })
+        (projectId) => project({ projectId }),
       ),
       workspaces: [
         deletedChild("child-1", "deleted-children"),
@@ -727,6 +727,12 @@ describe("WorkspaceDirectory empty projects", () => {
     });
 
     expect((await directory.listEmptyProjects()).map((p) => p.projectId)).toEqual([
+      "fresh",
+      "root-history",
+      "archived-child",
+      "mixed",
+    ]);
+    expect((await directory.listVisibleProjects()).map((p) => p.projectId)).toEqual([
       "fresh",
       "root-history",
       "archived-child",
