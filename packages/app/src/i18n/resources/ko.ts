@@ -3,6 +3,9 @@ import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
   voiceCall: {
+    changeVoice: "목소리 변경",
+    nextCallVoiceHint:
+      "선택한 목소리는 다음 통화부터 적용돼요. 현재 통화는 지금 목소리로 계속됩니다.",
     previousRecords: "이전 기록",
     nativeRecovery:
       "선택된 음성으로 Codex 통화를 시작할 수 없어요. 아래에서 지원하는 음성을 선택하고 다시 시도해 주세요.",

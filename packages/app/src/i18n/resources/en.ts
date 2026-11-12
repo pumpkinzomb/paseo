@@ -1,5 +1,8 @@
 export const en = {
   voiceCall: {
+    changeVoice: "Change voice",
+    nextCallVoiceHint:
+      "Your selection applies to the next call. This call will keep its current voice.",
     previousRecords: "Previous records",
     nativeRecovery:
       "The selected voice cannot start a Codex call. Choose a supported voice below, then retry.",
