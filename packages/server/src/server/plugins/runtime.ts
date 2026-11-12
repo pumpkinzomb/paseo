@@ -409,7 +409,12 @@ export class PluginRuntime {
     const contribute = evaluateBundle(bundles.serverBundle);
     // Credential helpers must never take a path from settings, RPC or environment.
     // Only this trusted built-in receives a daemon-owned state directory.
-    const builtinHost = builtinHostContext(input.id, directory, this.dependencies.settingsDirectory, this.dependencies.builtinRuntimeMode);
+    const builtinHost = builtinHostContext(
+      input.id,
+      directory,
+      this.dependencies.settingsDirectory,
+      this.dependencies.builtinRuntimeMode,
+    );
     const loaded = await this.launchPlugin({
       pluginId: input.id,
       pluginDirectory: directory,

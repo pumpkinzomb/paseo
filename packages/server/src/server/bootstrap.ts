@@ -702,7 +702,8 @@ export async function createPaseoDaemon(
     }),
     builtinPlugins: resolveBuiltinPluginLoader(dependencies),
     settingsDirectory: path.join(config.paseoHome, "plugin-settings"),
-    builtinRuntimeMode: resolvePaseoNodeEnv(process.env) === "development" ? "development" : "packaged",
+    builtinRuntimeMode:
+      resolvePaseoNodeEnv(process.env) === "development" ? "development" : "packaged",
   });
   pluginRuntime.setUpdateActivityListener(() => updateAdmission.interrupt());
 

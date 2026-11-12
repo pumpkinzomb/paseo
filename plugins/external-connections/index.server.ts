@@ -9,14 +9,36 @@ export default function contribute(server: PluginServerContext) {
   registerGoogleConnectionRpc(server, google);
   const settings = server.registerSettings(preferences);
   const removeOpen = server.addHook("agent.open.before", async ({ request }) => {
-    const next = await openConnections(settings, request) ?? request;
-    if (!google || request.purpose !== "interactive" || !["codex", "claude"].includes(request.provider)) return next;
+    const next = (await openConnections(settings, request)) ?? request;
+    if (
+      !google ||
+      request.purpose !== "interactive" ||
+      !["codex", "claude"].includes(request.provider)
+    )
+      return next;
     try {
       if ((await google.status()).status !== "credentials-stored") return next;
-      const session = await google.openAgent({ agentId: request.agentId, provider: request.provider });
-      return { ...next, mcpServers: { ...next.mcpServers, "paseo-google": { type: "http", url: session.url, headers: session.headers } } };
-    } catch { return next; }
+      const session = await google.openAgent({
+        agentId: request.agentId,
+        provider: request.provider,
+      });
+      return {
+        ...next,
+        mcpServers: {
+          ...next.mcpServers,
+          "paseo-google": { type: "http", url: session.url, headers: session.headers },
+        },
+      };
+    } catch {
+      return next;
+    }
   });
-  const removeClose = server.addHook("agent.close.after", ({ agent }) => google?.closeAgent(agent.id));
-  return () => { removeOpen(); removeClose(); void google?.dispose(); };
+  const removeClose = server.addHook("agent.close.after", async ({ agent }) => {
+    google?.closeAgent(agent.id);
+  });
+  return () => {
+    removeOpen();
+    removeClose();
+    void google?.dispose();
+  };
 }
