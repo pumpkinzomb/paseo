@@ -35,7 +35,7 @@ import {
 } from "./dev-update-dependencies.mjs";
 import { registerDependencyScratch, withDependencyScratchLease } from "./dev-update-cleanup.mjs";
 import { pruneReleases } from "./dev-update-prune.mjs";
-import { reclaimStoppedBuildDependencies } from "./stopped-build-dependencies.mjs";
+import { reclaimOwnedBuildOutputs } from "./owned-build-outputs.mjs";
 function pruneFromOptions(options, required) {
   return pruneReleases({
     control: required("control"),
@@ -149,6 +149,7 @@ export async function stageRelease({
   await privateDirectory(managedRoot);
   const staging = path.join(managedRoot, `stage-${id}-${crypto.randomUUID()}`);
   await privateDirectory(staging);
+  const stagingIdentity = await fs.lstat(staging);
   // Freeze the commit BEFORE testing. A source edit during a long build cannot
   // get copied into a release after its checks passed. No working-tree files,
   // session stores, ignored .env/auth, or live dependencies are copied.
@@ -219,15 +220,13 @@ export async function stageRelease({
     }
   } catch (error) {
     // A timeout/unknown child lifetime must never become a deletion signal.
-    // Preserve failed source, logs and changed dependency files for diagnosis.
-    if (error.commandStopped && dependencies.mode === "reuse") {
+    // Preserve source and diagnostics; discard only this invocation's generated outputs.
+    if (error.commandStopped) {
       try {
-        error.dependencyCleanup = await reclaimStoppedBuildDependencies({
-          registry: path.join(managedRoot, "cleanup-records"),
-          managedRoot,
-          scratchRoot: staging,
-          donor: { releases, ...dependencyDonor },
-          protectedPaths: [source, ...plan.protectedRoots],
+        error.dependencyCleanup = await reclaimOwnedBuildOutputs({
+          root: staging,
+          identity: stagingIdentity,
+          sourceRevision: revision,
         });
       } catch (cleanupError) {
         error.dependencyCleanupError = cleanupError.message;
@@ -378,6 +377,9 @@ async function main() {
       "dev-update-full-stage.mjs",
       "dev-update-dependencies.mjs",
       "dev-update-cleanup.mjs",
+      "owned-build-outputs.mjs",
+      "stopped-build-dependencies.mjs",
+      "cleanup-legacy-lab.mjs",
       "dev-update-prune.mjs",
       "managed-worktree-maintenance.mjs",
       "managed-worktree-retirement.mjs",

@@ -359,12 +359,15 @@ copy-on-write reuse when inputs match. This cleanup does not restart the app.
 
 ### Failed builds and legacy lab copies
 
-When a build command has closed, failed reuse-based staging checks for processes
-still using its scratch directory before reclaiming unchanged dependency files
-of at least 1 MiB. Every reclaimed byte must match an independent sealed donor;
-changed files, new files, source, logs and test state stay intact. A restore
-receipt is kept. A timed-out/unknown worker or necessary fresh install is retained,
-not guessed safe. This includes `packages/*/node_modules`, not only root modules.
+When a build command has closed, its newly-created private staging sandbox checks
+for processes still using it, verifies root identity and Git revision, and removes
+untracked dependency/output directories created by that build. This includes
+fresh-install failures, root/nested `node_modules` and known `packages/*/dist`
+outputs. Tracked files, source changes and diagnostics remain. A compact rebuild
+recipe is retained instead of keeping gigabytes of reinstallable binaries.
+Timeouts/unknown active workers are not a completion signal and remain blocked.
+This creator-owned cleanup is never applied to arbitrary existing developer
+checkouts. Legacy candidates use the stricter exact-donor adoption below.
 
 Old `.lab` folders are not silently adopted. Inspect a single direct child first:
 
