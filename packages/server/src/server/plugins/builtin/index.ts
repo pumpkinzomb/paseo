@@ -8,6 +8,7 @@ export const builtinPlugins = [
   "codex-usage-source",
   "copilot-usage-source",
   "cursor-usage-source",
+  "external-connections",
   "fx-provider",
   "grok-usage-source",
   "hoplite-provider",

@@ -1,0 +1,1 @@
+{ "id": "external-connections", "requirements": { "paseo": ">=0.15.4" } }
