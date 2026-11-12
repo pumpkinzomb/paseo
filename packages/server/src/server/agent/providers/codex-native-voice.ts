@@ -21,6 +21,14 @@ const Envelope = z.object({
 const SdpEvent = z.object({ threadId: z.string(), sdp: z.string().min(1) });
 const TranscriptEvent = z.object({ threadId: z.string(), role: z.string(), text: z.string() });
 
+/** Ask the running provider for the transport version's actual catalog, not its schema enum. */
+export async function listCodexV3Voices(client: RpcClient): Promise<string[]> {
+  const catalog = z
+    .object({ voices: z.object({ v3: z.array(z.string()) }) })
+    .parse(await client.request("thread/realtime/listVoices", {}, 5000));
+  return [...new Set(catalog.voices.v3)];
+}
+
 /** ChatGPT login supports WebRTC. The PCM WebSocket route requires separate API-key auth. */
 export class CodexNativeVoice {
   private owner: Owner | null = null;
@@ -40,10 +48,8 @@ export class CodexNativeVoice {
     // Installed Codex schema exposes a version-specific list. Enum membership alone
     // does not establish that a voice is available to V3 or this account.
     if (voice) {
-      const catalog = z
-        .object({ voices: z.object({ v3: z.array(z.string()).optional() }) })
-        .parse(await client.request("thread/realtime/listVoices", {}, 5000));
-      if (!catalog.voices.v3?.includes(voice))
+      const voices = await listCodexV3Voices(client);
+      if (!voices.includes(voice))
         throw new Error(`Codex realtime V3 voice is unavailable: ${voice}`);
     }
     if (this.owner)

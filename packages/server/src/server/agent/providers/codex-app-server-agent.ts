@@ -1,6 +1,6 @@
 import { resolveCodexLeadRuntime, type CodexLeadRuntime } from "./codex/lead-runtime.js";
 import { isCodexRealtimeHandoff } from "./codex-voice-projection.js";
-import { CodexNativeVoice } from "./codex-native-voice.js";
+import { CodexNativeVoice, listCodexV3Voices } from "./codex-native-voice.js";
 import type { NativeVoiceConnection, NativeVoiceEvent } from "../native-voice.js";
 import type { ProviderOptions } from "@getpaseo/protocol/agent-types";
 import { applyProviderOptionsPatch } from "../option-controls.js";
@@ -5420,6 +5420,12 @@ export class CodexAppServerAgentSession implements AgentSession {
         "provider.codex.interrupt.terminal_cleanup_timed_out",
       );
     }
+  }
+
+  async listNativeVoices(): Promise<string[]> {
+    await this.connect();
+    if (!this.client) throw new Error("Codex provider is not ready for voice");
+    return listCodexV3Voices(this.client);
   }
 
   async startNativeVoice(

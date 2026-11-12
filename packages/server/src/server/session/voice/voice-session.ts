@@ -516,6 +516,25 @@ export class VoiceSession {
     }
   }
 
+  async handleNativeVoiceCatalog(
+    msg: Extract<SessionInboundMessage, { type: "voice.native.catalog.request" }>,
+  ): Promise<void> {
+    let voices: string[] = [];
+    let error: string | null = null;
+    try {
+      const agent = await this.host.loadAgent(msg.agentId);
+      if (!agent.session?.listNativeVoices)
+        throw new Error("This agent does not support a native voice catalog");
+      voices = await agent.session.listNativeVoices();
+    } catch (failure) {
+      error = getErrorMessage(failure);
+    }
+    this.emit({
+      type: "voice.native.catalog.response",
+      payload: { requestId: msg.requestId, agentId: msg.agentId, version: "v3", voices, error },
+    });
+  }
+
   async handleNativeVoiceOffer(
     msg: Extract<SessionInboundMessage, { type: "voice.native.start.request" }>,
   ): Promise<void> {

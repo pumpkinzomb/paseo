@@ -663,3 +663,55 @@ test("records the call marker before startup transcripts and rotates call IDs", 
   expect(order).toEqual(ids.flatMap((id) => ["call:" + id, "text:" + id]));
   await voiceSession.cleanup();
 });
+
+describe("native voice catalog", () => {
+  test("returns catalog without starting a call or recording history", async () => {
+    const { host, voiceSession } = createVoiceSession();
+    const agent = await host.loadAgent(VOICE_AGENT_ID);
+    const listNativeVoices = vi.fn().mockResolvedValue(["cove", "haetsal"]);
+    const startNativeVoice = vi.fn();
+    host.loadAgent = vi.fn().mockResolvedValue(
+      Object.assign(agent, {
+        session: { listNativeVoices, startNativeVoice },
+      }),
+    );
+    await voiceSession.handleNativeVoiceCatalog({
+      type: "voice.native.catalog.request",
+      requestId: "catalog",
+      agentId: VOICE_AGENT_ID,
+    });
+    expect(host.emitted).toContainEqual({
+      type: "voice.native.catalog.response",
+      payload: {
+        requestId: "catalog",
+        agentId: VOICE_AGENT_ID,
+        version: "v3",
+        voices: ["cove", "haetsal"],
+        error: null,
+      },
+    });
+    expect(startNativeVoice).not.toHaveBeenCalled();
+    expect(host.recordNativeCall).not.toHaveBeenCalled();
+    await voiceSession.cleanup();
+  });
+  test("returns an explicit failure rather than a fabricated catalog", async () => {
+    const { host, voiceSession } = createVoiceSession();
+    host.loadAgent = vi.fn().mockRejectedValue(new Error("provider offline"));
+    await voiceSession.handleNativeVoiceCatalog({
+      type: "voice.native.catalog.request",
+      requestId: "catalog",
+      agentId: VOICE_AGENT_ID,
+    });
+    expect(host.emitted).toContainEqual({
+      type: "voice.native.catalog.response",
+      payload: {
+        requestId: "catalog",
+        agentId: VOICE_AGENT_ID,
+        version: "v3",
+        voices: [],
+        error: "provider offline",
+      },
+    });
+    await voiceSession.cleanup();
+  });
+});

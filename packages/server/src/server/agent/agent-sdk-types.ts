@@ -706,6 +706,7 @@ export interface AgentUsageSession {
 }
 
 export interface AgentSession {
+  listNativeVoices?(): Promise<string[]>;
   startNativeVoice?(
     offerSdp: string,
     emit: (event: NativeVoiceEvent) => void,
