@@ -34,6 +34,16 @@ import {
   assertDiskReserve,
 } from "./dev-update-dependencies.mjs";
 import { registerDependencyScratch, withDependencyScratchLease } from "./dev-update-cleanup.mjs";
+import { pruneReleases } from "./dev-update-prune.mjs";
+function pruneFromOptions(options, required) {
+  return pruneReleases({
+    control: required("control"),
+    releases: required("releases"),
+    keep: options.keep === undefined ? 2 : Number(options.keep),
+    exclude: options.exclude ? String(options.exclude).split(",") : [],
+    apply: options.apply === true,
+  });
+}
 const exec = promisify(execFile);
 const directory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -340,6 +350,7 @@ async function main() {
       "dev-update-full-stage.mjs",
       "dev-update-dependencies.mjs",
       "dev-update-cleanup.mjs",
+      "dev-update-prune.mjs",
       "managed-worktree-maintenance.mjs",
       "managed-worktree-retirement.mjs",
       "dev-update-validation.mjs",
@@ -412,11 +423,33 @@ async function main() {
     );
   } else
     throw new Error(
-      "Use stage, init, start, queue, check-updates, start-update-watch or status. See docs/runtime-development-separation.md.",
+      "Use stage, init, start, queue, check-updates, start-update-watch, prune-releases or status. See docs/runtime-development-separation.md.",
     );
 }
+async function runCommand() {
+  if (process.argv[2] !== "prune-releases") return main();
+  const options = {};
+  const args = process.argv.slice(3);
+  for (let i = 0; i < args.length; i++) {
+    const key = args[i].replace(/^--/, "");
+    if (!["control", "releases", "keep", "exclude", "apply"].includes(key))
+      throw new Error(`Unknown option: ${args[i]}`);
+    const value = args[i + 1] && !args[i + 1].startsWith("--") ? args[++i] : true;
+    if (key !== "apply" && typeof value !== "string") throw new Error(`Missing --${key} value`);
+    if (key === "apply" && value !== true) throw new Error("--apply takes no value");
+    if (key === "exclude" && options.exclude) options.exclude += `,${value}`;
+    else options[key] = value;
+  }
+  const required = (key) => {
+    if (typeof options[key] !== "string") throw new Error(`Missing --${key}`);
+    return options[key];
+  };
+  const result = await pruneFromOptions(options, required);
+  console.log(JSON.stringify(result, null, 2));
+  if (["blocked", "failed"].includes(result.state)) process.exitCode = 1;
+}
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))
-  main().catch((error) => {
+  runCommand().catch((error) => {
     console.error(error.message);
     process.exitCode = 1;
   });

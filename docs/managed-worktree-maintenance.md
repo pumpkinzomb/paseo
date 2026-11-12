@@ -52,3 +52,32 @@ This is a managed-workflow boundary, not OS sandbox enforcement. Arbitrary exter
 shell processes can still access files outside daemon admission. Metadata and
 path checks detect many changes but cannot make hostile simultaneous filesystem
 mutation impossible. All destructive validation tests use temporary fixtures.
+
+## Retiring runtime releases
+
+Use the supervised controller's `prune-releases` command to inspect old runtime
+copies. It defaults to a read-only JSON plan and keeps the two most recently
+modified directories in addition to all referenced releases:
+
+```
+node scripts/dev-update.mjs prune-releases --control /absolute/control \
+  --releases /absolute/releases --keep 2 --exclude candidate-id
+```
+
+Repeat `--exclude` or supply comma-separated IDs to preserve operator candidates.
+Selection history, pending/transition releases, controller metadata, managed
+worktree restore donors, release recovery markers, process command lines and
+open cwd/executable paths preserve their referenced releases. Unreadable metadata
+or unavailable process inspection fails closed. Leases, stage/update operations
+and ambiguous operation locks block the plan. Files and symlinks are never deletion
+targets. Logical byte estimates are not guaranteed APFS free-space gains.
+
+For deletion, first stop the supervisor and discovery watcher through their normal
+operator flow, ensure no staging/update task is running, then rerun with `--apply`.
+The command does not stop processes. It holds the selection lock, reinspects usage
+before every deletion, and writes atomic before/after receipts under
+`control/release-pruning/<transaction>.json`. A failed/interrupted receipt can
+contain a partially deleted directory; inspect it before retrying. No receipt or
+lock is written by dry-run. Concurrent external filesystem/process mutation is
+outside this workflow's isolation; run apply only during an operator maintenance
+window. Do not use this command to remove source worktrees or live state.
