@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pruneReleases } from "./dev-update-prune.mjs";
+import { scanRelease, manifestDigest, verifyRelease } from "./dev-update-store.mjs";
 async function fixture(t) {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "prune-")));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -35,7 +36,7 @@ async function fixture(t) {
   }
   await fs.writeFile(
     path.join(releases, "dependent", ".dependencies-pruned.json"),
-    JSON.stringify({ donor: { id: "donor" } }),
+    JSON.stringify({ donor: { id: "donor" }, restoreOnlyMissing: true }),
   );
   await write("status.json", { releaseId: "metadata" });
   const input = { control, releases, keep: 0, exclude: ["excluded"] },
@@ -122,4 +123,80 @@ test("malformed metadata and active selection locks fail closed", async (t) => {
   assert.equal((await pruneReleases({ ...f.input, apply: true }, f.deps)).state, "blocked");
   await fs.writeFile(path.join(f.control, "status.json"), "broken");
   await assert.rejects(pruneReleases(f.input, f.deps), SyntaxError);
+});
+
+test("completed release provenance chains do not retain intermediate donors", async (t) => {
+  const f = await fixture(t);
+  for (const [id, donor] of [
+    ["current", "old"],
+    ["old", "dependent"],
+  ]) {
+    await fs.writeFile(
+      path.join(f.releases, id, "release.json"),
+      JSON.stringify({ id, dependencies: { mode: "reuse", donor: { id: donor } } }),
+    );
+  }
+  const current = path.join(f.releases, "current");
+  const manifest = {
+    schemaVersion: 1,
+    id: "current",
+    sourceRevision: "a".repeat(40),
+    stateCompatibility: "preserve",
+    dependencies: { mode: "reuse", donor: { id: "old" } },
+    entries: await scanRelease(current),
+  };
+  await fs.writeFile(path.join(current, "release.json"), JSON.stringify(manifest));
+  const digest = manifestDigest(manifest);
+  await verifyRelease(f.releases, "current", digest);
+  const r = await pruneReleases(f.input, f.deps);
+  assert.deepEqual(r.candidates.map((item) => item.id).sort(), ["dependent", "old"]);
+  assert.equal(
+    r.retained
+      .find((item) => item.id === "donor")
+      .reasons.includes("release-reference:dependent/.dependencies-pruned.json"),
+    true,
+  );
+  assert.match(r.note, /shared APFS blocks/);
+  const applied = await pruneReleases({ ...f.input, apply: true }, f.deps);
+  assert.equal(applied.state, "completed");
+  await verifyRelease(f.releases, "current", digest);
+  assert.equal((await fs.stat(path.join(f.releases, "donor"))).isDirectory(), true);
+  // The current manifest's provenance stays intact even after its donor is gone.
+  assert.equal(
+    JSON.parse(await fs.readFile(path.join(f.releases, "current", "release.json"))).dependencies
+      .donor.id,
+    "old",
+  );
+  await assert.rejects(fs.stat(path.join(f.releases, "old")), { code: "ENOENT" });
+});
+
+test("controller cleanup registry and managed receipts retain restore donors", async (t) => {
+  const f = await fixture(t);
+  await fs.mkdir(path.join(f.control, "cleanup-records"));
+  await f.write("cleanup-records/task.json", {
+    state: "dependencies-pruned",
+    donor: { id: "old" },
+  });
+  const workspace = path.join(f.root, "workspace");
+  await fs.mkdir(workspace);
+  await fs.writeFile(
+    path.join(workspace, ".managed-dependencies.json"),
+    JSON.stringify({ donor: { id: "dependent" } }),
+  );
+  await fs.mkdir(path.join(f.control, "managed-worktrees"));
+  await f.write("managed-worktrees/workspace.json", { root: workspace });
+  const r = await pruneReleases(f.input, f.deps);
+  assert.equal(
+    r.retained
+      .find((item) => item.id === "old")
+      .reasons.includes("metadata:cleanup-records/task.json"),
+    true,
+  );
+  assert.equal(
+    r.retained
+      .find((item) => item.id === "dependent")
+      .reasons.includes(`managed-receipt:${workspace}`),
+    true,
+  );
+  assert.equal(r.candidates.length, 0);
 });

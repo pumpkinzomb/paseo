@@ -251,8 +251,8 @@ async function releaseDirectories(releases) {
 }
 
 async function retainDonors(candidates, references, exclude) {
-  // Donor references in sealed metadata and recovery markers remain authoritative
-  // even when their referring release is also otherwise eligible for deletion.
+  // Completed CoW releases are independent of their historical clone donor.
+  // Recovery markers and managed receipts still need their restore donor.
   for (const item of candidates) {
     for (const name of [
       "release.json",
@@ -265,6 +265,7 @@ async function retainDonors(candidates, references, exclude) {
         if (!stat.isFile() || stat.isSymbolicLink())
           throw new Error(`Release metadata alias:${file}`);
         const value = await readJson(file);
+        if (name === "release.json" && value.dependencies) delete value.dependencies.donor;
         references(value, `release-reference:${item.id}/${name}`, item.id);
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
