@@ -44,7 +44,11 @@ async function fixture(t, mode = "full") {
   await fs.writeFile(path.join(repository, "native.txt"), "candidate");
   await git("add", ".");
   await git("commit", "-m", "candidate");
-  const intent = await prepareReleaseIntent({ repository, baseRevision: base, mode });
+  const intent = await prepareReleaseIntent({
+    repository,
+    baseRevision: base,
+    mode,
+  });
   await fs.writeFile(path.join(repository, INTENT_FILE), JSON.stringify(intent));
   await git("add", ".");
   await git("commit", "-m", "intent");
@@ -62,7 +66,12 @@ async function fixture(t, mode = "full") {
     releases,
     cacheRoot,
     candidate: { ...candidate, revision },
-    current: { id: "base", digest: manifestDigest(manifest), manifest, root: baseRoot },
+    current: {
+      id: "base",
+      digest: manifestDigest(manifest),
+      manifest,
+      root: baseRoot,
+    },
     protectedPaths: [repository, bareRepository, releases],
     minFreeBytes: 0,
     git,
@@ -101,6 +110,8 @@ test("exact full intent clones clean isolated source, builds, launches then retu
     stage: async (args) => {
       events.push("build");
       assert.notEqual(args.source, f.repository);
+      await fs.writeFile(path.join(args.fixture, "tmp", "temporary-cache"), "rebuildable");
+      await fs.writeFile(path.join(args.fixture, "build.log"), "x".repeat(128 * 1024));
       return fakeStage(args);
     },
     validateLaunch: async ({ root }) => {
@@ -109,6 +120,16 @@ test("exact full intent clones clean isolated source, builds, launches then retu
     },
   });
   assert.deepEqual(events, ["build", "launch"]);
+  assert.equal(
+    (await fs.readdir(f.cacheRoot)).filter((name) => name.startsWith("full-build-")).length,
+    0,
+  );
+  const summary = JSON.parse(
+    await fs.readFile(path.join(f.cacheRoot, "last-full-stage.json"), "utf8"),
+  );
+  assert.equal(summary.validated, true);
+  assert.equal(summary.buildLogTail.length, 64 * 1024);
+  assert.deepEqual(summary.selection, selected);
   await verifyRelease(f.releases, selected.id, selected.digest);
   await verifyRelease(f.releases, f.current.id, f.current.digest);
   const again = await stageFullRelease({
@@ -122,6 +143,10 @@ test("exact full intent clones clean isolated source, builds, launches then retu
   });
   assert.deepEqual(again, selected);
   assert.equal(events.at(-1), "revalidate");
+  assert.equal(
+    (await fs.readdir(f.cacheRoot)).filter((name) => name.startsWith("full-build-")).length,
+    0,
+  );
   assert.equal(await f.git("status", "--porcelain"), "");
 });
 test("wrong intent, disk reserve and protected overlap never call build", async (t) => {
@@ -133,14 +158,21 @@ test("wrong intent, disk reserve and protected overlap never call build", async 
   };
   await assert.rejects(stageFullRelease({ ...f, stage, availableBytes: 0 }), /disk reserve/);
   await assert.rejects(
-    stageFullRelease({ ...f, stage, cacheRoot: path.join(f.repository, "cache") }),
+    stageFullRelease({
+      ...f,
+      stage,
+      cacheRoot: path.join(f.repository, "cache"),
+    }),
     /overlaps/,
   );
   await assert.rejects(
     stageFullRelease({
       ...f,
       stage,
-      candidate: { ...f.candidate, revision: f.current.manifest.sourceRevision },
+      candidate: {
+        ...f.candidate,
+        revision: f.current.manifest.sourceRevision,
+      },
     }),
     /exact verified/,
   );
@@ -159,6 +191,10 @@ test("launch failure returns no selection and leaves sealed diagnostic artifacts
     /launch failed/,
   );
   assert.equal((await fs.readdir(f.releases)).length, 2);
+  assert.equal(
+    (await fs.readdir(f.cacheRoot)).filter((name) => name.startsWith("full-build-")).length,
+    1,
+  );
   await verifyRelease(f.releases, f.current.id, f.current.digest);
 });
 test("launch mutation of sealed native bytes fails final verification", async (t) => {
@@ -172,4 +208,44 @@ test("launch mutation of sealed native bytes fails final verification", async (t
     /contents changed/,
   );
   await verifyRelease(f.releases, f.current.id, f.current.digest);
+});
+
+test("changed private source is retained instead of being silently removed", async (t) => {
+  const f = await fixture(t);
+  let source;
+  await assert.rejects(
+    stageFullRelease({
+      ...f,
+      stage: async (args) => {
+        source = args.source;
+        return fakeStage(args);
+      },
+      validateLaunch: async () => fs.writeFile(path.join(source, "unexpected.txt"), "preserve"),
+    }),
+    /source changed/,
+  );
+  assert.equal(await fs.readFile(path.join(source, "unexpected.txt"), "utf8"), "preserve");
+});
+
+test("replacement fixture symlink cannot redirect successful cleanup", async (t) => {
+  const f = await fixture(t);
+  let fixtureRoot;
+  const foreign = path.join(f.root, "foreign");
+  await privateDirectory(foreign);
+  await fs.writeFile(path.join(foreign, "keep.txt"), "keep");
+  await assert.rejects(
+    stageFullRelease({
+      ...f,
+      stage: async (args) => {
+        fixtureRoot = args.fixture;
+        return fakeStage(args);
+      },
+      validateLaunch: async () => {
+        await fs.rename(fixtureRoot, `${fixtureRoot}-retained`);
+        await fs.symlink(foreign, fixtureRoot, "dir");
+      },
+    }),
+    /identity changed/,
+  );
+  assert.equal(await fs.readFile(path.join(foreign, "keep.txt"), "utf8"), "keep");
 });

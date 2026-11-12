@@ -344,3 +344,15 @@ user-data snapshots. There is no automatic force-clear or automatic data rollbac
 The implementation has focused filesystem and real child-process coverage; the
 desktop handoff is also exercised in the existing isolated Electron startup suite.
 A successful test does not install this controller or prove a live cutover.
+
+## Completed full-build scratch retention
+
+A successfully staged and launch-validated full release now removes its private
+`full-build-*` source checkout, temporary home and cache. The sealed release is
+kept separately. `last-full-stage.json` retains one completion receipt and at
+most 64 KiB of build-log tail, rather than a second full build tree.
+
+Failed, timed-out, identity-changed or unexpectedly modified fixtures remain
+for diagnosis. This does not sweep old `.lab` folders, arbitrary worktrees or
+user sessions; those require separate review. Dependencies still use verified
+copy-on-write reuse when inputs match. This cleanup does not restart the app.

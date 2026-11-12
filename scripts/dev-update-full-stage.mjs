@@ -72,7 +72,10 @@ async function stageInWorker({
     child.once("exit", (code, signal) => resolve({ code, signal }));
   });
   await log.close();
-  await atomicJson(path.join(fixture, "build-worker.json"), { pid: child.pid, source });
+  await atomicJson(path.join(fixture, "build-worker.json"), {
+    pid: child.pid,
+    source,
+  });
   let timer;
   try {
     const exit = await Promise.race([
@@ -124,6 +127,57 @@ async function reserveDisk(cacheRoot, manifest, root, minFreeBytes, availableByt
     throw new Error("Insufficient full build disk reserve");
 }
 
+// A successful stage no longer needs its private source, npm cache or test home.
+// Failed/timed-out stages are intentionally retained for diagnosis; this is not
+// a sweep of arbitrary lab directories or other agents' working trees.
+async function cleanupSuccessfulFixture({ cacheRoot, fixture, identity, receipt }) {
+  const current = await fs.lstat(fixture);
+  if (
+    (await fs.realpath(cacheRoot)) !== cacheRoot ||
+    path.dirname(fixture) !== cacheRoot ||
+    (await fs.realpath(fixture)) !== fixture ||
+    !current.isDirectory() ||
+    current.dev !== identity.dev ||
+    current.ino !== identity.ino
+  )
+    throw new Error("Full stage fixture identity changed; retained for review");
+  const source = path.join(fixture, "source");
+  if (
+    await git(
+      source,
+      ["status", "--porcelain", "--untracked-files=all"],
+      validationEnvironment(fixture),
+    )
+  )
+    throw new Error("Full stage source changed; retained for review");
+  let buildLogTail = "";
+  try {
+    const file = await fs.open(path.join(fixture, "build.log"), "r");
+    try {
+      const { size } = await file.stat();
+      const buffer = Buffer.alloc(Math.min(size, 64 * 1024));
+      const { bytesRead } = await file.read(
+        buffer,
+        0,
+        buffer.length,
+        Math.max(0, size - buffer.length),
+      );
+      buildLogTail = buffer.subarray(0, bytesRead).toString("utf8");
+    } finally {
+      await file.close();
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  // Keep one bounded diagnostic summary, not another complete build tree.
+  await atomicJson(path.join(cacheRoot, "last-full-stage.json"), {
+    ...receipt,
+    completedAt: new Date().toISOString(),
+    buildLogTail,
+  });
+  await fs.rm(fixture, { recursive: true });
+}
+
 async function isolatedPorts() {
   let daemonPort = await port(),
     metroPort = await port();
@@ -147,7 +201,11 @@ export async function stageFullRelease({
   stage = stageInWorker,
   validateLaunch,
 }) {
-  const protectedRoots = await prepareDirectories({ cacheRoot, releases, protectedPaths });
+  const protectedRoots = await prepareDirectories({
+    cacheRoot,
+    releases,
+    protectedPaths,
+  });
   const unlock = await acquireLock(cacheRoot, "full-stage.lock");
   let retainLock = false;
   try {
@@ -167,6 +225,7 @@ export async function stageFullRelease({
     const id = `full-${checked.revision.slice(0, 16)}-${current.digest.slice(0, 12)}`;
     const fixture = path.join(cacheRoot, `full-build-${id}-${crypto.randomUUID()}`);
     await privateDirectory(fixture);
+    const fixtureIdentity = await fs.lstat(fixture);
     for (const name of ["os-home", "tmp"]) await privateDirectory(path.join(fixture, name));
     const env = validationEnvironment(fixture);
     env.GIT_TERMINAL_PROMPT = "0";
@@ -227,11 +286,20 @@ export async function stageFullRelease({
     const validate =
       validateLaunch ??
       ((input) =>
-        validateCandidateLaunch({ ...input, workRoot: path.join(cacheRoot, "validation") }));
+        validateCandidateLaunch({
+          ...input,
+          workRoot: path.join(cacheRoot, "validation"),
+        }));
     await validate({ root: sealed.root, candidate: checked, current });
     await verifyRelease(releases, selected.id, selected.digest);
     await verifyRelease(releases, current.id, current.digest);
-    await atomicJson(path.join(fixture, "provenance.json"), { ...receipt, validated: true });
+    const completedReceipt = { ...receipt, validated: true };
+    await cleanupSuccessfulFixture({
+      cacheRoot,
+      fixture,
+      identity: fixtureIdentity,
+      receipt: completedReceipt,
+    });
     return { id: selected.id, digest: selected.digest };
   } catch (error) {
     retainLock = error.retainedWorker === true;
