@@ -1,5 +1,5 @@
 import { previousAssistantSegments } from "./conversation-model";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
@@ -19,6 +19,10 @@ export function AssistantConversationHistory({ serverId }: { serverId: string })
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const toggle = useCallback(() => setExpanded((value) => !value), []);
+  useEffect(
+    () => setExpanded(false),
+    [serverId, conversation?.logicalId, conversation?.activeAgentId],
+  );
   const previous = useMemo(() => previousAssistantSegments(conversation), [conversation]);
   if (!previous.length) return null;
   return (

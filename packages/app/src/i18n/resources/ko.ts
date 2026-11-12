@@ -21,6 +21,13 @@ export const ko: TranslationResources = {
     connected: "연결됨",
     muted: "마이크 음소거",
     end: "통화 종료",
+    callConnected: "통화 연결 · 대화 보기",
+    legacyTranscript: "기존 통화 기록",
+    callTranscriptHint:
+      "선택한 통화에서 실제로 주고받은 발화만 표시합니다. 자동 전사에는 오류가 있을 수 있습니다.",
+    legacyTranscriptHint:
+      "통화별 식별자가 없던 이전 형식의 발화 기록입니다. 통화 경계를 추정하지 않고 보관된 내용을 표시합니다.",
+    transcriptIncomplete: "통화 기록을 완전히 불러오지 못했습니다. 다시 시도해 주세요.",
     transcript: "대화 기록",
     transcriptHint:
       "불러온 통화 기록의 실제 발화 자막입니다. 자동 전사에는 오류가 있을 수 있습니다.",

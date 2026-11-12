@@ -923,6 +923,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             return <TurnSummaryLine item={item} onExpandedChange={setTurnExpanded} />;
 
           case "notification":
+            if (item.voiceCallId)
+              return (
+                <CallTranscript
+                  serverId={resolvedServerId}
+                  agentId={agentId}
+                  callId={item.voiceCallId}
+                />
+              );
             return <Notification level={item.level} message={item.message} />;
 
           case "todo_list":
@@ -1170,7 +1178,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         <ToolCallSheetProvider>
           <AssistantSelectionCopySurface style={stylesheet.container}>
             {[...effectiveStreamItems, ...(effectiveStreamHead ?? [])].some(
-              (item) => "source" in item && item.source === "native_voice",
+              (item) => "source" in item && item.source === "native_voice" && !item.voiceCallId,
             ) ? (
               <CallTranscript serverId={resolvedServerId} agentId={agentId} />
             ) : null}

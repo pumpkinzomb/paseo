@@ -18,6 +18,13 @@ export const en = {
     connected: "Connected",
     muted: "Microphone muted",
     end: "End call",
+    callConnected: "Voice call · View conversation",
+    legacyTranscript: "Legacy call transcripts",
+    callTranscriptHint:
+      "Only spoken turns from the selected call. Automatic transcription may contain errors.",
+    legacyTranscriptHint:
+      "Older transcripts without call identifiers. These are preserved without guessing call boundaries.",
+    transcriptIncomplete: "Could not load the complete call transcript. Please try again.",
     transcript: "Conversation record",
     transcriptHint:
       "Spoken transcript from loaded call history. Automatic transcription may contain errors.",

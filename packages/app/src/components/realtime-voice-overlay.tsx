@@ -4,7 +4,6 @@ import { StyleSheet } from "react-native-unistyles";
 import { Mic, MicOff, PhoneOff } from "lucide-react-native";
 import { useVoice, useVoiceTelemetry } from "@/contexts/voice-context";
 import { Button } from "@/components/ui/button";
-import { CallTranscript } from "@/voice/call-transcript";
 import { VolumeMeter } from "./volume-meter";
 
 interface RealtimeVoiceOverlayProps {
@@ -47,9 +46,6 @@ export function RealtimeVoiceOverlay({
           orientation="horizontal"
         />
       </View>
-      {voice.activeServerId && voice.activeAgentId ? (
-        <CallTranscript serverId={voice.activeServerId} agentId={voice.activeAgentId} />
-      ) : null}
       <Button
         variant="ghost"
         leftIcon={isMuted ? MicOff : Mic}

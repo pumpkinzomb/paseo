@@ -94,6 +94,7 @@ export type UserMessageImageAttachment = AttachmentMetadata;
 
 export interface UserMessageItem {
   source?: string;
+  voiceCallId?: string;
   /** Attribution added by presentation for received agent messages. */
   sender?: AgentMessage["sender"];
   kind: "user_message";
@@ -110,6 +111,7 @@ export interface UserMessageItem {
 
 export interface UserMessageInput {
   source?: string;
+  voiceCallId?: string;
   id?: string;
   clientMessageId?: string;
   messageId?: string;
@@ -129,6 +131,7 @@ export function createUserMessage(input: UserMessageInput): UserMessageItem {
   return {
     kind: "user_message",
     ...(input.source ? { source: input.source } : {}),
+    ...(input.voiceCallId ? { voiceCallId: input.voiceCallId } : {}),
     id,
     ...(input.clientMessageId ? { clientMessageId: input.clientMessageId } : {}),
     ...(input.messageId ? { messageId: input.messageId } : {}),
@@ -236,6 +239,21 @@ interface UserMessageProductionResult {
   matched: boolean;
 }
 
+function sameUserMessage(existing: UserMessageItem, merged: UserMessageItem): boolean {
+  return (
+    existing.id === merged.id &&
+    existing.source === merged.source &&
+    existing.voiceCallId === merged.voiceCallId &&
+    existing.clientMessageId === merged.clientMessageId &&
+    existing.messageId === merged.messageId &&
+    existing.timelineCursor === merged.timelineCursor &&
+    existing.text === merged.text &&
+    existing.timestamp === merged.timestamp &&
+    existing.images === merged.images &&
+    existing.attachments === merged.attachments
+  );
+}
+
 function produceUserMessage(
   items: StreamItem[],
   incoming: UserMessageItem,
@@ -266,21 +284,12 @@ function produceUserMessage(
   const merged = createUserMessage({
     ...presentation,
     source: incoming.source ?? existing.source,
+    voiceCallId: incoming.voiceCallId ?? existing.voiceCallId,
     clientMessageId: incoming.clientMessageId ?? existing.clientMessageId,
     messageId: incoming.messageId ?? existing.messageId,
     timelineCursor: incoming.timelineCursor ?? existing.timelineCursor,
   });
-  if (
-    existing.id === merged.id &&
-    existing.source === merged.source &&
-    existing.clientMessageId === merged.clientMessageId &&
-    existing.messageId === merged.messageId &&
-    existing.timelineCursor === merged.timelineCursor &&
-    existing.text === merged.text &&
-    existing.timestamp === merged.timestamp &&
-    existing.images === merged.images &&
-    existing.attachments === merged.attachments
-  ) {
+  if (sameUserMessage(existing, merged)) {
     return { items, index, message: existing, matched: true };
   }
   const next = [...items];
@@ -714,6 +723,7 @@ export function replaceWithCanonicalStream(
 
 export interface AssistantMessageItem {
   source?: string;
+  voiceCallId?: string;
   kind: "assistant_message";
   id: string;
   messageId?: string;
@@ -794,6 +804,7 @@ export function isAgentToolCallItem(item: StreamItem): item is AgentToolCallItem
 type NotificationLevel = "info" | "warning" | "error";
 
 export interface NotificationItem {
+  voiceCallId?: string;
   kind: "notification";
   sourceType: "error" | "notification";
   id: string;
@@ -1541,10 +1552,13 @@ function reduceTimelineEvent(
   timelineCursor?: TimelinePosition,
 ): StreamItem[] {
   const item = event.item;
-  if ((item.type === "user_message" || item.type === "assistant_message") && item.source) {
+  if (
+    (item.type === "user_message" || item.type === "assistant_message") &&
+    (item.source || item.voiceCallId)
+  ) {
     const projected = reduceTimelineEvent(
       state,
-      { ...event, item: { ...item, source: undefined } },
+      { ...event, item: { ...item, source: undefined, voiceCallId: undefined } },
       timestamp,
       source,
       reservedItemIds,
@@ -1553,7 +1567,7 @@ function reduceTimelineEvent(
     return projected.map((row) =>
       (row.kind === "user_message" || row.kind === "assistant_message") &&
       (item.messageId ? row.messageId === item.messageId : !state.includes(row))
-        ? Object.assign({}, row, { source: item.source })
+        ? Object.assign({}, row, { source: item.source, voiceCallId: item.voiceCallId })
         : row,
     );
   }
@@ -1614,6 +1628,7 @@ function reduceTimelineEvent(
         timestamp,
         level: item.level,
         message: item.message,
+        ...(item.voiceCallId ? { voiceCallId: item.voiceCallId } : {}),
       };
       return appendNotification(state, notification);
     }
@@ -1928,6 +1943,8 @@ function applyCanonicalUserMessageEvent(params: {
       event.item.messageId ??
       createUniqueTimelineId([...tail, ...head], "user", normalized.chunk.trim(), timestamp),
     messageId: event.item.messageId,
+    source: event.item.source,
+    voiceCallId: event.item.voiceCallId,
     clientMessageId: event.item.clientMessageId,
     turnId: event.turnId,
     timelineCursor,
