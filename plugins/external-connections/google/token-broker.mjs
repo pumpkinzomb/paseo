@@ -81,6 +81,7 @@ export function createGoogleTokenBroker({ clientId, store, request = fetch, cloc
   }
 
   return {
+    clearCache() { cached.clear(); },
     acceptAuthorization({ account, exchange, requestedScopes }) {
       return serialized(account, async () => {
         if (!(exchange instanceof URLSearchParams) || exchange.get('client_id') !== clientId || exchange.get('grant_type') !== 'authorization_code' || !validScopes(requestedScopes)) throw new GoogleTokenError('INVALID_AUTHORIZATION_EXCHANGE');

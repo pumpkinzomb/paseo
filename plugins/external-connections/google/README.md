@@ -99,3 +99,22 @@ but currently requires separate Workspace Developer Preview access and OAuth.
 
 https://developers.google.com/identity/protocols/oauth2/native-app
 https://developers.google.com/workspace/guides/configure-mcp-servers
+
+## UI-compatible host facade
+
+`createGoogleConnectionService()` in `host-service.mjs` implements the UI service
+contract: `status()`, `begin(scopes)`, `cancel()`, `forget()`. With missing client
+configuration or secure storage it returns setup-required and never starts auth.
+The same host object additionally owns `openAgent({agentId,provider})`,
+`closeAgent(agentId)` and `dispose()`; these methods and launch headers must NOT
+be registered as client RPCs. Agent launch scopes derive from stored grants,
+not agent arguments. Reconsent revokes prior agent grants before exchanging
+credentials. Grant-generation checks reject stale launch work. Disposal clears
+access-token memory and closes the bridge; local forgetting deletes stored
+refresh credentials and revokes live agent capabilities.
+
+The UI implementation is maintained separately. Instantiate this facade only
+from trusted host provisioning with a packaged helper-backed store and approved
+OAuth configuration. Do not turn arbitrary environment/user-supplied helper
+paths into trusted executables. Missing production provisioning is a real setup
+requirement, not a reason to mock connected status in the UI.
