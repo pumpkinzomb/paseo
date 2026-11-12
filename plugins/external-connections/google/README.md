@@ -148,3 +148,36 @@ renewal at provider lifecycle boundaries, SDK-level MCP interoperability tests,
 and real user-approved authentication. Nothing here creates a Cloud project,
 enables an API or obtains an OAuth client ID. Supply a user-owned approved
 Desktop OAuth client configuration; no other product's credentials are reused.
+
+## OAuth exchange/refresh and callback (latest implementation)
+
+`token-broker.mjs` now implements fixed Google token-endpoint exchange and refresh
+with injectable transport, timeout, redirect rejection, validated token shape,
+separate read scopes, per-account serialized requests, cached short-lived access
+tokens, and refresh-token rotation persisted before returning access. Refresh
+`invalid_grant` clears local credentials and notifies the host to revoke bridge
+sessions. `forget()` is LOCAL disconnection, not Google-side grant revocation.
+`status()` reports credentials-stored, not verified connectivity. All credentials
+stay in the injected host store/cache. Optional desktop client secret is supplied
+by `getClientSecret()` from host storage; it is not a registry preference.
+
+`oauth-callback.mjs` explicitly starts a five-minute loopback listener for a user
+login action, then produces its Google authorization URL after binding the port.
+GET/Host/Origin/path/state checks precede exchange. Invalid/forged callbacks do
+not consume the valid attempt. Responses never reflect codes/tokens/errors.
+Completion, denial, timeout or cancellation close the listener. Cancellation
+returns false once the valid callback has entered token exchange, which itself
+must be bounded (the supplied broker uses 15 seconds). UI must not falsely claim
+that an already-exchanging login was cancelled; disconnect after completion.
+
+Tests use real temporary loopback sockets, fake Google token/API responses and
+memory stores or fake Keychain processes. They do NOT establish SDK, Google or
+Keychain production interoperability. No actual user auth or Cloud configuration
+was performed. Known local gws client config and gcloud ADC locations were absent
+when checked; no credential contents were read.
+
+Still required before app enablement: trusted signed helper packaging + actual
+Keychain behavior checks, authenticated app RPC/UI wiring, client configuration,
+agent grant/account mapping, bridge expiry renewal, SDK interoperability testing,
+and user-approved Google login. Docs/Sheets writes and Gmail sending remain
+unsupported rather than silently acquiring broader scopes.
