@@ -156,3 +156,37 @@ incremental authorization is not supported. Desktop client secrets cannot be
 considered confidential client authentication; PKCE remains essential. Keep
 such configuration out of chats/logs regardless. Expired testing grants require
 re-login; do not silently broaden permissions or claim a refresh succeeded.
+
+## Builtin host entry point and public configuration
+
+`host-provisioning.mjs` exports `createHostGoogleService({ stateDirectory,
+runtimeMode })`. Both arguments must come from daemon-owned builtin context;
+external plugins/renderer/RPC must never supply them. Load this module directly
+from the daemon-selected plugin directory, not a bundled synthetic module URL,
+so the fixed Swift source location remains valid.
+
+The factory supplies the complete UI service including
+`configure({clientId,clientSecret?})`. Before first setup, status performs no
+compilation or Keychain read. Explicit configure asynchronously prepares the
+appropriate store. On subsequent host restarts, an existing public config is
+treated as prior setup consent and triggers one lazy async preparation. The
+packaged path never falls back to development on signature failure. Compiler
+and codesign calls are asynchronous; no app-main-thread blocking compile.
+
+`provisioned-service.mjs` keeps only clientId in an owned private fixed file and
+puts optional client secret solely in Keychain with clientId association.
+Configuration changes revoke old account credentials before replacing config.
+The UI must transmit configure input through authenticated management RPC and
+must not log it. A configured client is not a connected Google account.
+
+Host-issued provider capabilities now use a fixed 24-hour maximum lifetime,
+with immediate revocation on close/reconsent/forget/dispose. The pure broker's
+short default is only for isolated use/tests. This avoids five-minute failure
+in ordinary long-running provider sessions without unlimited sliding leases.
+After the hard cap a provider must reopen/reconnect; automatic lifecycle renewal
+is still a separate integration concern. Google access-token refresh is
+independent and does not extend local bearer authority.
+
+MCP SDK 1.29.0 StreamableHTTPClientTransport completed real local connect,
+listTools and callTool against the bridge with injected fake Google responses.
+No extra dependencies were installed or copied for that smoke test.

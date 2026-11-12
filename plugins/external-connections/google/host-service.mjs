@@ -14,7 +14,7 @@ export function createGoogleConnectionService({ clientId, store, getClientSecret
   const reason = !clientId ? 'oauth-client-missing' : !store ? 'secure-store-unavailable' : null;
   const broker = reason ? null : createGoogleTokenBroker({ clientId, store, getClientSecret, request, onInvalidated: () => bridge.revokeAll() });
   // A bridge wrapper exposes no credentials through status/begin RPC.
-  const rawBridge = reason ? null : createBridge({ request, getAccessToken: ({ scope }) => broker.getAccessToken({ account, scope }) });
+  const rawBridge = reason ? null : createBridge({ request, sessionTtlMs: 86400000, getAccessToken: ({ scope }) => broker.getAccessToken({ account, scope }) });
   const agents = new Set();
   const bridge = {
     revokeAll() { grantRevision++; for (const agent of agents) rawBridge.revokeAgent(agent); agents.clear(); },

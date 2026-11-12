@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+const run = promisify(execFile);
 import { createGoogleKeychainStore } from './keychain-store.mjs';
 
 function fail() { throw new Error('DEV_SECURE_STORE_UNAVAILABLE'); }
@@ -13,7 +15,7 @@ function ownedPrivateDirectory(directory) {
 }
 
 /** Trusted desktop development startup only. Never register this function as RPC. */
-export function provisionGoogleDevelopmentStore({ directory }) {
+export async function provisionGoogleDevelopmentStore({ directory }) {
   if (process.platform !== 'darwin' || !path.isAbsolute(directory)) fail();
   // Source is fixed to this trusted checkout module; no source/helper path input.
   const source = fileURLToPath(new URL('./keychain-helper.swift', import.meta.url));
@@ -24,9 +26,9 @@ export function provisionGoogleDevelopmentStore({ directory }) {
   const output = path.join(directory, 'paseo-google-keychain');
   try {
     const built = path.join(temporary, 'paseo-google-keychain');
-    execFileSync('/usr/bin/swiftc', ['-O', source, '-o', built], { stdio: 'pipe', timeout: 120000 });
-    execFileSync('/usr/bin/codesign', ['--force', '--sign', '-', '--identifier', 'sh.paseo.google-keychain.development', built], { stdio: 'pipe', timeout: 10000 });
-    execFileSync('/usr/bin/codesign', ['--verify', '--strict', built], { stdio: 'pipe', timeout: 10000 });
+    await run('/usr/bin/swiftc', ['-O', source, '-o', built], { timeout: 120000, maxBuffer: 65536 });
+    await run('/usr/bin/codesign', ['--force', '--sign', '-', '--identifier', 'sh.paseo.google-keychain.development', built], { timeout: 10000, maxBuffer: 65536 });
+    await run('/usr/bin/codesign', ['--verify', '--strict', built], { timeout: 10000, maxBuffer: 65536 });
     fs.chmodSync(built, 0o500);
     const expected = hash(built);
     // Never trust a persistent manifest: expected digest comes from this build.

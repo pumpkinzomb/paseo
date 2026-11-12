@@ -33,8 +33,8 @@ async function readBody(request) {
 }
 
 /** Explicit start only. Caller owns consent, granted scopes and Google tokens. */
-export function createGoogleMcpBridge({ getAccessToken, request = fetch, clock = Date.now }) {
-  const sessions = new GoogleBridgeSessions({ clock });
+export function createGoogleMcpBridge({ getAccessToken, request = fetch, clock = Date.now, sessionTtlMs = 300000 }) {
+  const sessions = new GoogleBridgeSessions({ clock, sessionTtlMs });
   let server = null;
   let port = null;
   let starting = false;

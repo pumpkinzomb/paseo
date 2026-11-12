@@ -18,7 +18,10 @@ function digest(value) {
 export class GoogleBridgeSessions {
   #sessions = new Map();
   #clock;
-  constructor({ clock = Date.now } = {}) {
+  #ttl;
+  constructor({ clock = Date.now, sessionTtlMs = 300000 } = {}) {
+    if (!Number.isInteger(sessionTtlMs) || sessionTtlMs < 1000 || sessionTtlMs > 86400000) throw new GoogleBridgeError('INVALID_SESSION_TTL');
+    this.#ttl = sessionTtlMs;
     this.#clock = clock;
   }
 
@@ -36,7 +39,7 @@ export class GoogleBridgeSessions {
     if (!Array.isArray(scopes) || !scopes.length || scopes.some(scope => !allowed.has(scope))) throw new GoogleBridgeError('INVALID_SCOPES');
     if (this.#sessions.size >= 128) throw new GoogleBridgeError('SESSION_LIMIT');
     const token = randomBytes(32).toString('base64url');
-    const expiresAt = this.#clock() + 300000;
+    const expiresAt = this.#clock() + this.#ttl;
     this.#sessions.set(digest(token), { agentId, provider, scopes: new Set(scopes), expiresAt });
     return { authorization: `Bearer ${token}`, expiresAt };
   }

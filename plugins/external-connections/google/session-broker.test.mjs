@@ -43,3 +43,13 @@ test('native loopback MCP POST passes request boundary', () => assert.equal(vali
 for (const invalid of [{ origin: 'https://evil.example' }, { origin: 'null' }, { host: 'evil.example:49152' }, { host: 'localhost:49152' }, { method: 'GET' }, { path: '/mcp?token=secret' }, { port: 0 }]) {
   test(`request boundary rejects ${JSON.stringify(invalid)}`, () => assert.throws(() => validateGoogleBridgeRequest({ ...nativeRequest, ...invalid }), { code: 'INVALID_BRIDGE_REQUEST' }));
 }
+
+test('host lifecycle lease survives normal long work but retains hard 24-hour cap', () => {
+  let now = 0;
+  const sessions = new GoogleBridgeSessions({ clock: () => now, sessionTtlMs: 86400000 });
+  const session = sessions.openSession({ agentId: 'one', provider: 'codex', scopes: [googleReadScopes.docs] });
+  now = 90 * 60000;
+  assert.deepEqual(sessions.authorize(session.authorization, googleReadScopes.docs), { agentId: 'one', provider: 'codex' });
+  now = 86400000;
+  assert.throws(() => sessions.authorize(session.authorization, googleReadScopes.docs), { code: 'SESSION_UNAUTHORIZED' });
+});
