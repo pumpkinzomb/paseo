@@ -95,6 +95,28 @@ and resumes animation after restoring the window. Its artifacts include the scre
 and animation measurements. Full-page content correctness remains separately tracked in
 [the full-page repetition bug](https://github.com/getpaseo/paseo/issues/3196).
 
+## Browser canvas background regression
+
+From the independent development lab, run:
+
+```bash
+node packages/desktop/capture-harness/check-browser-canvas.mjs
+```
+
+This fixture uses the production resident-webview lifecycle with an injected
+profile host, a loopback-only test page server, and an isolated Electron profile.
+It never shows a window or uses live browser cookies. Pixel assertions cover the
+visible host and the guest screenshot: an unstyled page has an opaque white
+canvas, an explicit site background stays unchanged, `color-scheme: dark` retains
+Chromium's dark canvas, and the default returns after navigation and reattachment.
+Evidence is saved under `.lab/browser-canvas-test/`.
+
+The webview uses `webpreferences="transparent=no"` so Chromium paints its native
+canvas according to the document color scheme. White CSS on the embedder alone
+is insufficient: it would leave guest screenshots transparent and break dark
+pages that rely on `color-scheme` rather than an explicit background. No CSS is
+injected into remote pages, and the surrounding Paseo chrome keeps its app theme.
+
 ## Mechanism
 
 Electron captures copy from the guest web contents' compositor surface. A resident

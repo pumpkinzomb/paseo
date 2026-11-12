@@ -4,6 +4,8 @@ import {
   clearResidentBrowserWebviewsForTests,
   ensureResidentBrowserWebview,
   presentBrowserWebview,
+  prepareBrowserWebview,
+  resizeResidentBrowserWebview,
   releaseResidentBrowserWebview,
 } from "./resident-webviews";
 
@@ -17,6 +19,44 @@ afterEach(() => {
 });
 
 describe("browser panel DOM containment", () => {
+  it("keeps a white browser canvas through attachment, presentation, resize and parking", () => {
+    const fresh = document.createElement("webview");
+    prepareBrowserWebview(fresh, {
+      browserId: "fresh-canvas",
+      workspaceId: "workspace",
+      initialUrl: "https://example.com",
+      profileHost,
+    });
+    expect(fresh.style.backgroundColor).toBe("rgb(255, 255, 255)");
+    expect(fresh.getAttribute("webpreferences")).toBe("transparent=no");
+
+    const clip = document.createElement("div");
+    const anchor = document.createElement("div");
+    anchor.style.background = "#181818";
+    clip.appendChild(anchor);
+    document.body.appendChild(clip);
+    const webview = ensureResidentBrowserWebview({
+      browserId: "canvas",
+      workspaceId: "workspace",
+      url: "https://example.com",
+      profileHost,
+    })!;
+    expect(webview.style.backgroundColor).toBe("rgb(255, 255, 255)");
+    presentBrowserWebview("canvas", webview, anchor, clip, {
+      mode: "responsive",
+    });
+    expect(webview.style.backgroundColor).toBe("rgb(255, 255, 255)");
+    resizeResidentBrowserWebview({
+      browserId: "canvas",
+      width: 640,
+      height: 480,
+    });
+    expect(webview.style.backgroundColor).toBe("rgb(255, 255, 255)");
+    releaseResidentBrowserWebview("canvas", webview);
+    expect(webview.style.backgroundColor).toBe("rgb(255, 255, 255)");
+    expect(anchor.style.backgroundColor).toBe("rgb(24, 24, 24)");
+  });
+
   it("uses panel layout without reading screen coordinates or moving the guest on updates", () => {
     const clip = document.createElement("div");
     const anchor = document.createElement("div");
@@ -30,7 +70,9 @@ describe("browser panel DOM containment", () => {
       url: "https://example.com",
       profileHost,
     })!;
-    presentBrowserWebview("inline", webview, anchor, clip, { mode: "responsive" });
+    presentBrowserWebview("inline", webview, anchor, clip, {
+      mode: "responsive",
+    });
     expect(webview.parentElement).toBe(anchor);
     expect(webview.style.position).toBe("");
     expect(webview.style.width).toBe("100%");
@@ -41,7 +83,9 @@ describe("browser panel DOM containment", () => {
     clip.style.display = "none";
     clip.style.display = "flex";
     clip.style.marginLeft = "180px";
-    presentBrowserWebview("inline", webview, anchor, clip, { mode: "responsive" });
+    presentBrowserWebview("inline", webview, anchor, clip, {
+      mode: "responsive",
+    });
     expect(reattach).not.toHaveBeenCalled();
     expect(rect).not.toHaveBeenCalled();
     expect(clipRect).not.toHaveBeenCalled();

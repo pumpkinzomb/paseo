@@ -6,6 +6,8 @@ import {
 import type { BrowserViewport } from "@/desktop/browser/store";
 import { WEB_SURFACE_PLANE } from "@/lib/overlay-root";
 
+// Browser canvas fallback, not app chrome. Site-painted backgrounds remain on top.
+const BROWSER_CANVAS_BACKGROUND = "#ffffff";
 const RESIDENT_BROWSER_HOST_ID = "paseo-browser-resident-webviews";
 const BROWSER_ID_ATTRIBUTE = "data-paseo-browser-id";
 const BROWSER_SURFACE_ATTRIBUTE = "data-paseo-browser-surface";
@@ -179,7 +181,7 @@ function applyResidentWebviewStyle(webview: HTMLElement, browserId: string | nul
   webview.style.width = `${dimensions.width}px`;
   webview.style.height = `${dimensions.height}px`;
   webview.style.border = "0";
-  webview.style.background = "transparent";
+  webview.style.background = BROWSER_CANVAS_BACKGROUND;
   webview.style.position = "absolute";
   webview.style.left = "0";
   webview.style.top = "0";
@@ -218,7 +220,7 @@ function applyBrowserWebviewDimensions(
 ): void {
   webview.style.display = "flex";
   webview.style.border = "0";
-  webview.style.background = "transparent";
+  webview.style.background = BROWSER_CANVAS_BACKGROUND;
   webview.style.flex = "0 0 auto";
   webview.style.width = `${Math.max(1, Math.round(dimensions.width))}px`;
   webview.style.height = `${Math.max(1, Math.round(dimensions.height))}px`;
@@ -263,7 +265,7 @@ export function presentBrowserWebview(
   clearResidentWebviewParkingStyle(webview);
   webview.style.display = "flex";
   webview.style.border = "0";
-  webview.style.background = "transparent";
+  webview.style.background = BROWSER_CANVAS_BACKGROUND;
   webview.style.flex = viewport.mode === "responsive" ? "1 1 auto" : "0 0 auto";
   webview.style.minWidth = "0";
   webview.style.minHeight = "0";
@@ -281,8 +283,11 @@ export function prepareBrowserWebview(
   },
 ): void {
   const browser = getBrowserBridge(input.profileHost);
+  webview.style.background = BROWSER_CANVAS_BACKGROUND;
   webview.setAttribute(BROWSER_ID_ATTRIBUTE, input.browserId);
   webview.setAttribute("partition", browser.profilePartition);
+  // Let Chromium paint its own canvas, including site-declared color-scheme.
+  webview.setAttribute("webpreferences", "transparent=no");
   webview.setAttribute("allowpopups", "true");
   webview.setAttribute("spellcheck", "false");
   webview.setAttribute("autosize", "on");
