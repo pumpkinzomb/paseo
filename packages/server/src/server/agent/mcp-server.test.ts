@@ -1552,6 +1552,7 @@ describe("create_agent MCP tool", () => {
     workspace: { kind: "create" as const, source: { kind: "directory" as const, path } },
   });
   const subagentCurrentWorkspace = (cwd?: string) => ({
+    taskKind: "read-only" as const,
     relationship: { kind: "subagent" as const },
     workspace: { kind: "current" as const, ...(cwd ? { cwd } : {}) },
   });
@@ -4341,6 +4342,7 @@ describe("send_agent_prompt MCP tool", () => {
         relationship: { kind: "subagent" },
         workspace: { kind: "current" },
         title: "Busy Child",
+        taskKind: "read-only",
         provider: "codex/gpt-5.4",
         initialPrompt: "Run a long command",
       });

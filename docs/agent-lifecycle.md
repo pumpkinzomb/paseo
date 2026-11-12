@@ -515,3 +515,26 @@ the managed worktree root, never an arbitrary shell command; there is no install
 build fallback. Ordinary repositories and history-only reads do not prepare anything.
 Concurrent requests for one canonical worktree share the preparation promise. Aliased
 paths/receipts, unavailable helpers/donors, and incomplete restoration block execution.
+
+## Development subtask isolation
+
+Agent-scoped `create_agent` in a Git project defaults to a fresh managed branch and
+worktree. `workspaceId` selects the source, not a shared editing destination.
+Canonical calls and legacy subagent placement follow the same rule. Each task
+branches from the source checkout's committed HEAD; uncommitted parent edits are
+not copied. The existing managed workspace lifecycle preserves project-relative
+cwd, runs dependency setup/reuse, and registers dependencies for reclamation.
+Provisioning failure does not silently fall back to the shared checkout.
+
+Set `taskKind: "read-only"` for research/review without edits. This is workflow
+guidance, not an OS write sandbox. Non-Git conversations remain shared unless
+explicit development was requested, which requires a Git project. Top-level and
+resumed sessions are not moved. A cwd-locked caller cannot create an out-of-scope
+worktree through this path.
+
+Children report committed changes and test evidence. The lead reviews the diff
+and integrates approved changes with the existing Git merge workflow. Completion
+of a turn does not authorize merging or deleting work. After integration and
+usage checks, managed maintenance directly reclaims eligible reproducible
+artifacts; no Trash round-trip is needed for that managed cleanup. Source,
+conversation data, unmerged work and live artifacts are preserved.
