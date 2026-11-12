@@ -43,3 +43,41 @@ https://developers.google.com/workspace/guides/configure-mcp-servers
 
 Native OAuth reference:
 https://developers.google.com/identity/protocols/oauth2/native-app
+
+## OAuth foundation implemented
+
+`oauth.mjs` creates a five-minute, one-use PKCE S256 authorization attempt.
+It accepts only selected read scopes and an explicit 127.0.0.1 HTTP callback
+port. Callback origin/path/state and duplicate parameters are validated;
+consent denial, cancellation and expiration invalidate the attempt. The caller
+receives token-exchange form data, not a token. No browser/socket/HTTP request
+is started by this module. Keep returned form data host-private and never log it.
+
+## Confirmed integration boundary
+
+Both existing provider adapters already propagate runtime MCP HTTP headers:
+Codex uses `http_headers`; Claude uses `headers`. A separate host-owned hook can
+request `bridge.openSession({ agentId, provider })` and inject its `{ url,
+headers }` only into the provider launch. The generic saved connection registry
+must remain credential-free. Existing provider approval gates must remain active.
+The bridge bearer is unrelated to Google OAuth tokens and must expire/revoke
+on agent close; request authorization must check it before processing MCP JSON.
+Bridge sessions need a server-side agent/granted-scope binding, not bearer
+claims trusted from arbitrary clients. Limit loopback listeners and reject
+unexpected Origin/Host and redirects; never expose them via LAN or relay.
+
+No existing Keychain binding was found in server/desktop source. Do not use
+`security ... -w <token>` because process arguments can disclose tokens. Use
+an OS-native credential helper with bounded stdin/stdout and fixed service/account
+names, or an audited native binding. Helper selection, packaging and OS access
+behavior remain unimplemented; fail closed until this exists. Do not claim that
+refresh tokens are securely stored yet. Do not write them to plugin preferences.
+
+The callback listener may only finish a pending OAuth attempt; it is not a
+credential-bearing MCP endpoint. It must bind its chosen port before producing
+the OAuth URL, close on completion/timeout, and never treat a callback as an
+agent tool request. Token exchange must verify actual granted scopes, store
+refresh material only after successful secure storage, and expose only account
+metadata/status to the UI. No broad Drive access or write scope is implied by
+these three read scopes. Requested document writes and spreadsheet writes need
+separate opt-in capabilities and tools; mail sending is not in this design.
