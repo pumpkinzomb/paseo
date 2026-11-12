@@ -12,7 +12,7 @@ export interface CallTranscriptTurn {
 export async function fetchCallTranscript(
   fetchPage: FetchTimeline,
   agentId: string,
-  callId: string,
+  callId?: string,
 ): Promise<CallTranscriptTurn[]> {
   let cursor: NonNullable<Parameters<FetchTimeline>[1]>["cursor"];
   const pages: Page[] = [];
@@ -28,7 +28,7 @@ export async function fetchCallTranscript(
     const found = page.entries.some(
       ({ item }) => item.type === "notification" && item.voiceCallId === callId,
     );
-    if (found || !page.hasOlder) {
+    if ((callId && found) || !page.hasOlder) {
       return collectTurns(pages, callId);
     }
     if (!page.startCursor) throw new Error("Incomplete call transcript");
@@ -40,14 +40,14 @@ export async function fetchCallTranscript(
   throw new Error("Call transcript paging limit reached");
 }
 
-function collectTurns(pages: Page[], callId: string): CallTranscriptTurn[] {
+function collectTurns(pages: Page[], callId?: string): CallTranscriptTurn[] {
   const turns = new Map<string, CallTranscriptTurn>();
   for (const { entries } of pages)
     for (const { item, seqStart, seqEnd } of entries) {
       if (
         (item.type !== "user_message" && item.type !== "assistant_message") ||
         item.source !== "native_voice" ||
-        item.voiceCallId !== callId ||
+        (callId ? item.voiceCallId !== callId : Boolean(item.voiceCallId)) ||
         !item.text.trim()
       )
         continue;

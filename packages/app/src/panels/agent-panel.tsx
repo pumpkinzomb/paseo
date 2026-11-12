@@ -1253,7 +1253,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       style={animatedStaticStyles.content}
       onStartShouldSetResponderCapture={handleAttentionInteraction}
     >
-      <AssistantConversationHistory serverId={serverId} />
+      <AssistantConversationHistory serverId={serverId} agentId={agentId} />
       {showsComposer ? null : <SheetAgentFacts serverId={serverId} agentId={agentId} />}
       <RenderProfile id={`AgentStreamSection:${agentId}`}>
         <AgentStreamSection

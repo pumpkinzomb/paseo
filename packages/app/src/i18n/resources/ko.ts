@@ -3,6 +3,7 @@ import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
   voiceCall: {
+    previousRecords: "이전 기록",
     nativeReferenceHint:
       "동일 이름의 공식 API 참고 음성입니다. Codex 통화 미리듣기가 아니며 실제 통화의 음색·말투는 다를 수 있어요. 마이크나 API 키를 사용하지 않습니다.",
     referenceTone: "API 참고: {{tone}}",

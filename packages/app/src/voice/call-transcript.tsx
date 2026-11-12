@@ -52,7 +52,7 @@ export function CallTranscript({
   );
 }
 
-function CallTranscriptBody({
+export function CallTranscriptBody({
   serverId,
   agentId,
   callId,
@@ -72,10 +72,10 @@ function CallTranscriptBody({
   const query = useFetchQuery({
     queryKey: ["voiceCallTranscript", serverId, agentId, callId],
     queryFn: async () => {
-      if (!client || !callId) throw new Error("Call transcript unavailable");
+      if (!client) throw new Error("Call transcript unavailable");
       return fetchCallTranscript(client.fetchAgentTimeline.bind(client), agentId, callId);
     },
-    enabled: Boolean(callId && client),
+    enabled: Boolean(client),
     dataShape: "value",
     retry: false,
     staleTimeMs: 0,
@@ -99,7 +99,7 @@ function CallTranscriptBody({
       <Text style={styles.hint}>
         {t(callId ? "voiceCall.callTranscriptHint" : "voiceCall.legacyTranscriptHint")}
       </Text>
-      {callId && (!client || query.error) ? (
+      {(!client || query.error) ? (
         <View>
           <Text style={styles.hint}>{t("voiceCall.transcriptIncomplete")}</Text>
           {client ? (
@@ -109,10 +109,10 @@ function CallTranscriptBody({
           ) : null}
         </View>
       ) : null}
-      {callId && client && !query.data && !query.error ? (
+      {client && !query.data && !query.error ? (
         <Text style={styles.hint}>{t("defaultAssistant.historyLoading")}</Text>
       ) : null}
-      {rows.length === 0 && (!callId || query.data) ? (
+      {rows.length === 0 && query.data ? (
         <Text style={styles.hint}>{t("voiceCall.empty")}</Text>
       ) : null}
       {rows.map((row) => (

@@ -1,5 +1,6 @@
 export const en = {
   voiceCall: {
+    previousRecords: "Previous records",
     nativeReferenceHint:
       "Same-name official API reference only, not a Codex call preview. Tone and delivery can differ in realtime calls. No microphone or API key is used.",
     referenceTone: "API reference: {{tone}}",

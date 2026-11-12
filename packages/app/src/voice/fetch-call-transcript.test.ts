@@ -63,3 +63,13 @@ it("stops repeated cursors rather than looping", async () => {
     "Repeated",
   );
 });
+
+it("loads all legacy voice pages without inventing calls or including worker reports", async () => {
+  const old = (text: string) => ({ ...speech(text), item: { ...speech(text).item, voiceCallId: undefined } });
+  const fetch = fetcher(
+    { entries: [old("later"), speech("new call"), speech("SOURCE INTEGRATION COMPLETE", "", "text")], hasOlder: true, startCursor: { epoch: "e", seq: 5 } },
+    { entries: [{ seqStart: 1, seqEnd: 1, item: { type: "notification", message: "ordinary notice" } }, old("earlier")], hasOlder: false },
+  );
+  expect((await fetchCallTranscript(fetch, "agent")).map((r) => r.text)).toEqual(["earlier", "later"]);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});

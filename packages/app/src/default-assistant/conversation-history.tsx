@@ -1,3 +1,7 @@
+import { History } from "lucide-react-native";
+import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
+import { CallTranscriptBody } from "@/voice/call-transcript";
+import { useSessionStore } from "@/stores/session-store";
 import { previousAssistantSegments } from "./conversation-model";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
@@ -14,25 +18,34 @@ import { useAssistantConversationContext } from "./conversation";
 type Segment = AssistantConversation["segments"][number];
 type Cursor = NonNullable<Parameters<DaemonClient["fetchAgentTimeline"]>[1]>["cursor"];
 
-export function AssistantConversationHistory({ serverId }: { serverId: string }) {
+export function AssistantConversationHistory({ serverId, agentId }: { serverId: string; agentId: string }) {
   const conversation = useAssistantConversationContext();
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const toggle = useCallback(() => setExpanded((value) => !value), []);
   useEffect(
     () => setExpanded(false),
-    [serverId, conversation?.logicalId, conversation?.activeAgentId],
+    [serverId, agentId, conversation?.logicalId, conversation?.activeAgentId],
   );
   const previous = useMemo(() => previousAssistantSegments(conversation), [conversation]);
-  if (!previous.length) return null;
+  const tail = useSessionStore((s) => s.sessions[serverId]?.agentStreamTail.get(agentId));
+  const head = useSessionStore((s) => s.sessions[serverId]?.agentStreamHead.get(agentId));
+  const hasLegacy = [...(tail ?? []), ...(head ?? [])].some(
+    (item) => "source" in item && item.source === "native_voice" && !item.voiceCallId,
+  );
+  const close = useCallback(() => setExpanded(false), []);
+  const header = useMemo(() => ({ title: t("voiceCall.previousRecords") }), [t]);
+  if (!previous.length && !hasLegacy) return null;
   return (
     <View style={styles.container} testID="assistant-conversation-history">
-      <Button variant="ghost" onPress={toggle} testID="assistant-history-toggle">
-        {t("defaultAssistant.historyTitle", { count: previous.length })}
+      <Button variant="ghost" leftIcon={History} onPress={toggle} testID="assistant-history-toggle">
+        {t("voiceCall.previousRecords")}
       </Button>
       {expanded ? (
-        <ScrollView style={styles.history} nestedScrollEnabled>
-          <Text style={styles.notice}>{t("defaultAssistant.historyNotice")}</Text>
+        <AdaptiveModalSheet visible header={header} onClose={close}>
+        <ScrollView nestedScrollEnabled>
+          {hasLegacy ? <CallTranscriptBody serverId={serverId} agentId={agentId} /> : null}
+          {previous.length ? <Text style={styles.notice}>{t("defaultAssistant.historyNotice")}</Text> : null}
           {previous.map((segment, index) => (
             <HistorySegment
               key={segment.agentId}
@@ -42,6 +55,7 @@ export function AssistantConversationHistory({ serverId }: { serverId: string })
             />
           ))}
         </ScrollView>
+        </AdaptiveModalSheet>
       ) : null}
     </View>
   );
@@ -157,7 +171,6 @@ function HistoryPage({
 
 const styles = StyleSheet.create((theme) => ({
   container: { borderBottomWidth: 1, borderColor: theme.colors.border },
-  history: { maxHeight: 300 },
   segment: { padding: theme.spacing[3], borderTopWidth: 1, borderColor: theme.colors.border },
   heading: {
     color: theme.colors.foreground,

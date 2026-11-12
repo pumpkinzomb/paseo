@@ -1177,11 +1177,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       >
         <ToolCallSheetProvider>
           <AssistantSelectionCopySurface style={stylesheet.container}>
-            {[...effectiveStreamItems, ...(effectiveStreamHead ?? [])].some(
-              (item) => "source" in item && item.source === "native_voice" && !item.voiceCallId,
-            ) ? (
-              <CallTranscript serverId={resolvedServerId} agentId={agentId} />
-            ) : null}
             <MessageOuterSpacingProvider disableOuterSpacing>
               <ToolCallExpansionContext.Provider value={toolCallExpansion}>
                 {streamRenderStrategy.render({
