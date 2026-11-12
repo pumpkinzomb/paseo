@@ -75,6 +75,7 @@ export interface WorkspaceDirectoryDeps {
   };
   workspaceRegistry: {
     listActive(): Promise<PersistedWorkspaceRecord[]>;
+    listAll(): Promise<PersistedWorkspaceRecord[]>;
     get(id: string): Promise<PersistedWorkspaceRecord | null>;
   };
   listAgentPayloads(workspaceIds?: Iterable<string>): Promise<AgentSnapshotPayload[]>;
@@ -581,7 +582,7 @@ export class WorkspaceDirectory {
     includeBackground?: boolean;
   }): Promise<WorkspaceProjectDescriptor[]> {
     const [persistedWorkspaces, persistedProjects] = await Promise.all([
-      this.deps.workspaceRegistry.listActive(),
+      this.deps.workspaceRegistry.listAll(),
       this.deps.projectRegistry.list(),
     ]);
     // A project whose only workspaces are hidden reads as empty to that caller.
@@ -593,9 +594,29 @@ export class WorkspaceDirectory {
         )
         .map((workspace) => workspace.projectId),
     );
+    // Deleted children must not resurrect their incidental project as a blank
+    // lead-agent creation row. Keep fresh projects and any root-workspace history.
+    // This is only a sidebar projection; project metadata and source files remain.
+    const deletedChildOnlyProjects = new Set<string>();
+    const projectsWithRetainedHistory = new Set<string>();
+    for (const workspace of persistedWorkspaces) {
+      if (
+        workspace.parentWorkspaceId &&
+        workspace.archivedAt &&
+        typeof workspace.metadata?.sessionRecordsDeletedAt === "string"
+      ) {
+        deletedChildOnlyProjects.add(workspace.projectId);
+      } else {
+        projectsWithRetainedHistory.add(workspace.projectId);
+      }
+    }
     return persistedProjects
       .filter(
-        (project) => !project.archivedAt && !projectIdsWithActiveWorkspaces.has(project.projectId),
+        (project) =>
+          !project.archivedAt &&
+          !projectIdsWithActiveWorkspaces.has(project.projectId) &&
+          (!deletedChildOnlyProjects.has(project.projectId) ||
+            projectsWithRetainedHistory.has(project.projectId)),
       )
       .map((project) => ({
         projectId: project.projectId,

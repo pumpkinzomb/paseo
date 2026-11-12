@@ -82,6 +82,7 @@ class WorkspaceStatus {
     logger: createTestLogger(),
     projectRegistry: { list: async () => [this.project] },
     workspaceRegistry: {
+      listAll: async () => this.workspaces,
       listActive: async () => this.workspaces.filter((w) => !w.archivedAt),
       get: async (id) => this.workspaces.find((w) => w.workspaceId === id) ?? null,
     },
@@ -626,6 +627,7 @@ describe("WorkspaceDirectory empty projects", () => {
       logger: createTestLogger(),
       projectRegistry: { list: async () => input.projects },
       workspaceRegistry: {
+        listAll: async () => input.workspaces,
         listActive: async () => input.workspaces.filter((w) => !w.archivedAt),
         get: async (id) => input.workspaces.find((w) => w.workspaceId === id) ?? null,
       },
@@ -691,6 +693,44 @@ describe("WorkspaceDirectory empty projects", () => {
         projectRootPath: "/workspace/empty",
         projectKind: "non_git",
       },
+    ]);
+  });
+
+  test("does not resurrect a deleted-child-only project as a blank lead-agent row", async () => {
+    const deletedChild = (id: string, projectId: string): PersistedWorkspaceRecord => ({
+      workspaceId: id,
+      projectId,
+      parentWorkspaceId: "retained-parent",
+      cwd: `/workspace/${projectId}`,
+      kind: "directory",
+      displayName: id,
+      createdAt: NOW,
+      updatedAt: NOW,
+      archivedAt: NOW,
+      metadata: { sessionRecordsDeletedAt: NOW },
+    });
+    const directory = makeDirectory({
+      projects: ["deleted-children", "fresh", "root-history", "archived-child", "mixed"].map(
+        (projectId) => project({ projectId })
+      ),
+      workspaces: [
+        deletedChild("child-1", "deleted-children"),
+        deletedChild("child-2", "deleted-children"),
+        {
+          ...deletedChild("root", "root-history"),
+          parentWorkspaceId: undefined,
+        },
+        { ...deletedChild("archived", "archived-child"), metadata: {} },
+        deletedChild("deleted-mixed", "mixed"),
+        { ...deletedChild("retained-mixed", "mixed"), metadata: {} },
+      ],
+    });
+
+    expect((await directory.listEmptyProjects()).map((p) => p.projectId)).toEqual([
+      "fresh",
+      "root-history",
+      "archived-child",
+      "mixed",
     ]);
   });
 
@@ -788,6 +828,7 @@ test("Git observation targets exclude archived records without hydrating app des
     projectRegistry: { list: async () => [project("active"), project("archived", NOW)] },
     workspaceRegistry: {
       get: async () => null,
+      listAll: async () => [],
       listActive: async () => [
         workspace("observed", "active"),
         workspace("hidden-project", "archived"),
