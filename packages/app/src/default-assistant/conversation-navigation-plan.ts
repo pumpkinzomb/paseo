@@ -20,3 +20,13 @@ export function planAssistantConversationNavigation(conversation: AssistantConve
       .map((segment) => segment.agentId),
   };
 }
+
+/** Provider segments are one logical conversation, not independently visible tabs. */
+export function hasAssistantConversationAliasTab(
+  conversation: AssistantConversation,
+  agentIds: readonly string[],
+): boolean {
+  const plan = planAssistantConversationNavigation(conversation);
+  const aliases = new Set(plan.hiddenAgentIds);
+  return agentIds.some((agentId) => aliases.has(agentId));
+}

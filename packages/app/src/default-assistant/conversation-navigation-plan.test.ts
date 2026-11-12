@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { planAssistantConversationNavigation } from "./conversation-navigation-plan";
+import {
+  hasAssistantConversationAliasTab,
+  planAssistantConversationNavigation,
+} from "./conversation-navigation-plan";
 const segment = (agentId: string, workspaceId = "workspace-a") => ({
   agentId,
   workspaceId,
@@ -37,5 +40,36 @@ describe("logical assistant navigation", () => {
         segments: [segment("root")],
       }),
     ).toThrow("active segment");
+  });
+});
+
+describe("restored assistant segment tabs", () => {
+  const conversation = {
+    logicalId: "logical-a",
+    activeAgentId: "codex-b",
+    activeWorkspaceId: "workspace-a",
+    segments: [segment("claude-a"), segment("codex-b")],
+  };
+  it("consolidates two provider tabs for one logical conversation", () => {
+    expect(hasAssistantConversationAliasTab(conversation, ["claude-a", "codex-b"])).toBe(true);
+  });
+  it("also repairs a restored active-segment-only tab", () => {
+    expect(hasAssistantConversationAliasTab(conversation, ["codex-b"])).toBe(true);
+  });
+  it("is idempotent after keeping the anchor", () => {
+    expect(hasAssistantConversationAliasTab(conversation, ["claude-a"])).toBe(false);
+  });
+  it("does not consolidate unrelated or migrated tabs", () => {
+    expect(hasAssistantConversationAliasTab(conversation, ["other"])).toBe(false);
+    expect(
+      hasAssistantConversationAliasTab(
+        {
+          ...conversation,
+          activeWorkspaceId: "workspace-b",
+          segments: [segment("claude-a"), segment("codex-b", "workspace-b")],
+        },
+        ["codex-b"],
+      ),
+    ).toBe(false);
   });
 });

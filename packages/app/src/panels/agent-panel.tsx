@@ -1,3 +1,4 @@
+import { useConsolidateAssistantConversationTabs } from "@/default-assistant/conversation-tabs";
 import { resolveAgentPanelInteraction } from "./agent-panel-interaction";
 import { AssistantConversationHistory } from "@/default-assistant/conversation-history";
 import {
@@ -361,6 +362,7 @@ export function AgentConversationPanel() {
     target.kind === "agent" ? target.agentId : undefined,
   );
   const conversation = logical.data ?? null;
+  useConsolidateAssistantConversationTabs(serverId, conversation, workspaceId);
   useViewedAssistantSegment(serverId, pane.tabId, conversation?.activeAgentId);
   const resolvedTarget = useMemo(
     () =>
