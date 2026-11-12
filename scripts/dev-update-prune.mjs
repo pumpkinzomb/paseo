@@ -9,27 +9,44 @@ import {
   acquireLock,
   privateDirectory,
   readJson,
+  manifestDigest,
+  verifyRelease,
 } from "./dev-update-store.mjs";
 const exec = promisify(execFile);
 async function processInventory() {
-  const ps = await exec("ps", ["-axo", "pid=,command="], { maxBuffer: 16 * 1024 ** 2 });
-  // Command lines alone miss processes launched with a release as their cwd.
-  const open = await exec("lsof", ["-a", "-u", String(process.getuid()), "-d", "cwd,txt", "-Fn"], {
-    maxBuffer: 32 * 1024 ** 2,
+  const ps = await exec("ps", ["-axo", "pid=,command="], {
+    maxBuffer: 16 * 1024 ** 2,
   });
+  // Command lines alone miss processes launched with a release as their cwd.
+  const open = await exec(
+    "lsof",
+    ["-a", "-u", String(process.getuid()), "-d", "cwd,txt", "-Fn"],
+    {
+      maxBuffer: 32 * 1024 ** 2,
+    },
+  );
   return `${ps.stdout}\n${open.stdout}`;
 }
 
 async function canonical(root) {
   if (path.resolve(root) !== root || (await fs.realpath(root)) !== root)
-    throw new Error("Prune roots must be canonical absolute paths, without symlinks");
+    throw new Error(
+      "Prune roots must be canonical absolute paths, without symlinks",
+    );
   return root;
 }
 async function jsonFiles(root, visit, relative = "") {
-  for (const entry of await fs.readdir(path.join(root, relative), { withFileTypes: true })) {
+  for (const entry of await fs.readdir(path.join(root, relative), {
+    withFileTypes: true,
+  })) {
     const name = path.join(relative, entry.name);
-    if (relative === "" && ["controller", "release-pruning"].includes(entry.name)) continue;
-    if (entry.isSymbolicLink()) throw new Error(`Metadata alias refused: ${name}`);
+    if (
+      relative === "" &&
+      ["controller", "release-pruning"].includes(entry.name)
+    )
+      continue;
+    if (entry.isSymbolicLink())
+      throw new Error(`Metadata alias refused: ${name}`);
     if (entry.isDirectory()) await jsonFiles(root, visit, name);
     else if (/\.(json|lock)$/.test(entry.name))
       await visit(name, await readJson(path.join(root, name)));
@@ -39,7 +56,8 @@ async function bytes(root) {
   const stat = await fs.lstat(root);
   if (!stat.isDirectory() || stat.isSymbolicLink()) return stat.size;
   let total = 0;
-  for (const entry of await fs.readdir(root)) total += await bytes(path.join(root, entry));
+  for (const entry of await fs.readdir(root))
+    total += await bytes(path.join(root, entry));
   return total;
 }
 const strings = (value) => {
@@ -71,7 +89,10 @@ export async function pruneReleases(
   function references(value, reason, omit) {
     for (const raw of strings(value))
       for (const item of candidates)
-        if (item.id !== omit && (raw === item.id || referencePath(raw, item.root)))
+        if (
+          item.id !== omit &&
+          (raw === item.id || referencePath(raw, item.root))
+        )
           if (!item.reasons.includes(reason)) item.reasons.push(reason);
   }
   const inspect = async (owned = false) => {
@@ -79,7 +100,8 @@ export async function pruneReleases(
     // Required state/config must exist and parse before planning any deletion.
     const state = await readJson(path.join(control, "state.json"));
     const config = await readJson(path.join(control, "config.json"));
-    if (config.releases !== releases) throw new Error("Configured releases root mismatch");
+    if (config.releases !== releases)
+      throw new Error("Configured releases root mismatch");
     if (state.transition) issues.push("selection transition in progress");
     await jsonFiles(control, async (name, value) => {
       references(value, `metadata:${name}`);
@@ -91,7 +113,8 @@ export async function pruneReleases(
       if (name.startsWith("managed-worktrees/") && value.root) {
         const receipt = path.join(value.root, ".managed-dependencies.json");
         const stat = await fs.lstat(receipt);
-        if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Managed receipt alias");
+        if (!stat.isFile() || stat.isSymbolicLink())
+          throw new Error("Managed receipt alias");
         references(await readJson(receipt), `managed-receipt:${value.root}`);
       }
       if (
@@ -134,7 +157,10 @@ export async function pruneReleases(
       )
         issues.push("runtime update process active");
       for (const item of candidates)
-        if (line.includes(item.root) && !item.reasons.includes("running-process"))
+        if (
+          line.includes(item.root) &&
+          !item.reasons.includes("running-process")
+        )
           item.reasons.push("running-process");
     }
     return issues;
@@ -177,9 +203,23 @@ export async function pruneReleases(
   if (!apply || blocked.length) return result;
   // Apply is deliberately offline. Selection lock excludes queue mutations;
   // reinspection before each removal catches newly started controller operations.
-  return applyPlan({ control, result, eligible, inspect, candidates, references });
+  return applyPlan({
+    control,
+    result,
+    eligible,
+    inspect,
+    candidates,
+    references,
+  });
 }
-async function applyPlan({ control, result, eligible, inspect, candidates, references }) {
+async function applyPlan({
+  control,
+  result,
+  eligible,
+  inspect,
+  candidates,
+  references,
+}) {
   const unlock = await acquireLock(control, "release-prune.lock");
   let selectionUnlock;
   try {
@@ -195,7 +235,9 @@ async function applyPlan({ control, result, eligible, inspect, candidates, refer
         await retainDonors(candidates, references, []);
         if (
           issues.length ||
-          item.reasons.some((reason) => reason !== "unreferenced-outside-retention")
+          item.reasons.some(
+            (reason) => reason !== "unreferenced-outside-retention",
+          )
         )
           throw new Error(`Prune evidence changed: ${issues.join(",")}`);
         await canonical(item.root);
@@ -207,6 +249,14 @@ async function applyPlan({ control, result, eligible, inspect, candidates, refer
           stat.ino !== item.identity.ino
         )
           throw new Error("Release identity changed");
+        const manifest = await ownedManifest(item.root, item.id);
+        if (!manifest || manifestDigest(manifest) !== item.manifestDigest)
+          throw new Error("Release manifest changed after planning");
+        await verifyRelease(
+          path.dirname(item.root),
+          item.id,
+          item.manifestDigest,
+        );
         item.state = "deleting";
         await atomicJson(journal, result);
         await fs.rm(item.root, { recursive: true });
@@ -226,6 +276,31 @@ async function applyPlan({ control, result, eligible, inspect, candidates, refer
   }
 }
 
+async function ownedManifest(root, id) {
+  const file = path.join(root, "release.json");
+  let stat;
+  try {
+    stat = await fs.lstat(file);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1)
+    throw new Error(`Release manifest alias refused: ${id}`);
+  const value = await readJson(file);
+  if (
+    value.schemaVersion !== 1 ||
+    value.id !== id ||
+    value.stateCompatibility !== "preserve" ||
+    !/^[a-f0-9]{40}$/.test(value.sourceRevision) ||
+    !value.entries ||
+    typeof value.entries !== "object" ||
+    Array.isArray(value.entries)
+  )
+    throw new Error(`Invalid release manifest: ${id}`);
+  return value;
+}
+
 async function releaseDirectories(releases) {
   const entries = await fs.readdir(releases, { withFileTypes: true });
   const candidates = [],
@@ -238,12 +313,18 @@ async function releaseDirectories(releases) {
     assertId(entry.name);
     const root = path.join(releases, entry.name);
     await canonical(root);
+    const manifest = await ownedManifest(root, entry.name);
+    if (!manifest) {
+      skipped.push({ id: entry.name, reason: "missing-release-manifest" });
+      continue;
+    }
     const stat = await fs.lstat(root);
     candidates.push({
       id: entry.name,
       root,
       reasons: [],
       identity: { dev: stat.dev, ino: stat.ino },
+      manifestDigest: manifestDigest(manifest),
       modified: stat.mtimeMs,
     });
   }
@@ -281,7 +362,8 @@ async function discoveryMetadata(cacheRoot, references, issues) {
     if (!/\.(json|lock)$/.test(entry)) continue;
     const file = path.join(cacheRoot, entry);
     const stat = await fs.lstat(file);
-    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Discovery metadata alias");
+    if (!stat.isFile() || stat.isSymbolicLink())
+      throw new Error("Discovery metadata alias");
     references(await readJson(file), `discovery-cache:${entry}`);
     if (entry.endsWith(".lock")) issues.push(`discovery operation:${entry}`);
   }

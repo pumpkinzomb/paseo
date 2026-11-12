@@ -70,7 +70,10 @@ worktree restore donors, release recovery markers, process command lines and
 open cwd/executable paths preserve their referenced releases. Unreadable metadata
 or unavailable process inspection fails closed. Leases, stage/update operations
 and ambiguous operation locks block the plan. Files and symlinks are never deletion
-targets. A completed release's `release.json` dependency donor and legacy
+targets. Directories without a release manifest are skipped; malformed or aliased
+manifests stop the plan. Apply rechecks the original manifest digest and sealed
+contents before removal, so an unrecognized or changed folder is never treated
+as disposable. A completed release's `release.json` dependency donor and legacy
 `base`/`hotfix.baselineRelease` fields are provenance;
 independent CoW copies do not need that donor to run or roll back. Restore markers
 and receipts still preserve donors needed to recover missing dependencies.
