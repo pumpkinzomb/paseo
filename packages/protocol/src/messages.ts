@@ -759,6 +759,7 @@ const ToolCallTimelineItemPayloadSchema: z.ZodType<ToolCallTimelineItem, unknown
 export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknown> = z.union([
   z.object({
     type: z.literal("user_message"),
+    voiceCallId: z.string().optional(),
     source: z.string().optional(),
     text: z.string(),
     messageId: z.string().optional(),
@@ -766,6 +767,7 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
   }),
   z.object({
     type: z.literal("assistant_message"),
+    voiceCallId: z.string().optional(),
     source: z.string().optional(),
     text: z.string(),
     messageId: z.string().optional(),
@@ -793,6 +795,7 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
   }),
   z.object({
     type: z.literal("notification"),
+    voiceCallId: z.string().optional(),
     level: z.enum(["info", "warning", "error"]),
     message: z.string(),
   }),

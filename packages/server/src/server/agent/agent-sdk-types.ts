@@ -402,18 +402,26 @@ export interface PluginTimelineItem {
 export type AgentTimelineItem =
   | {
       type: "user_message";
+      voiceCallId?: string;
       source?: string;
       text: string;
       messageId?: string;
       clientMessageId?: string;
     }
-  | { type: "assistant_message"; source?: string; text: string; messageId?: string }
+  | {
+      type: "assistant_message";
+      voiceCallId?: string;
+      source?: string;
+      text: string;
+      messageId?: string;
+    }
   | { type: "reasoning"; text: string }
   | ToolCallTimelineItem
   | { type: "todo"; items: AgentTaskItem[] }
   | { type: "error"; message: string }
   | {
       type: "notification";
+      voiceCallId?: string;
       level: "info" | "warning" | "error";
       message: string;
     }

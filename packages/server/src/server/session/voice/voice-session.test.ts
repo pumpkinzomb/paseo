@@ -74,6 +74,7 @@ function createFakeHost(): FakeVoiceHost {
     loadAgent: async (agentId) =>
       ({ id: agentId, config: { systemPrompt: undefined } }) as unknown as ManagedAgent,
     reloadAgentSession: async (agentId) => ({ id: agentId }) as unknown as ManagedAgent,
+    recordNativeCall: vi.fn().mockResolvedValue(undefined),
     recordNativeTranscript: vi.fn().mockResolvedValue(undefined),
     sendSpokenInput: async (agentId, text) => {
       spokenInput.push({ agentId, text });
@@ -482,6 +483,12 @@ test("native final transcripts are recorded in order before stop acknowledges wi
   expect(recorded).toEqual(["user:same words", "user:same words", "assistant:reply"]);
   const ids = vi.mocked(host.recordNativeTranscript).mock.calls.map((call) => call[3]);
   expect(new Set(ids).size).toBe(3);
+  expect(host.recordNativeCall).toHaveBeenCalledOnce();
+  const callId = vi.mocked(host.recordNativeCall).mock.calls[0][1];
+  expect(
+    vi.mocked(host.recordNativeTranscript).mock.calls.every((call) => call[4] === callId),
+  ).toBe(true);
+
   expect(host.spokenInput).toEqual([]);
   await voiceSession.handleSetVoiceMode(false, undefined, "again");
   expect(stop).toHaveBeenCalledOnce();
@@ -527,6 +534,7 @@ test("native received transcripts finish saving to the original agent after sour
     VOICE_AGENT_ID,
     "user",
     "retained",
+    expect.any(String),
     expect.any(String),
   );
   expect(host.spokenInput).toEqual([]);
@@ -615,4 +623,43 @@ test("returns an explicit unsupported native choice failure to the calling clien
       error: "Codex realtime V3 voice is unavailable: coral",
     },
   });
+});
+
+test("records the call marker before startup transcripts and rotates call IDs", async () => {
+  const { host, voiceSession } = createVoiceSession();
+  const order: string[] = [];
+  const stop = vi.fn().mockResolvedValue(undefined);
+  host.recordNativeCall = vi.fn(async (_agent, callId, startedAt) => {
+    expect(Number.isNaN(Date.parse(startedAt))).toBe(false);
+    order.push("call:" + callId);
+  });
+  host.recordNativeTranscript = vi.fn(async (_agent, _role, _text, _id, callId) => {
+    order.push("text:" + callId);
+  });
+  host.loadAgent = vi.fn().mockResolvedValue({
+    id: VOICE_AGENT_ID,
+    config: {},
+    session: {
+      startNativeVoice: async (
+        _offer: string,
+        callback: (event: { type: "transcript"; role: "user"; text: string }) => void,
+      ) => {
+        callback({ type: "transcript", role: "user", text: "early" });
+        return { answerSdp: "answer", stop };
+      },
+    },
+  });
+  for (let i = 0; i < 2; i++) {
+    await voiceSession.handleNativeVoiceOffer({
+      type: "voice.native.start.request",
+      requestId: "offer" + i,
+      agentId: VOICE_AGENT_ID,
+      offerSdp: "offer",
+    });
+    await voiceSession.handleSetVoiceMode(false, undefined, "stop" + i);
+  }
+  const ids = vi.mocked(host.recordNativeCall).mock.calls.map((call) => call[1]);
+  expect(new Set(ids).size).toBe(2);
+  expect(order).toEqual(ids.flatMap((id) => ["call:" + id, "text:" + id]));
+  await voiceSession.cleanup();
 });

@@ -15,7 +15,8 @@ import { foldFeatureValues } from "./option-controls.js";
 
 const NativeVoiceTranscriptSchema = z.object({
   messageId: z.string().uuid(),
-  role: z.enum(["user", "assistant"]),
+  role: z.enum(["user", "assistant", "call"]),
+  voiceCallId: z.string().optional(),
   text: z.string(),
   timestamp: z.string().datetime(),
 });

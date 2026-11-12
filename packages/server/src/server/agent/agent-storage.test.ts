@@ -155,6 +155,32 @@ describe("AgentStorage", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  test("persists call boundaries and call IDs while retaining legacy transcripts", async () => {
+    const legacy = {
+      messageId: "11111111-1111-4111-8111-111111111111",
+      role: "user" as const,
+      text: "old",
+      timestamp: "2026-11-11T00:00:00.000Z",
+    };
+    const callId = "22222222-2222-4222-8222-222222222222";
+    const marker = {
+      ...legacy,
+      messageId: callId,
+      role: "call" as const,
+      text: "",
+      voiceCallId: callId,
+    };
+    const turn = {
+      ...legacy,
+      messageId: "33333333-3333-4333-8333-333333333333",
+      voiceCallId: callId,
+    };
+    for (const entry of [legacy, marker, turn])
+      await storage.appendNativeVoiceTranscript("a", entry);
+    const reloaded = new AgentStorage(storagePath, logger);
+    expect(await reloaded.readNativeVoiceTranscripts("a")).toEqual([legacy, marker, turn]);
+  });
+
   test("native voice history is atomic, ID-deduplicated and removed with its agent", async () => {
     const agentId = "voice-test";
     const first = {

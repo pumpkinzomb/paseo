@@ -3182,17 +3182,40 @@ export class AgentManager {
     return true;
   }
 
+  async appendNativeVoiceCall(
+    agentId: string,
+    voiceCallId: string,
+    startedAt: string,
+  ): Promise<void> {
+    this.requireAgent(agentId);
+    await this.requireRegistry().appendNativeVoiceTranscript(agentId, {
+      role: "call",
+      text: "",
+      messageId: voiceCallId,
+      voiceCallId,
+      timestamp: startedAt,
+    });
+    await this.appendTimelineItem(agentId, {
+      type: "notification",
+      level: "info",
+      message: "Voice call connected",
+      voiceCallId,
+    });
+  }
+
   async appendNativeVoiceTranscript(
     agentId: string,
     role: "user" | "assistant",
     text: string,
     messageId: string,
+    voiceCallId?: string,
   ): Promise<void> {
     this.requireAgent(agentId);
     await this.requireRegistry().appendNativeVoiceTranscript(agentId, {
       role,
       text,
       messageId,
+      voiceCallId,
       timestamp: new Date().toISOString(),
     });
     await this.appendTimelineItem(agentId, {
@@ -3200,6 +3223,7 @@ export class AgentManager {
       source: "native_voice",
       text,
       messageId,
+      voiceCallId,
     });
   }
 
@@ -3212,6 +3236,28 @@ export class AgentManager {
       events.flatMap(({ item }) => ("messageId" in item && item.messageId ? [item.messageId] : [])),
     );
     for (const entry of saved) {
+      if (entry.role === "call") {
+        if (
+          !events.some(
+            ({ item }) =>
+              item.type === "notification" &&
+              item.voiceCallId === (entry.voiceCallId ?? entry.messageId),
+          )
+        ) {
+          events.push({
+            type: "timeline",
+            provider: agent.provider,
+            timestamp: entry.timestamp,
+            item: {
+              type: "notification",
+              level: "info",
+              message: "Voice call connected",
+              voiceCallId: entry.voiceCallId ?? entry.messageId,
+            },
+          });
+        }
+        continue;
+      }
       if (ids.has(entry.messageId)) {
         for (let index = 0; index < events.length; index++) {
           const event = events[index];
@@ -3220,7 +3266,10 @@ export class AgentManager {
             (item.type === "user_message" || item.type === "assistant_message") &&
             item.messageId === entry.messageId
           )
-            events[index] = { ...event, item: { ...item, source: "native_voice" } };
+            events[index] = {
+              ...event,
+              item: { ...item, source: "native_voice", voiceCallId: entry.voiceCallId },
+            };
         }
         continue;
       }
@@ -3234,6 +3283,7 @@ export class AgentManager {
           source: "native_voice",
           text: entry.text,
           messageId: entry.messageId,
+          voiceCallId: entry.voiceCallId,
         },
       });
     }

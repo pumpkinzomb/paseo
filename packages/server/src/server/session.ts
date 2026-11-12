@@ -1361,8 +1361,16 @@ export class Session {
             }),
           reloadAgentSession: (agentId, overrides) =>
             this.agentManager.reloadAgentSession(agentId, overrides),
-          recordNativeTranscript: (agentId, role, text, messageId) =>
-            this.agentManager.appendNativeVoiceTranscript(agentId, role, text, messageId),
+          recordNativeCall: (agentId, voiceCallId, startedAt) =>
+            this.agentManager.appendNativeVoiceCall(agentId, voiceCallId, startedAt),
+          recordNativeTranscript: (agentId, role, text, messageId, voiceCallId) =>
+            this.agentManager.appendNativeVoiceTranscript(
+              agentId,
+              role,
+              text,
+              messageId,
+              voiceCallId,
+            ),
           sendSpokenInput: async (agentId, text) => {
             await this.handleSendAgentMessage(
               agentId,
