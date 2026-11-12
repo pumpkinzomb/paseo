@@ -2833,6 +2833,31 @@ test("listDraftControls reports the Fast selection a fresh Cursor draft opens wi
   ).resolves.toEqual({ controls, options: { fast: "false" } });
 });
 
+test("lead persona updates affect future sessions without changing active sessions or workers", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-persona-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const client = new TestAgentClient();
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+    leadPersona: "Persona A",
+  });
+  const config = { provider: "codex", cwd: workdir, systemPrompt: "Project context" };
+  const first = await manager.createAgent(config, undefined, {
+    labels: { "paseo.role": "assistant" },
+  });
+  expect(client.createdConfigs[0]?.systemPrompt).toContain("Persona A");
+  manager.setLeadPersona("Persona B");
+  expect(client.createdConfigs).toHaveLength(1);
+  expect(client.createdConfigs[0]?.systemPrompt).toContain("Persona A");
+  await manager.createAgent(config, undefined, { labels: { "paseo.role": "assistant" } });
+  expect(client.createdConfigs[1]?.systemPrompt).toContain("Persona B");
+  await manager.createAgent(config, undefined, {});
+  expect(client.createdConfigs[2]?.systemPrompt).toBe("Project context");
+  expect((await storage.get(first.id))?.config?.systemPrompt).toBe("Project context");
+});
+
 test("createAgent injects daemon append system prompt at runtime only", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
   const storagePath = join(workdir, "agents");

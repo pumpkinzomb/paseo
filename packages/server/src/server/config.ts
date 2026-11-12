@@ -1,3 +1,4 @@
+import { resolveLeadPersona } from "./default-assistant/persona.js";
 import { configurationEnvironment } from "./config-environment.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -556,6 +557,7 @@ function resolveStaticLoadConfigSettings(
     browserToolsEnabled: resolveBrowserToolsEnabled(persisted),
     autoArchiveAfterMerge: persisted.daemon?.autoArchiveAfterMerge ?? false,
     appendSystemPrompt: resolveAppendSystemPrompt(persisted),
+    leadPersona: resolveLeadPersona(persisted.daemon?.leadPersona),
     ...resolveProfileLists(persisted),
     hostnames: mergeHostnames([
       persisted.daemon?.hostnames,
@@ -587,6 +589,7 @@ export type ResolvedDaemonSettings = Pick<
   | "autoArchiveAfterMerge"
   | "enableTerminalAgentHooks"
   | "appendSystemPrompt"
+  | "leadPersona"
   | "terminalProfiles"
   | "agentProfiles"
   | "skillSelection"

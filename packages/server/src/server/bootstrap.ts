@@ -1,3 +1,4 @@
+import { resolveLeadPersona } from "./default-assistant/persona.js";
 import {
   UpdateAdmissionFence,
   createUpdateQuiescence,
@@ -442,6 +443,7 @@ export interface PaseoDaemonConfig {
   autoArchiveAfterMerge?: boolean;
   enableTerminalAgentHooks?: boolean;
   appendSystemPrompt?: string;
+  leadPersona?: string;
   terminalProfiles?: TerminalProfile[];
   agentProfiles?: AgentProfile[];
   skillSelection?: AgentSkillSelection;
@@ -616,6 +618,7 @@ function createInitialMutableDaemonConfig(config: ResolvedDaemonSettings): Mutab
     resumeOnStartup: config.resumeOnStartup === true,
     resumePrompt: config.resumePrompt ?? "Resume working.",
     appendSystemPrompt: config.appendSystemPrompt ?? "",
+    leadPersona: resolveLeadPersona(config.leadPersona),
     pluginsEnabled: config.pluginsEnabled ?? false,
     plugins: config.plugins ?? {},
     skills: { selection: config.skillSelection },
@@ -1040,6 +1043,7 @@ export async function createPaseoDaemon(
       return Boolean(workspace && !workspace.archivedAt);
     },
     appendSystemPrompt: config.appendSystemPrompt,
+    leadPersona: config.leadPersona,
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
     },
@@ -1818,6 +1822,9 @@ export async function createPaseoDaemon(
               agentManager.setMcpBaseUrl(mcpEnabled && value ? mcpBaseUrl : null);
               agentManager.setPaseoToolsEnabled(mcpEnabled && value !== false);
               setAgentProviderToolsEnabled(mcpEnabled && value !== false);
+            });
+            daemonConfigStore.onFieldChange("leadPersona", (value) => {
+              agentManager.setLeadPersona(typeof value === "string" ? value : undefined);
             });
             daemonConfigStore.onFieldChange("appendSystemPrompt", (value) => {
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");

@@ -1,3 +1,4 @@
+import { resolveLeadPersona } from "./default-assistant/persona.js";
 import {
   loadPersistedConfig,
   savePersistedConfigAsync,
@@ -40,6 +41,7 @@ interface SupportedMutableConfigPatch {
   resumeOnStartup?: boolean;
   resumePrompt?: string;
   appendSystemPrompt?: string;
+  leadPersona?: string;
   terminalProfiles?: MutableDaemonConfig["terminalProfiles"];
   agentProfiles?: MutableDaemonConfig["agentProfiles"];
   skills?: MutableDaemonConfig["skills"];
@@ -219,8 +221,13 @@ function foldConfigProfiles<T extends { agentProfiles?: AgentProfile[] }>(input:
 
 /** The config API boundary: the unchanged app reads profile options from `featureValues`. */
 export function toWireDaemonConfig(config: MutableDaemonConfig): MutableDaemonConfig {
-  if (!config.agentProfiles) return config;
-  return { ...config, agentProfiles: config.agentProfiles.map(withLegacyProfileFeatureValues) };
+  return {
+    ...config,
+    leadPersona: resolveLeadPersona(config.leadPersona),
+    ...(config.agentProfiles
+      ? { agentProfiles: config.agentProfiles.map(withLegacyProfileFeatureValues) }
+      : {}),
+  };
 }
 
 function getValueAtPath(config: MutableDaemonConfig, path: string): unknown {
@@ -248,6 +255,7 @@ const RELOADABLE_PATHS = [
   "daemon.autoArchiveAfterMerge",
   "daemon.enableTerminalAgentHooks",
   "daemon.appendSystemPrompt",
+  "daemon.leadPersona",
   "daemon.terminalProfiles",
   "daemon.agentProfiles",
   "app.baseUrl",
@@ -276,6 +284,7 @@ const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
   ["daemon.autoArchiveAfterMerge", "autoArchiveAfterMerge"],
   ["daemon.enableTerminalAgentHooks", "enableTerminalAgentHooks"],
   ["daemon.appendSystemPrompt", "appendSystemPrompt"],
+  ["daemon.leadPersona", "leadPersona"],
   ["daemon.terminalProfiles", "terminalProfiles"],
   ["daemon.agentProfiles", "agentProfiles"],
   ["app.baseUrl", "app.baseUrl"],
@@ -362,6 +371,7 @@ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMut
     ...(patch.idleRuntimeCleanup !== undefined
       ? { idleRuntimeCleanup: patch.idleRuntimeCleanup }
       : {}),
+    leadPersona: patch.leadPersona,
     ...(patch.appendSystemPrompt !== undefined
       ? { appendSystemPrompt: patch.appendSystemPrompt }
       : {}),
@@ -863,6 +873,7 @@ function mergeMutableDaemonPatch(
     next.enableTerminalAgentHooks = patch.enableTerminalAgentHooks;
   }
   if (patch.appendSystemPrompt !== undefined) next.appendSystemPrompt = patch.appendSystemPrompt;
+  if (patch.leadPersona !== undefined) next.leadPersona = patch.leadPersona;
   if (patch.terminalProfiles !== undefined) next.terminalProfiles = patch.terminalProfiles;
   if (patch.agentProfiles !== undefined) next.agentProfiles = patch.agentProfiles;
   return Object.keys(next).length > 0 ? next : undefined;

@@ -2073,6 +2073,7 @@ export class VoiceAssistantWebSocketServer {
         defaultAssistantModelSelection: true,
         defaultAssistantWorkspaceCreation: true,
         defaultAssistantContextHandoff: true,
+        leadIdentitySettings: true,
         defaultAssistantConversations: true,
         assistantConversationLifecycle: true,
         agentRecordDeletion: true,

@@ -1,3 +1,4 @@
+import { DEFAULT_ASSISTANT_PERSONA } from "./default-assistant/persona.js";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -108,6 +109,24 @@ describe("DaemonConfigStore", () => {
     for (const dir of tempDirs) {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test("lead persona reads effective default, persists edits, resets, and enforces size", async () => {
+    const home = mkdtempSync(path.join(tmpdir(), "paseo-persona-store-"));
+    tempDirs.push(home);
+    const store = new DaemonConfigStore(home, reloadableConfig({ version: 1 }));
+    expect(toWireDaemonConfig(store.get()).leadPersona).toBe(DEFAULT_ASSISTANT_PERSONA);
+    const changed: unknown[] = [];
+    store.onFieldChange("leadPersona", (value) => changed.push(value));
+    await store.patch({ leadPersona: "써니 사용자 설정" });
+    expect(toWireDaemonConfig(store.get()).leadPersona).toBe("써니 사용자 설정");
+    expect(loadPersistedConfig(home).daemon?.leadPersona).toBe("써니 사용자 설정");
+    expect(loadConfig(home, { env: {} }).leadPersona).toBe("써니 사용자 설정");
+    await expect(store.patch({ leadPersona: "a".repeat(12001) })).rejects.toThrow();
+    expect(toWireDaemonConfig(store.get()).leadPersona).toBe("써니 사용자 설정");
+    await store.patch({ leadPersona: "" });
+    expect(toWireDaemonConfig(store.get()).leadPersona).toBe(DEFAULT_ASSISTANT_PERSONA);
+    expect(changed).toEqual(["써니 사용자 설정", ""]);
   });
 
   test("patch persists relay state and emits its field change", async () => {

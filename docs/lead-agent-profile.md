@@ -15,6 +15,13 @@ one best recommendation, minimal questions, and respect for existing work and
 permission boundaries. This is owned by Paseo rather than loaded from native
 Codex/Claude files. Existing leads receive missing persona text at resume/reload
 without replacing their reviewed project context; ordinary workers are unchanged.
+The identity button beside Devices opens the connected host's common persona.
+The settings RPC returns the effective text; edits are saved as
+`daemon.leadPersona`. An empty value restores the built-in persona. The new value
+applies to the next lead creation, normal resume, or reload. Saving never stops an
+active turn or rewrites its provider session; the UI must not claim an already
+running session changed immediately. The host-owned persona prefix is versioned
+and replaced, not repeatedly appended. Native worker profiles remain unchanged.
 Daemon/self-development instructions remain in
 the composed prompt; this profile does not bypass permissions or managed policy.
 

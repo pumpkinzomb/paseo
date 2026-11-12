@@ -410,6 +410,7 @@ export interface AgentManagerOptions {
   paseoToolCatalogFactory?: PaseoToolCatalogFactory;
   resolvePaseoToolPolicy?: (provider: AgentProvider) => ProviderPaseoToolsPolicy | undefined;
   appendSystemPrompt?: string;
+  leadPersona?: string;
   agentStreamCoalesceWindowMs?: number;
   rescueTimeouts?: AgentManagerRescueTimeouts;
   beforeSteerUnavailableFallback?: (input: {
@@ -901,6 +902,7 @@ export class AgentManager {
     provider: AgentProvider,
   ) => ProviderPaseoToolsPolicy | undefined;
   private appendSystemPrompt: string;
+  private leadPersona: string | undefined;
   private readonly selfDevelopmentPolicyConfig = process.env.PASEO_SELF_DEVELOPMENT_POLICY;
   private onAgentAttention?: AgentAttentionCallback;
   private onAgentArchived?: AgentArchivedCallback;
@@ -929,6 +931,7 @@ export class AgentManager {
     this.configurePaseoTools(options);
     this.resolvePaseoToolPolicy = options.resolvePaseoToolPolicy ?? (() => undefined);
     this.appendSystemPrompt = options.appendSystemPrompt ?? "";
+    this.leadPersona = options.leadPersona;
     this.logger = options.logger.child({
       module: "agent",
       component: "agent-manager",
@@ -1096,6 +1099,11 @@ export class AgentManager {
    */
   getMcpAuthToken(): string | null {
     return this.mcpAuthToken;
+  }
+
+  setLeadPersona(persona: string | undefined): void {
+    // Existing provider sessions keep their current prompt until a normal reload/resume.
+    this.leadPersona = persona;
   }
 
   setAppendSystemPrompt(prompt: string | null | undefined): void {
@@ -6455,6 +6463,7 @@ export class AgentManager {
         }),
       ),
       options.labels,
+      this.leadPersona,
     );
     return { storedConfig, launchConfig, paseoToolPolicy };
   }

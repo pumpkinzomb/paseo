@@ -112,6 +112,10 @@
         "appendSystemPrompt": {
           "type": "string"
         },
+        "leadPersona": {
+          "type": "string",
+          "maxLength": 12000
+        },
         "terminalProfiles": {
           "type": "array",
           "items": {

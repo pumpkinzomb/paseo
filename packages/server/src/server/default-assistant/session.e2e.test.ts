@@ -277,3 +277,41 @@ test("unspecified new conversations choose catalog frontier high while reopen an
     await daemon.close();
   }
 }, 30000);
+
+test("host identity settings reach future Codex and Claude leads without altering existing sessions", async () => {
+  const configs: Array<{ provider: string; systemPrompt?: string }> = [];
+  const codex = createTestAgentClient("codex");
+  const claude = createTestAgentClient("claude");
+  for (const backend of [codex, claude]) {
+    const create = backend.createSession.bind(backend);
+    backend.createSession = async (...args) => {
+      configs.push({ provider: args[0].provider, systemPrompt: args[0].systemPrompt });
+      return create(...args);
+    };
+  }
+  const daemon = await createTestPaseoDaemon({ agentClients: { codex, claude } });
+  const client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
+  try {
+    await client.connect();
+    const baseline = (await client.getDaemonConfig()).config.leadPersona;
+    expect(baseline).toContain("오빠");
+    await client.ensureDefaultAssistant({ newSession: true, provider: "codex" });
+    const originalPrompt = configs[0]?.systemPrompt;
+    await client.patchDaemonConfig({ leadPersona: "Edited host persona marker" });
+    expect((await client.getDaemonConfig()).config.leadPersona).toBe("Edited host persona marker");
+    expect(configs).toHaveLength(1);
+    expect(configs[0]?.systemPrompt).toBe(originalPrompt);
+    await client.ensureDefaultAssistant({ newSession: true, provider: "codex" });
+    await client.ensureDefaultAssistant({ newSession: true, provider: "claude" });
+    for (const config of configs.slice(1))
+      expect(config.systemPrompt).toContain("Edited host persona marker");
+    await client.patchDaemonConfig({ leadPersona: "" });
+    expect((await client.getDaemonConfig()).config.leadPersona).toBe(baseline);
+    await client.ensureDefaultAssistant({ newSession: true, provider: "claude" });
+    expect(configs.at(-1)?.systemPrompt).not.toContain("Edited host persona marker");
+    expect(configs.at(-1)?.systemPrompt).toContain("오빠");
+  } finally {
+    await client.close();
+    await daemon.close();
+  }
+}, 30_000);
