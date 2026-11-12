@@ -1,6 +1,8 @@
 import { useHostFeature } from "@/runtime/host-features";
 import { useTranslation } from "react-i18next";
-import { SettingsCard, SettingsRow, SettingsSection, SettingsSelect } from "@/components/settings";
+import { SettingsCard, SettingsSection, SettingsSelect } from "@/components/settings";
+import { apiVoiceTone } from "./voice-preview";
+import { VoicePreviewButton } from "./voice-preview-button";
 import { useNativeVoicePreference } from "./native-voice-preference";
 
 // These IDs exist in the installed Codex RealtimeVoice schema. The server checks
@@ -23,15 +25,12 @@ export function NativeCallSettings({ serverId }: { serverId: string }) {
             { value: "", label: t("voiceCall.providerDefault") },
             ...VOICES.map((value) => ({
               value,
-              label: `${value} · ${t("voiceCall.toneUnverified")}`,
+              label: `${value} · ${apiVoiceTone(value) ? t("voiceCall.referenceTone", { tone: t(`voiceCall.${apiVoiceTone(value)}`) }) : t("voiceCall.toneUnverified")}`,
             })),
           ]}
           onValueChange={setVoice}
         />
-        <SettingsRow
-          label={t("voiceCall.previewUnavailable")}
-          hint={t("voiceCall.nativePreviewHint")}
-        />
+        <VoicePreviewButton voice={voice} baseUrl="" nativeReference disabled={!supported} />
       </SettingsCard>
     </SettingsSection>
   );

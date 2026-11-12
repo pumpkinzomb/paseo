@@ -1,5 +1,15 @@
 export const en = {
   voiceCall: {
+    nativeReferenceHint:
+      "Same-name official API reference only, not a Codex call preview. Tone and delivery can differ in realtime calls. No microphone or API key is used.",
+    referenceTone: "API reference: {{tone}}",
+    playReference: "Play API reference",
+    sampleMissing:
+      "No verified public sample for this voice. Try another voice with an API reference.",
+    selectVoiceForPreview:
+      "Choose a named voice to hear its API reference. The provider default does not report a voice name.",
+    previewDuringCall: "End the current voice call before playing a reference sample.",
+
     toneUnverified: "Perceived tone not verified",
     connecting: "Connecting...",
     ending: "Ending call...",

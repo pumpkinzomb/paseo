@@ -3,6 +3,16 @@ import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
   voiceCall: {
+    nativeReferenceHint:
+      "동일 이름의 공식 API 참고 음성입니다. Codex 통화 미리듣기가 아니며 실제 통화의 음색·말투는 다를 수 있어요. 마이크나 API 키를 사용하지 않습니다.",
+    referenceTone: "API 참고: {{tone}}",
+    playReference: "API 참고 음성 듣기",
+    sampleMissing:
+      "확인된 공개 샘플이 없는 목소리예요. API 참고가 표시된 다른 목소리를 선택해 주세요.",
+    selectVoiceForPreview:
+      "목소리를 선택하면 API 참고 음성을 들을 수 있어요. 제공자 기본값은 목소리 이름을 알려주지 않습니다.",
+    previewDuringCall: "참고 음성을 들으려면 현재 음성 통화를 먼저 종료해 주세요.",
+
     toneUnverified: "청감 미확인",
     connecting: "연결 중...",
     ending: "통화 종료 중...",

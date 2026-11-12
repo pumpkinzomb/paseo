@@ -7,7 +7,17 @@ import { createAudioEngine } from "@/audio";
 import { useVoiceOptional } from "@/contexts/voice-context";
 import { apiVoiceSample, createVoicePreview, type PreviewState } from "./voice-preview";
 
-export function VoicePreviewButton({ voice, baseUrl }: { voice: string; baseUrl: string }) {
+export function VoicePreviewButton({
+  voice,
+  baseUrl,
+  nativeReference = false,
+  disabled = false,
+}: {
+  voice: string;
+  baseUrl: string;
+  nativeReference?: boolean;
+  disabled?: boolean;
+}) {
   const { t } = useTranslation();
   const call = useVoiceOptional();
   const [state, setState] = useState<PreviewState>("idle");
@@ -41,9 +51,15 @@ export function VoicePreviewButton({ voice, baseUrl }: { voice: string; baseUrl:
   const busy = state === "loading" || state === "playing";
   useUpdateTransientBlocker("voice-preview", busy);
   let hint = t("voiceCall.apiPreviewHint") + ` ${t("voiceCall.toneHint")}`;
-  if (!url) hint = t("voiceCall.previewUnavailable");
-  else if (state === "failed") hint = t("voiceCall.previewFailed");
-  let label = t("voiceCall.preview");
+  if (nativeReference) hint = t("voiceCall.nativeReferenceHint");
+  if (!url) {
+    hint = t("voiceCall.previewUnavailable");
+    if (nativeReference) {
+      hint = t(voice ? "voiceCall.sampleMissing" : "voiceCall.selectVoiceForPreview");
+    }
+  } else if (state === "failed") hint = t("voiceCall.previewFailed");
+  if (call?.activeServerId) hint = t("voiceCall.previewDuringCall");
+  let label = t(nativeReference ? "voiceCall.playReference" : "voiceCall.preview");
   if (state === "loading") label = t("voiceCall.cancelPreview");
   else if (state === "playing") label = t("voiceCall.stopPreview");
   const press = useCallback(() => {
@@ -54,7 +70,7 @@ export function VoicePreviewButton({ voice, baseUrl }: { voice: string; baseUrl:
     <SettingsRow label={t("voiceCall.apiPreview")} hint={hint}>
       <Button
         variant="outline"
-        disabled={!url || Boolean(call?.activeServerId)}
+        disabled={disabled || !url || Boolean(call?.activeServerId)}
         onPress={press}
         accessibilityLabel={label}
       >

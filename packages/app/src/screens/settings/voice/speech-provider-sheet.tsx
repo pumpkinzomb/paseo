@@ -1,3 +1,4 @@
+import { apiVoiceTone } from "@/voice/voice-preview";
 import { VoicePreviewButton } from "@/voice/voice-preview-button";
 import {
   useCallback,
@@ -217,18 +218,7 @@ function OpenAiFields({ state, model, visible }: FormProps & { visible: boolean 
   const voiceOptions = useMemo(
     () =>
       buildOpenAiVoiceOptions(state.voice).map((option) => {
-        const tone = (
-          {
-            alloy: "neutral",
-            onyx: "masculine",
-            echo: "masculine",
-            ash: "masculine",
-            coral: "feminine",
-            nova: "feminine",
-            shimmer: "feminine",
-            sage: "feminine",
-          } as Record<string, string>
-        )[option.value];
+        const tone = apiVoiceTone(option.value);
         return tone
           ? Object.assign({}, option, { label: `${option.label} · ${t(`voiceCall.${tone}`)}` })
           : option;
