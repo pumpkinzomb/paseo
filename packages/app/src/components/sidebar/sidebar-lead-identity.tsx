@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { Text, View } from "react-native";
+import { Text, View, useWindowDimensions } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
@@ -161,6 +161,7 @@ function IdentityEditor({
 }) {
   const { t } = useTranslation();
   const compact = useIsCompactFormFactor();
+  const { height: windowHeight } = useWindowDimensions();
   const [model] = useState(() => openLeadIdentityForm(initial));
   const state = useSyncExternalStore(model.subscribe, model.getState);
   const dirty = state.text !== state.saved;
@@ -247,10 +248,20 @@ function IdentityEditor({
             multiline
             editable={!state.saving}
             size={compact ? "md" : "sm"}
-            style={styles.editor}
+            style={styles.editor(windowHeight)}
             testID="lead-identity-text"
             accessibilityLabel={t("leadIdentity.persona")}
           />
+          <Text
+            style={styles.characterCount}
+            testID="lead-identity-character-count"
+            accessibilityLiveRegion="polite"
+          >
+            {t("leadIdentity.characterCount", {
+              count: state.text.length,
+              maximum: 12000,
+            })}
+          </Text>
         </Field>
         <Text style={styles.detail}>{t(notice)}</Text>
       </View>
@@ -260,6 +271,14 @@ function IdentityEditor({
 const styles = StyleSheet.create((theme) => ({
   content: { gap: theme.spacing[3] },
   detail: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
-  editor: { minHeight: 280, textAlignVertical: "top" },
+  editor: (windowHeight: number) => ({
+    height: Math.min(440, Math.max(220, windowHeight * 0.48)),
+    textAlignVertical: "top",
+  }),
+  characterCount: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    textAlign: "right",
+  },
   actions: { flexDirection: "row", justifyContent: "space-between", gap: theme.spacing[2] },
 }));

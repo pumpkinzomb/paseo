@@ -11,7 +11,12 @@ const state = vi.hoisted(() => ({
   patch: vi.fn(),
   confirm: vi.fn(),
 }));
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string, values?: { count: number; maximum: number }) =>
+      key === "leadIdentity.characterCount" && values ? `${values.count} / ${values.maximum}` : key,
+  }),
+}));
 vi.mock("@/constants/layout", () => ({ useIsCompactFormFactor: () => false }));
 vi.mock("@/runtime/host-features", () => ({ useHostFeature: () => state.supported }));
 vi.mock("@/runtime/host-runtime", () => ({
@@ -143,4 +148,12 @@ it("wraps the host subtitle in themed Text rather than a raw View text node", ()
   expect(subtitle.textContent).toBe("Mac");
   expect(subtitle.firstChild?.nodeType).toBe(Node.ELEMENT_NODE);
   expect(getComputedStyle(subtitle.firstElementChild!).color).not.toBe("rgb(0, 0, 0)");
+});
+
+it("updates the character count while editing without saving", () => {
+  render(<SidebarLeadIdentitySheet visible onClose={vi.fn()} />);
+  expect(screen.getByTestId("lead-identity-character-count").textContent).toBe("14 / 12000");
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "써니 hello" } });
+  expect(screen.getByTestId("lead-identity-character-count").textContent).toBe("8 / 12000");
+  expect(state.patch).not.toHaveBeenCalled();
 });

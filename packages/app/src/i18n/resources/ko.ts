@@ -16,6 +16,7 @@ export const ko: TranslationResources = {
     blocked: "재시작할 수 있을 때 업데이트를 적용할게요.",
   },
   leadIdentity: {
+    characterCount: "{{count}} / {{maximum}}자",
     title: "써니 아이덴티티",
     chooseHost: "아이덴티티를 편집할 기기를 선택해 주세요.",
     noHosts: "기기를 연결하면 아이덴티티를 편집할 수 있어요.",

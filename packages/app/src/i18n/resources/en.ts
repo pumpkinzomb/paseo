@@ -13,6 +13,7 @@ export const en = {
     blocked: "Waiting until the app is ready to restart.",
   },
   leadIdentity: {
+    characterCount: "{{count}} / {{maximum}} characters",
     title: "Sunny identity",
     chooseHost: "Choose the host whose lead identity you want to edit.",
     noHosts: "Connect a host to edit its identity.",
