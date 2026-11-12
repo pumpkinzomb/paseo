@@ -81,3 +81,32 @@ refresh material only after successful secure storage, and expose only account
 metadata/status to the UI. No broad Drive access or write scope is implied by
 these three read scopes. Requested document writes and spreadsheet writes need
 separate opt-in capabilities and tools; mail sending is not in this design.
+
+## Native storage and broker groundwork
+
+`keychain-helper.swift` now implements fixed-service macOS Security.framework
+read/write/delete via bounded stdin JSON and stdout JSON. No secret argv,
+shell invocation, logging, synchronizable item, or plaintext storage fallback.
+`LAContext.interactionNotAllowed` fails closed instead of opening surprise OS
+prompts. `--validate-only` exits before all Keychain operations. Build + six
+input-validation fixtures passed without touching the user's Keychain. This
+is NOT an end-to-end Keychain test. Signed helper packaging, caller pipe timeout/
+output limits, Keychain ACL behavior and host integration remain to be verified.
+The helper is not installed or invoked by the running app.
+
+Run native validation (temporary compiled binary is removed):
+
+```
+python3 plugins/external-connections/google/keychain-validation.py
+```
+
+`session-broker.mjs` stores only digests of random 256-bit session bearers,
+binds each to agent/provider/read scopes, limits active sessions to 128, prunes
+expired entries, and supports agent/all revocation. Its five-minute bearer
+expiry is deliberately short; provider launch headers are static, so future
+host integration must renew/reopen its bridge session at the agent lifecycle
+boundary rather than silently extending expired authority. No listener exists.
+The request guard permits only exact loopback Host, absent Origin and POST /mcp;
+future MCP HTTP integration must either support this restricted JSON response
+transport or deliberately extend the method policy with equivalent auth checks.
+No unauthenticated tools/list, tools/call, or metadata endpoint is provided.
