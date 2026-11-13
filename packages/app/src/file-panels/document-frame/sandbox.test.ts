@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { documentFrameSandbox } from "./sandbox";
 
 describe("document frame sandbox", () => {
-  it("lets the browser's PDF viewer render PDF documents", () => {
+  it("identifies PDFs for the app-owned renderer", () => {
     expect(documentFrameSandbox("application/pdf")).toBeNull();
     expect(documentFrameSandbox("Application/PDF; charset=binary")).toBeNull();
   });

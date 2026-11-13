@@ -116,6 +116,7 @@
     "micromark-extension-gfm-table": "^2.1.2",
     "micromark-util-decode-string": "2.0.1",
     "mnemonic-id": "^3.2.7",
+    "pdfjs-dist": "6.5.438",
     "qrcode": "^1.5.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",

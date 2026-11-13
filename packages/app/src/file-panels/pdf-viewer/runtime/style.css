@@ -1,0 +1,190 @@
+:root {
+  color-scheme: dark light;
+  font:
+    12px system-ui,
+    sans-serif;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#pdf-root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+#pdf-root {
+  --thumbnail-width: 110px;
+  --chrome: #efefef;
+  --ink: #222;
+  --border: #ccc;
+  --back: #c8c8c8;
+  display: flex;
+  flex-direction: column;
+  background: var(--back);
+  color: var(--ink);
+}
+#pdf-root.dark {
+  --chrome: #252828;
+  --ink: #eee;
+  --border: #444;
+  --back: #191c1c;
+}
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  min-height: 36px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+button,
+input {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  min-height: 26px;
+}
+button {
+  cursor: pointer;
+  padding: 3px 7px;
+}
+button:hover {
+  background: var(--border);
+}
+button:focus-visible,
+input:focus-visible,
+#divider:focus-visible {
+  outline: 2px solid #6d9df4;
+  outline-offset: -2px;
+}
+#page {
+  width: 44px;
+  text-align: center;
+  border-color: var(--border);
+}
+#count {
+  white-space: nowrap;
+}
+.toolbar-gap {
+  flex: 1;
+}
+.pdf-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+#thumbnails {
+  width: var(--thumbnail-width);
+  flex-shrink: 0;
+  overflow: auto;
+  padding: 12px 0 20px;
+  background: var(--chrome);
+  scrollbar-width: thin;
+}
+#divider {
+  width: 6px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  touch-action: none;
+  border-left: 1px solid var(--border);
+  background: var(--chrome);
+}
+#divider:hover,
+#divider:focus-visible,
+.resizing #divider {
+  background: #6d9df4;
+}
+[hidden] {
+  display: none !important;
+}
+#pages {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  position: relative;
+  padding: 1px 0;
+  overscroll-behavior: contain;
+}
+.pdf-page {
+  position: relative;
+  background: white;
+  margin: 16px auto;
+  box-shadow: 0 1px 5px #0004;
+  flex-shrink: 0;
+}
+canvas {
+  display: block;
+  background: white;
+}
+.pdf-thumbnail {
+  display: block;
+  position: relative;
+  margin: 0 auto 26px;
+  padding: 0;
+  border: 0;
+  background: white;
+  min-height: 20px;
+  border-radius: 0;
+  box-shadow: 0 1px 4px #0004;
+}
+.pdf-thumbnail[aria-current="page"] {
+  outline: 3px solid #6d9df4;
+  outline-offset: 2px;
+}
+.thumbnail-number {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  padding-top: 6px;
+  text-align: center;
+  color: var(--ink);
+}
+#status {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  padding: 24px;
+}
+#status:empty {
+  display: none;
+}
+.resizing {
+  user-select: none;
+  cursor: col-resize;
+}
+.resizing canvas {
+  pointer-events: none;
+}
+@media (max-width: 359px) {
+  #fit {
+    max-width: 90px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+}
+
+.pdf-page {
+  width: calc(var(--intrinsic-width) * var(--page-scale, 1));
+  height: calc(var(--intrinsic-height) * var(--page-scale, 1));
+}
+#pdf-root[data-fit="true"] .pdf-page {
+  width: var(--fit-width);
+  height: auto;
+  aspect-ratio: var(--intrinsic-ratio);
+}
+.pdf-page > canvas {
+  position: absolute;
+  inset: 0;
+}

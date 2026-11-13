@@ -2,6 +2,7 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ar: TranslationResources = {
+  pdfViewer: en.pdfViewer,
   documentPreview: en.documentPreview,
   fileCitation: en.fileCitation,
   voiceCall: en.voiceCall,

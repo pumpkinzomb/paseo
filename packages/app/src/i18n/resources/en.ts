@@ -1,4 +1,19 @@
 export const en = {
+  pdfViewer: {
+    title: "PDF preview",
+    loading: "Loading PDF…",
+    failed: "Could not render this PDF.",
+    toggle: "Toggle page thumbnails",
+    resize: "Resize page thumbnails",
+    previous: "Previous page",
+    next: "Next page",
+    page: "Page",
+    zoomOut: "Zoom out",
+    zoomIn: "Zoom in",
+    fitWidth: "Fit width",
+    openOriginal: "Open original viewer",
+    password: "Password-protected PDFs must be opened in the original viewer.",
+  },
   documentPreview: {
     rendererWarning:
       "Rendered by macOS Quick Look; fonts, charts and advanced Office features may differ.",

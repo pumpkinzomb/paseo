@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
+const PdfViewer = lazy(() =>
+  import("../pdf-viewer/viewer.web").then((module) => ({ default: module.PdfViewer })),
+);
 import { documentFrameSandbox } from "./sandbox";
 
 const frameStyle = { flex: 1, minHeight: 0, border: "none", backgroundColor: "white" } as const;
@@ -28,6 +31,12 @@ export function DocumentFrame({ url, testID }: { url: string; testID?: string })
   }, [url]);
 
   if (!url.startsWith("blob:") || document?.url !== url) return null;
+  if (document.sandbox === null)
+    return (
+      <Suspense fallback={null}>
+        <PdfViewer url={url} testID={testID} />
+      </Suspense>
+    );
   return (
     <iframe
       title="Document preview"

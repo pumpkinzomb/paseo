@@ -2,6 +2,21 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
+  pdfViewer: {
+    title: "PDF 미리보기",
+    loading: "PDF를 불러오는 중…",
+    failed: "이 PDF를 표시하지 못했어.",
+    toggle: "페이지 썸네일 접기·펼치기",
+    resize: "페이지 썸네일 너비 조절",
+    previous: "이전 페이지",
+    next: "다음 페이지",
+    page: "페이지",
+    zoomOut: "축소",
+    zoomIn: "확대",
+    fitWidth: "너비 맞춤",
+    openOriginal: "기본 뷰어로 열기",
+    password: "암호가 있는 PDF는 기본 뷰어로 열어줘.",
+  },
   documentPreview: {
     rendererWarning:
       "macOS 기본 엔진으로 렌더링했어. 글꼴·차트·고급 Office 기능은 원본 앱과 다를 수 있어.",
