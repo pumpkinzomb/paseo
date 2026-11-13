@@ -316,6 +316,7 @@ export async function createInstalledUpdateCoordinator(): Promise<{
       }
       return {
         currentVersion: app.getVersion(),
+        serverId: c.original.serverId,
         phase,
         ...(archiveReady && revision === c.oldRevision && !(await store.read("hold"))
           ? { candidate: { version: c.nextVersion, token: approval.candidateDigest } }

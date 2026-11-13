@@ -5,6 +5,8 @@ export const LOCAL_UPDATE_CHANNELS = {
 } as const;
 
 export interface LocalUpdateDriverStatus {
+  /** Native-verified daemon targeted by this update, never the selected remote host. */
+  serverId?: string;
   currentVersion: string;
   candidate?: { version: string; token: string };
   phase?: "idle" | "applying" | "failed";
@@ -15,6 +17,8 @@ export interface LocalUpdateDriver {
   requestUpdate(token: string): Promise<void>;
 }
 export interface LocalUpdateIpcStatus {
+  /** Native-verified daemon targeted by this update, never the selected remote host. */
+  serverId?: string;
   currentVersion: string;
   phase: "idle" | "applying" | "failed";
   canApply: boolean;
@@ -66,6 +70,7 @@ export function registerLocalUpdateIpc({
       phase: active ? "applying" : (status.phase ?? "idle"),
       canApply,
     };
+    if (status.serverId?.trim()) result.serverId = status.serverId;
     if (canApply && candidate)
       result.candidate = { version: candidate.version, token: candidate.token };
     return result;

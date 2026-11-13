@@ -1,3 +1,5 @@
+import { useLocalAppUpdate } from "@/hooks/use-local-app-update";
+import { canOfferProjectHostUpdate } from "@/projects/project-remove";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
   View,
@@ -1820,6 +1822,7 @@ function ProjectBlock({
   const toast = useToast();
   const { t } = useTranslation();
   const [isRemovingProject, setIsRemovingProject] = useState(false);
+  const localUpdate = useLocalAppUpdate();
 
   const handleRemoveProject = useCallback(() => {
     if (isRemovingProject) {
@@ -1829,8 +1832,31 @@ function ProjectBlock({
     setIsRemovingProject(true);
     void (async () => {
       const readiness = getCurrentProjectRemoveReadiness({ hosts: project.hosts });
+      if (readiness.kind === "host_unavailable") {
+        toast.error(t("sidebar.project.toasts.hostDisconnected"));
+        return;
+      }
       if (readiness.kind === "needs_host_update") {
-        toast.error(t("sidebar.project.toasts.updateHostToRemove"));
+        if (
+          canOfferProjectHostUpdate(
+            readiness.serverIds,
+            localUpdate.serverId,
+            localUpdate.ready &&
+              localUpdate.update.status === "verified" &&
+              !localUpdate.update.pending,
+          )
+        ) {
+          const accepted = await confirmDialog({
+            title: t("localAppUpdate.updateAndRestart"),
+            message: t("sidebar.project.toasts.updateHostToRemove"),
+            confirmLabel: t("localAppUpdate.updateAndRestart"),
+            cancelLabel: t("sidebar.project.confirmations.cancel"),
+          });
+          if (accepted && localUpdate.update.status === "verified")
+            localUpdate.update.onUpdateAndRestart();
+        } else {
+          toast.error(t("sidebar.project.toasts.updateHostToRemove"));
+        }
         return;
       }
       const targets = await inspectProjectRemovalFromHosts({
@@ -1869,7 +1895,7 @@ function ProjectBlock({
         );
       })
       .finally(() => setIsRemovingProject(false));
-  }, [isRemovingProject, displayName, t, toast, project.hosts]);
+  }, [isRemovingProject, displayName, t, toast, project.hosts, localUpdate]);
 
   const handleToggleCollapsed = useCallback(() => {
     onToggleCollapsed(project.viewKey);

@@ -205,6 +205,8 @@ export interface DesktopMicrophoneBridge {
 }
 
 export interface DesktopLocalUpdateStatus {
+  /** Native-verified daemon targeted by this update, never the selected remote host. */
+  serverId?: string;
   currentVersion: string;
   phase: "idle" | "applying" | "failed";
   canApply: boolean;

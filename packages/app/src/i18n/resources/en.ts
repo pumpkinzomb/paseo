@@ -1637,7 +1637,8 @@ export const en = {
         added: "Project added: {{projectName}}",
         hostDisconnected: "Host is not connected",
         removeFailed: "Failed to remove some workspaces",
-        updateHostToRemove: "Update the host to remove projects.",
+        updateHostToRemove:
+          "The connected host does not support project session deletion. The same app version can contain different builds. Check the host build; install an update only when a verified update is available.",
       },
       empty: {
         title: "No projects yet",
