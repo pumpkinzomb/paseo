@@ -18,7 +18,8 @@ export interface ProjectRemoveTarget {
 
 export type ProjectRemoveReadiness =
   | { kind: "ready"; targets: ProjectRemoveTarget[] }
-  | { kind: "needs_host_update"; serverIds: string[] };
+  | { kind: "needs_host_update"; serverIds: string[] }
+  | { kind: "host_unavailable"; serverIds: string[] };
 
 export type ProjectRemoveOutcome =
   | { kind: "removed"; serverIds: string[] }
@@ -56,7 +57,12 @@ export async function inspectProjectRemovalFromHosts(input: {
 export function getProjectRemoveReadiness(input: {
   project: ProjectRemoveProject;
   supportsProjectRemove: (serverId: string) => boolean;
+  hasHostInfo?: (serverId: string) => boolean;
 }): ProjectRemoveReadiness {
+  const unavailable = input.project.hosts
+    .filter(({ serverId }) => input.hasHostInfo?.(serverId) === false)
+    .map(({ serverId }) => serverId);
+  if (unavailable.length) return { kind: "host_unavailable", serverIds: unavailable };
   const unsupportedServerIds: string[] = [];
   const targets: ProjectRemoveTarget[] = [];
 
@@ -84,6 +90,7 @@ export function getCurrentProjectRemoveReadiness(
   const sessionState = useSessionStore.getState();
   return getProjectRemoveReadiness({
     project,
+    hasHostInfo: (serverId) => Boolean(sessionState.sessions[serverId]?.serverInfo),
     supportsProjectRemove: (serverId) =>
       selectHostFeature(sessionState, serverId, "projectRemoveSessions"),
   });
@@ -129,4 +136,18 @@ export async function removeProjectFromHosts(input: {
   }
 
   return { kind: "removed", serverIds: clients.map((entry) => entry.serverId) };
+}
+
+/** Never offer a local app update as a remedy for an unrelated remote host. */
+export function canOfferProjectHostUpdate(
+  unsupportedServerIds: readonly string[],
+  localServerId: string | undefined,
+  verified: boolean,
+): boolean {
+  return Boolean(
+    verified &&
+    localServerId?.trim() &&
+    unsupportedServerIds.length &&
+    unsupportedServerIds.every((id) => id === localServerId),
+  );
 }

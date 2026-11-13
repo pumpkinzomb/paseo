@@ -111,3 +111,14 @@ it("does not start an apply after the bridge is disposed", async () => {
   await expect(pending).rejects.toThrow("request failed");
   expect(x.driver.requestUpdate).not.toHaveBeenCalled();
 });
+
+it("preserves the native host identity and permits verified same-version offers", async () => {
+  const x = setup(true);
+  x.status.serverId = "native-local-host";
+  x.status.candidate!.version = x.status.currentVersion;
+  expect(await x.read()).toMatchObject({
+    serverId: "native-local-host",
+    canApply: true,
+    candidate: { version: x.status.currentVersion, token },
+  });
+});

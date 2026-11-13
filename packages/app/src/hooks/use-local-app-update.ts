@@ -89,5 +89,10 @@ export function useLocalAppUpdate() {
         : { status: "unavailable" },
     [status, ready, pending, request],
   );
-  return { version: status?.currentVersion || resolveAppVersion(), update, ready };
+  return {
+    version: status?.currentVersion || resolveAppVersion(),
+    serverId: status?.serverId,
+    update,
+    ready,
+  };
 }

@@ -3,6 +3,7 @@ import { en } from "@/i18n/resources/en";
 import { ko } from "@/i18n/resources/ko";
 import {
   getProjectRemoveReadiness,
+  canOfferProjectHostUpdate,
   inspectProjectRemovalFromHosts,
   removeProjectFromHosts,
   type ProjectRemoveProject,
@@ -168,4 +169,32 @@ describe("project removal inspection", () => {
     ).rejects.toThrow("Host is not connected");
     expect(inspected).toBe(false);
   });
+});
+
+it("does not call missing host information an outdated host", () => {
+  expect(
+    getProjectRemoveReadiness({
+      project,
+      hasHostInfo: (id) => id !== "host-b",
+      supportsProjectRemove: () => false,
+    }),
+  ).toEqual({ kind: "host_unavailable", serverIds: ["host-b"] });
+});
+it("checks capability independently of a shared app version", () => {
+  expect(
+    getProjectRemoveReadiness({
+      project,
+      hasHostInfo: () => true,
+      supportsProjectRemove: () => true,
+    }),
+  ).toEqual({ kind: "ready", targets: project.hosts });
+});
+
+it("offers verified local updates only for the exact native host", () => {
+  expect(canOfferProjectHostUpdate(["local"], "local", true)).toBe(true);
+  expect(canOfferProjectHostUpdate(["remote"], "local", true)).toBe(false);
+  expect(canOfferProjectHostUpdate(["local", "remote"], "local", true)).toBe(false);
+  expect(canOfferProjectHostUpdate(["local"], undefined, true)).toBe(false);
+  expect(canOfferProjectHostUpdate(["local"], "local", false)).toBe(false);
+  expect(canOfferProjectHostUpdate([], "local", true)).toBe(false);
 });

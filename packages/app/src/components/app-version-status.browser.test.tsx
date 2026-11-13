@@ -186,3 +186,17 @@ it("connected version quietly handles missing IPC registration", async () => {
   await act(async () => {});
   expect(view.querySelector('[data-testid="local-app-update-restart"]')).toBeNull();
 });
+
+it("offers a verified update even when version strings are equal", async () => {
+  const request = vi.fn(async () => {});
+  setBridge({
+    status: vi.fn(async () => ({
+      ...readyStatus,
+      candidate: { ...readyStatus.candidate!, version: readyStatus.currentVersion },
+    })),
+    request,
+  });
+  const view = mount(<ConnectedAppVersionStatus />);
+  await act(async () => {});
+  expect(view.querySelector('[data-testid="local-app-update-restart"]')).not.toBeNull();
+});

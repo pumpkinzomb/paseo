@@ -1636,7 +1636,8 @@ export const ko: TranslationResources = {
         added: "프로젝트를 추가했어요: {{projectName}}",
         hostDisconnected: "호스트가 연결되어 있지 않습니다",
         removeFailed: "일부 워크스페이스를 제거하지 못했습니다",
-        updateHostToRemove: "프로젝트를 제거하려면 호스트를 업데이트하세요.",
+        updateHostToRemove:
+          "연결된 호스트가 프로젝트 세션 삭제를 지원하지 않습니다. 같은 버전도 빌드가 다를 수 있습니다. 호스트 빌드를 확인하고, 검증된 업데이트가 제공되면 설치해 주세요.",
       },
       empty: {
         title: "아직 프로젝트가 없습니다",
