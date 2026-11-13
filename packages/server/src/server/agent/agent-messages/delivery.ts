@@ -122,8 +122,10 @@ export function createAgentMessageDelivery(dependencies: Dependencies): AgentMes
   function flush(recipientId: string): void {
     const entry = pending.get(recipientId);
     if (!entry) return;
-    const release = dependencies.updateAdmission?.enter();
-    if (dependencies.updateAdmission && !release) {
+    // close() drains only existing messages after shutdown seals ingress.
+    // Never reopen the fence or admit new work during this cleanup.
+    const release = closed ? undefined : dependencies.updateAdmission?.enter();
+    if (!closed && dependencies.updateAdmission && !release) {
       entry.cancel();
       entry.cancel = schedule(250, () => flush(recipientId));
       return;
@@ -203,7 +205,6 @@ export function createAgentMessageDelivery(dependencies: Dependencies): AgentMes
     },
     close() {
       if (closing) return closing;
-      dependencies.updateAdmission?.assertOpen();
       closed = true;
       for (const recipientId of pending.keys()) flush(recipientId);
       // Each failure is reported and rejects its receipts; shutdown still drains other recipients.

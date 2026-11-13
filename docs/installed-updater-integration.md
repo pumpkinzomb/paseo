@@ -9,3 +9,21 @@ Excluded: migration planners/apply/recovery commands, migration activation-mode 
 No approved private update manifest means no actionable update button. General registered daemon controls remain connection-only. The daemon must be explicitly started with PASEO_INSTALLED_UPDATE_CONTROL=1 for coordinated update admission.
 
 This source integration does not migrate historical projects, change live homes, publish a build or restart the operating app. Existing signed c145 verification is evidence for its runtime; this reduced source selection still requires its own targeted validation.
+
+## Shutdown and restart ownership
+
+Shutdown seals new admission before closing message delivery. Delivery close must
+still drain messages it already owns, await in-flight acknowledgments and remain
+idempotent without reopening that fence. A cleanup failure is not evidence that
+an update was applied.
+
+`paseo daemon restart --home <registered-home>` asks the existing supervisor to
+replace its worker and confirms the replacement identity/readiness. It does not
+replace the installed app or update its daemon binary. Do not substitute a shell
+sequence of daemon stop, bundle copy and daemon start inside the agent being
+stopped: that caller is not a durable owner of the transition.
+
+For an installed app and daemon update, use the approved-candidate desktop
+coordinator and its persisted split handoff. The development runtime controller
+is not an installed-app fallback. If no approved candidate is available, report
+that state rather than issuing shutdown and claiming an automatic restart.

@@ -352,7 +352,6 @@ test("update admission retains queued receipts while fenced and tracks dispatch 
   clock.advance(2000);
   expect(sent).toBe(0);
   expect(delivery.getUpdateBlockers()).toEqual(["agent-messages-queued"]);
-  expect(() => delivery.close()).toThrow("update_in_progress");
   expect(delivery.hasPending("parent")).toBe(true);
   updateAdmission.open();
   clock.advance(250);
@@ -366,4 +365,67 @@ test("update admission retains queued receipts while fenced and tracks dispatch 
   expect(sent).toBe(1);
   expect(updateAdmission.pending).toBe(0);
   expect(delivery.getUpdateBlockers()).toEqual([]);
+});
+
+test("shutdown seal allows idempotent cleanup of admitted deliveries without reopening ingress", async () => {
+  const fence = new UpdateAdmissionFence();
+  const clock = createClock();
+  let acknowledge!: () => void;
+  const acknowledgment = new Promise<void>((resolve) => {
+    acknowledge = resolve;
+  });
+  const sent: string[] = [];
+  const delivery = createAgentMessageDelivery({
+    updateAdmission: fence,
+    schedule: clock.schedule,
+    dispatch: async (request) => {
+      sent.push(...request.messageIds);
+      await acknowledgment;
+      return "steered";
+    },
+    onError: () => {},
+  });
+  const source = { kind: "agent-message" as const, agentId: "child" };
+  const receipt = delivery.enqueue({
+    recipientId: "parent",
+    messageId: "before-seal",
+    prompt: "done",
+    source,
+  });
+  fence.sealForShutdown();
+  const closing = delivery.close();
+  expect(delivery.close()).toBe(closing);
+  expect(() => delivery.enqueue({ recipientId: "parent", prompt: "new", source })).toThrow(
+    "closed",
+  );
+  let settled = false;
+  void closing.then(() => {
+    settled = true;
+    return undefined;
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(sent).toEqual(["before-seal"]);
+  expect(settled).toBe(false);
+  expect(fence.enter()).toBeNull();
+  acknowledge();
+  await closing;
+  await expect(receipt.dispatched).resolves.toBe("steered");
+  expect(delivery.getUpdateBlockers()).toEqual([]);
+  clock.advance(10_000);
+  expect(sent).toEqual(["before-seal"]);
+  fence.open();
+  expect(fence.enter()).toBeNull();
+});
+
+test("shutdown seal permits empty delivery cleanup", async () => {
+  const fence = new UpdateAdmissionFence();
+  const delivery = createAgentMessageDelivery({
+    updateAdmission: fence,
+    dispatch: async () => "steered",
+    onError: () => {},
+  });
+  fence.sealForShutdown();
+  await delivery.close();
+  expect(fence.enter()).toBeNull();
 });
