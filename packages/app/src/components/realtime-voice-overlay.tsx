@@ -1,10 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
-import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { NativeCallSettings } from "@/voice/native-call-settings";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { ChevronDown, Mic, MicOff, PhoneOff } from "lucide-react-native";
+import { Mic, MicOff, PhoneOff } from "lucide-react-native";
 import { useVoice, useVoiceTelemetry } from "@/contexts/voice-context";
 import { Button } from "@/components/ui/button";
 import { VolumeMeter } from "./volume-meter";
@@ -25,18 +23,6 @@ export function RealtimeVoiceOverlay({
   const { t } = useTranslation();
   const { volume, isSpeaking } = useVoiceTelemetry();
   const voice = useVoice();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const openSettings = useCallback(() => setSettingsOpen(true), []);
-  const closeSettings = useCallback(() => setSettingsOpen(false), []);
-  const settingsHeader = useMemo(() => ({ title: t("voiceCall.nativeTitle") }), [t]);
-  const settingsFooter = useMemo(
-    () => (
-      <Button variant="secondary" onPress={closeSettings}>
-        {t("voiceSetup.close")}
-      </Button>
-    ),
-    [closeSettings, t],
-  );
   let status = "listening";
   if (voice.phase === "starting") status = "connecting";
   else if (voice.phase === "stopping") status = "ending";
@@ -49,21 +35,15 @@ export function RealtimeVoiceOverlay({
         {voice.voiceRoute === "native" ? (
           <View style={styles.voiceLabel}>
             <Text style={styles.text}>{t("voiceCall.routeNative")}</Text>
-            <Button
-              variant="ghost"
-              leftIcon={ChevronDown}
-              onPress={openSettings}
-              disabled={
-                isSwitching ||
-                voice.phase === "stopping" ||
-                !voice.activeServerId ||
-                !voice.activeAgentId
-              }
-              accessibilityLabel={t("voiceCall.changeVoice")}
-              testID="voice-call-change-voice"
-            >
-              {voice.effectiveVoice || t("voiceCall.providerDefault")}
-            </Button>
+            {voice.activeServerId && voice.activeAgentId ? (
+              <NativeCallSettings
+                serverId={voice.activeServerId}
+                agentId={voice.activeAgentId}
+                currentVoice={voice.effectiveVoice}
+                inline
+                disabled={isSwitching || voice.phase === "stopping"}
+              />
+            ) : null}
           </View>
         ) : (
           <Text style={styles.text}>{t("voiceCall.routeSpeech")}</Text>
@@ -78,22 +58,6 @@ export function RealtimeVoiceOverlay({
           orientation="horizontal"
         />
       </View>
-      {settingsOpen &&
-      voice.voiceRoute === "native" &&
-      voice.activeServerId &&
-      voice.activeAgentId ? (
-        <AdaptiveModalSheet
-          visible
-          header={settingsHeader}
-          footer={settingsFooter}
-          onClose={closeSettings}
-        >
-          <View style={styles.settings}>
-            <Text style={styles.text}>{t("voiceCall.nextCallVoiceHint")}</Text>
-            <NativeCallSettings serverId={voice.activeServerId} agentId={voice.activeAgentId} />
-          </View>
-        </AdaptiveModalSheet>
-      ) : null}
       <Button
         variant="ghost"
         leftIcon={isMuted ? MicOff : Mic}
@@ -128,7 +92,6 @@ const styles = StyleSheet.create((theme) => ({
     flexWrap: "wrap",
     gap: theme.spacing[1],
   },
-  settings: { padding: theme.spacing[4], gap: theme.spacing[3] },
   status: { flex: 1, gap: theme.spacing[1] },
   text: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
 }));

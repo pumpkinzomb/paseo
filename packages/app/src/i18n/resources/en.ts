@@ -1,5 +1,6 @@
 export const en = {
   voiceCall: {
+    nextVoiceSelection: "Next call: {{voice}}",
     changeVoice: "Change voice",
     nextCallVoiceHint:
       "Your selection applies to the next call. This call will keep its current voice.",
