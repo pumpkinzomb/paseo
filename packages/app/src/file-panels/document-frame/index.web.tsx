@@ -11,7 +11,15 @@ interface ResolvedDocument {
   sandbox: string | null;
 }
 
-export function DocumentFrame({ url, testID }: { url: string; testID?: string }) {
+export function DocumentFrame({
+  url,
+  testID,
+  downloadName,
+}: {
+  url: string;
+  testID?: string;
+  downloadName?: string;
+}) {
   const [document, setDocument] = useState<ResolvedDocument | null>(null);
 
   useEffect(() => {
@@ -34,7 +42,7 @@ export function DocumentFrame({ url, testID }: { url: string; testID?: string })
   if (document.sandbox === null)
     return (
       <Suspense fallback={null}>
-        <PdfViewer url={url} testID={testID} />
+        <PdfViewer url={url} testID={testID} downloadName={downloadName} />
       </Suspense>
     );
   return (

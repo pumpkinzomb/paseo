@@ -135,3 +135,5 @@ export const MicVocal = StubIcon;
 export const Scissors = StubIcon;
 export const Sparkles = StubIcon;
 export const TriangleAlertIcon = StubIcon;
+
+export const Printer = StubIcon;

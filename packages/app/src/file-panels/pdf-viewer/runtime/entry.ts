@@ -16,10 +16,17 @@ const labelKeys = [
   "fitWidth",
   "openOriginal",
   "password",
+  "printPreparing",
+  "printFailed",
+  "printTooLarge",
 ] as const;
 window.addEventListener("message", (event: MessageEvent<unknown>) => {
   if (event.source !== parent || typeof event.data !== "object" || event.data === null) return;
   const data = event.data as Record<string, unknown>;
+  if (data.type === "pdf-print") {
+    void viewer.print();
+    return;
+  }
   if (data.type === "pdf-reset") {
     viewer.reset();
     return;

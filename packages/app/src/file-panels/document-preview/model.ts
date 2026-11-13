@@ -33,3 +33,18 @@ export function staticOfficeDocument(html: string, zoom: number): string {
   const scale = Math.max(0.5, Math.min(2, zoom));
   return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${OFFICE_PREVIEW_POLICY}"><meta charset="utf-8"><style>html{zoom:${scale}}body{background:white;color:black}</style>${html}`;
 }
+export function previewOriginalPath(manifestPath: string, originalName: string): string | null {
+  if (!/^[a-f0-9]{64}\.(pdf|docx|xlsx)$/.test(originalName)) return null;
+  const normalized = manifestPath.replaceAll(String.fromCharCode(92), "/");
+  return normalized.slice(0, normalized.lastIndexOf("/") + 1) + originalName;
+}
+export function previewDownloadName(title: string, extension: string): string {
+  const name = Array.from(title, (character) => (character.charCodeAt(0) < 32 ? "_" : character))
+    .join("")
+    .replace(/[<>:"/\\|?*]/g, "_")
+    .replace(/[. ]+$/g, "")
+    .trim();
+  const base = name || "document";
+  const suffix = `.${extension}`;
+  return base.toLowerCase().endsWith(suffix.toLowerCase()) ? base : base + suffix;
+}

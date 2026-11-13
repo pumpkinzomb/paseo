@@ -9,7 +9,8 @@ workbooks and the browser share its tab rail; ordinary code editing retains its 
 app-owned PDF.js viewer, not Chromium's fixed-width internal PDF UI. Other types keep the fully
 sandboxed frame. The native adapter is unchanged; mobile device QA is not claimed.
 
-- Page thumbnails start at **110 px**, with a **72–240 px** user range. Pointer capture supports
+- Page thumbnails start at **110 px**, with a **72–240 px** user range. The boundary is a 1 px
+  hairline with a transparent 10 px grab region, matching the existing pointer sidebar handle. Pointer capture supports
   dragging; cancellation restores the initial width. Arrow keys resize by 8 px (Shift: 20), Home/End
   choose the limits, and double-click restores 110 px.
 - The toggle collapses thumbnails. Narrow containers under 360 px hide them without overwriting the
@@ -20,7 +21,7 @@ sandboxed frame. The native adapter is unchanged; mobile device QA is not claime
   memory is released. Canvas dimensions/pixel counts and document size/page count are bounded.
 - Source changes clear prior pages, cancel earlier work and ignore stale completion. Invalid,
   unsupported or password-protected files show an error and offer the original browser viewer.
-  Full Acrobat features, editing, annotation actions, PDF form scripting and print UI are not provided.
+  Full Acrobat editing, annotation actions and PDF form scripting are not provided.
 
 PDF.js core, matching parser Worker, CMaps, fonts and image-decoder WASM assets are bundled locally by
 `npm run build:pdf-runtime`, included in app dependency builds. No runtime CDN, cloud upload, OAuth
@@ -49,3 +50,23 @@ actual DocumentFrame routing, host persistence/source validation, error recovery
 
 Spreadsheet previews keep the existing read-only sheet tabs and Office renderer. PPT/PPTX preview is
 not implemented by this PDF change; its future slide viewer is separate work.
+
+## Document actions
+
+The artifact header has 12 px horizontal title padding and icon-only original/download/print controls
+with accessible names and tooltips. Original opens the existing canonical source link. Download reads
+the actual cached PDF/DOCX/XLSX bytes through the normal file handle, validates the content-addressed
+sibling path and format, and gives the download a readable filename. It does not pretend a PDF export
+is a Word document or promise a fresh/live Google export. Native mobile download is not added here.
+
+PDF print is explicit-user-action only. It prepares every page separately at 150 dpi in an isolated
+print layout, retains portrait/landscape page dimensions, invokes the print dialog, and releases the
+layout and Blob images after printing/cancellation. It does not print only the currently virtualized
+pages or silently send a printer job. The viewer sandbox adds only `allow-modals` for the print API;
+no same-origin or external-network access is granted. Printing is bounded to 200 pages, 128 million
+prepared pixels and 64 MiB of PNG data; larger documents explicitly request downloading and printing
+from a full PDF viewer rather than reducing quality or dropping pages. File changes abort preparation.
+Automatic renderer handoff is held while PDF print preparation/dialog activity is pending.
+Office print, physical printer behavior and platform print-dialog interaction are not claimed tested.
+`node packages/app/scripts/test-pdf-print.mjs` validates generated print PDF page count/orientation
+using synthetic files without opening a real printer dialog or sending paper output.

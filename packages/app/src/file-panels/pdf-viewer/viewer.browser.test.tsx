@@ -1,3 +1,5 @@
+import { getUpdateTransientBlockers } from "@/desktop/dev-update/transient-state";
+import { PdfPrintActionContext, type PdfPrintAction } from "./actions";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, it, expect, vi } from "vitest";
@@ -71,7 +73,7 @@ it("routes real PDF bytes into an opaque local renderer with a narrow default", 
     { timeout: 20000 },
   );
   const frame = container.querySelector("iframe");
-  expect(frame?.getAttribute("sandbox")).toBe("allow-scripts");
+  expect(frame?.getAttribute("sandbox")).toBe("allow-scripts allow-modals");
   expect(messages.find((message) => message.type === "pdf-loaded")).toMatchObject({
     pages: 1,
     width: 110,
@@ -139,4 +141,47 @@ it("keeps non-PDF documents fully sandboxed", async () => {
   render(blob("<h1>Not a PDF</h1>", "text/html"));
   await waitFor(() => expect(container.querySelector("iframe")?.getAttribute("sandbox")).toBe(""));
   expect(container.querySelector("iframe")?.getAttribute("srcdoc")).toBeNull();
+});
+
+it("registers a ready print action for the actual PDF and removes it on close", async () => {
+  const register = vi.fn<(action: PdfPrintAction | null) => void>();
+  const url = blob(fixture());
+  act(() =>
+    root?.render(
+      <PdfPrintActionContext.Provider value={register}>
+        <DocumentFrame url={url} />
+      </PdfPrintActionContext.Provider>,
+    ),
+  );
+  await waitFor(
+    () =>
+      expect(register).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ready: true, busy: false, run: expect.any(Function) }),
+      ),
+    { timeout: 20000 },
+  );
+  act(() => root?.unmount());
+  root = null;
+  expect(register).toHaveBeenLastCalledWith(null);
+});
+
+it("holds automatic update handoff while the print dialog/job is active", async () => {
+  render(blob(fixture()));
+  await waitFor(
+    () => expect(messages.some((message) => message.type === "pdf-loaded")).toBe(true),
+    { timeout: 20000 },
+  );
+  const source = container.querySelector("iframe")?.contentWindow;
+  act(() =>
+    window.dispatchEvent(
+      new MessageEvent("message", { source, data: { type: "pdf-print-state", busy: true } }),
+    ),
+  );
+  expect(getUpdateTransientBlockers()).toContain("pdf-print");
+  act(() =>
+    window.dispatchEvent(
+      new MessageEvent("message", { source, data: { type: "pdf-print-state", busy: false } }),
+    ),
+  );
+  expect(getUpdateTransientBlockers()).not.toContain("pdf-print");
 });

@@ -57,3 +57,13 @@ it("blocks scripts and networking and bounds document zoom", () => {
   expect(staticOfficeDocument("", 1)).toContain("connect-src 'none'");
   expect(staticOfficeDocument("", 1)).toContain("script-src 'none'");
 });
+
+it("only resolves hashed original Office/PDF files beside the manifest", async () => {
+  const { previewOriginalPath, previewDownloadName } = await import("./model");
+  expect(previewOriginalPath("/work/a.paseoview", `${"a".repeat(64)}.xlsx`)).toBe(
+    `/work/${"a".repeat(64)}.xlsx`,
+  );
+  expect(previewOriginalPath("/work/a.paseoview", "../private.pdf")).toBeNull();
+  expect(previewOriginalPath("/work/a.paseoview", "https://evil.test/file.pdf")).toBeNull();
+  expect(previewDownloadName("My / document", "pdf")).toBe("My _ document.pdf");
+});

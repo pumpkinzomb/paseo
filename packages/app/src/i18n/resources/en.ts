@@ -1,5 +1,9 @@
 export const en = {
   pdfViewer: {
+    printPreparing: "Preparing all PDF pages for printing…",
+    printFailed: "Could not prepare printing. Download the PDF and print from its original viewer.",
+    printTooLarge:
+      "This PDF is too large for in-app printing. Download it and print from its original viewer.",
     title: "PDF preview",
     loading: "Loading PDF…",
     failed: "Could not render this PDF.",
@@ -15,6 +19,9 @@ export const en = {
     password: "Password-protected PDFs must be opened in the original viewer.",
   },
   documentPreview: {
+    download: "Download {{format}}",
+    downloadFailed: "Could not download this file",
+    print: "Print PDF",
     rendererWarning:
       "Rendered by macOS Quick Look; fonts, charts and advanced Office features may differ.",
     resourcesWarning: "Some embedded resources could not be displayed.",

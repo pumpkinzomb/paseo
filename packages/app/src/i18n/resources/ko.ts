@@ -3,6 +3,9 @@ import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
   pdfViewer: {
+    printPreparing: "PDF 전체 페이지 인쇄를 준비하는 중…",
+    printFailed: "인쇄를 준비하지 못했어. PDF를 다운로드해서 기본 뷰어에서 인쇄해줘.",
+    printTooLarge: "앱에서 인쇄하기에는 큰 PDF야. 다운로드해서 기본 뷰어에서 인쇄해줘.",
     title: "PDF 미리보기",
     loading: "PDF를 불러오는 중…",
     failed: "이 PDF를 표시하지 못했어.",
@@ -18,6 +21,9 @@ export const ko: TranslationResources = {
     password: "암호가 있는 PDF는 기본 뷰어로 열어줘.",
   },
   documentPreview: {
+    download: "{{format}} 다운로드",
+    downloadFailed: "파일을 다운로드하지 못했어",
+    print: "PDF 인쇄",
     rendererWarning:
       "macOS 기본 엔진으로 렌더링했어. 글꼴·차트·고급 Office 기능은 원본 앱과 다를 수 있어.",
     resourcesWarning: "일부 포함된 리소스를 표시하지 못했어.",

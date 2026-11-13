@@ -90,17 +90,37 @@ input:focus-visible,
   scrollbar-width: thin;
 }
 #divider {
-  width: 6px;
+  width: 1px;
+  position: relative;
+  z-index: 2;
   flex-shrink: 0;
   cursor: col-resize;
   touch-action: none;
-  border-left: 1px solid var(--border);
-  background: var(--chrome);
+  background: var(--border);
 }
-#divider:hover,
-#divider:focus-visible,
-.resizing #divider {
-  background: #6d9df4;
+#divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 10px;
+}
+#divider::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: var(--ink);
+  opacity: 0;
+  pointer-events: none;
+}
+#divider:hover::after,
+#divider:focus-visible::after,
+.resizing #divider::after {
+  opacity: 0.25;
 }
 [hidden] {
   display: none !important;

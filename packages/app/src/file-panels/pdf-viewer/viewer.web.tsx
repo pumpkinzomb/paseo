@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useUpdateTransientBlocker } from "@/desktop/dev-update/transient-state";
+import { Download, Printer } from "lucide-react-native";
+import {
+  PaneContentToolbar,
+  ToolbarControls,
+  ToolbarButton,
+} from "@/components/ui/pane-content-toolbar";
+import { mutedIconColorMapping } from "@/components/ui/icon-color";
+import { downloadPreviewFile } from "../document-preview/download.web";
+import { PdfPrintActionContext } from "./actions";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
 import { useTranslation } from "react-i18next";
@@ -33,11 +43,26 @@ const frameStyle = { border: 0, flex: 1, minHeight: 0, width: "100%", height: "1
 interface PdfViewerProps {
   url: string;
   testID?: string;
+  downloadName?: string;
   colorScheme?: "light" | "dark";
 }
-function PdfViewerImpl({ url, testID, colorScheme = "dark" }: PdfViewerProps) {
+function PdfViewerImpl({
+  url,
+  testID,
+  downloadName = "document.pdf",
+  colorScheme = "dark",
+}: PdfViewerProps) {
   const { t } = useTranslation();
   const dark = colorScheme === "dark";
+  const registerPrint = useContext(PdfPrintActionContext);
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
+  useUpdateTransientBlocker("pdf-print", printing);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const download = useCallback(() => {
+    setDownloadError(null);
+    void downloadPreviewFile(url, downloadName).catch(() => setDownloadError(url));
+  }, [url, downloadName]);
   const labels = useMemo<PdfViewerLabels>(
     () => ({
       loading: t("pdfViewer.loading"),
@@ -52,6 +77,9 @@ function PdfViewerImpl({ url, testID, colorScheme = "dark" }: PdfViewerProps) {
       fitWidth: t("pdfViewer.fitWidth"),
       openOriginal: t("pdfViewer.openOriginal"),
       password: t("pdfViewer.password"),
+      printPreparing: t("pdfViewer.printPreparing"),
+      printFailed: t("pdfViewer.printFailed"),
+      printTooLarge: t("pdfViewer.printTooLarge"),
     }),
     [t],
   );
@@ -113,7 +141,11 @@ function PdfViewerImpl({ url, testID, colorScheme = "dark" }: PdfViewerProps) {
         ready.current = true;
         void send();
       } else if (data.type === "pdf-error") setFailedUrl(url);
-      else if (data.type === "pdf-loaded") setFailedUrl(null);
+      else if (data.type === "pdf-loaded") {
+        setFailedUrl(null);
+        setLoadedUrl(url);
+      } else if (data.type === "pdf-print-state" && typeof data.busy === "boolean")
+        setPrinting(data.busy);
       else if (data.type === "pdf-preferences") {
         const preferences = parsePdfPreferences(data.preferences);
         if (preferences)
@@ -132,8 +164,37 @@ function PdfViewerImpl({ url, testID, colorScheme = "dark" }: PdfViewerProps) {
       sendRef.current = () => {};
     };
   }, [url, labels, dark]);
+  const print = useCallback(() => {
+    if (loadedUrl === url && !printing)
+      frame.current?.contentWindow?.postMessage({ type: "pdf-print" }, "*");
+  }, [url, loadedUrl, printing]);
+  useEffect(() => {
+    registerPrint?.({ run: print, busy: printing, ready: loadedUrl === url });
+    return () => registerPrint?.(null);
+  }, [registerPrint, print, printing, loadedUrl, url]);
   return (
     <div style={containerStyle}>
+      {registerPrint === null ? (
+        <PaneContentToolbar style={standaloneToolbarStyle}>
+          <ToolbarControls>
+            <ToolbarButton
+              label={t("documentPreview.download", { format: "PDF" })}
+              onPress={download}
+            >
+              <DownloadIcon size={14} />
+            </ToolbarButton>
+            <ToolbarButton
+              label={printing ? labels.printPreparing : t("documentPreview.print")}
+              onPress={print}
+              disabled={loadedUrl !== url || printing}
+            >
+              <PrintIcon size={14} />
+            </ToolbarButton>
+          </ToolbarControls>
+        </PaneContentToolbar>
+      ) : null}
+      {downloadError === url ? <div role="alert">{t("documentPreview.downloadFailed")}</div> : null}
+
       {failedUrl === url ? (
         <div role="alert">
           {labels.failed}{" "}
@@ -146,7 +207,7 @@ function PdfViewerImpl({ url, testID, colorScheme = "dark" }: PdfViewerProps) {
         ref={frame}
         title={t("pdfViewer.title")}
         data-testid={testID}
-        sandbox="allow-scripts"
+        sandbox="allow-scripts allow-modals"
         srcDoc={pdfRuntimeHtml}
         onLoad={frameReady}
         referrerPolicy="no-referrer"
@@ -161,3 +222,12 @@ const mapTheme = (theme: Theme) => ({ colorScheme: theme.colorScheme });
 export function PdfViewer(props: Omit<PdfViewerProps, "colorScheme">) {
   return <ThemedPdfViewer {...props} uniProps={mapTheme} />;
 }
+
+const standaloneToolbarStyle = {
+  flexDirection: "row",
+  justifyContent: "flex-end",
+  alignItems: "center",
+  paddingHorizontal: 12,
+} as const;
+const DownloadIcon = withUnistyles(Download, mutedIconColorMapping);
+const PrintIcon = withUnistyles(Printer, mutedIconColorMapping);

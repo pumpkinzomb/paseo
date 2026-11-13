@@ -25,7 +25,14 @@ const ANDROID_INLINE_EXTENSIONS = new Set([
   "avif",
 ]);
 
-export function DocumentFrame({ url, testID }: { url: string; testID?: string }) {
+export function DocumentFrame({
+  url,
+  testID,
+}: {
+  url: string;
+  testID?: string;
+  downloadName?: string;
+}) {
   const source = useMemo(() => ({ uri: url }), [url]);
   const loaded = useRef<string | null>(null);
   const allowDocument = useCallback(

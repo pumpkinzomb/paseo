@@ -48,6 +48,9 @@ export interface PdfViewerLabels {
   fitWidth: string;
   openOriginal: string;
   password: string;
+  printPreparing: string;
+  printFailed: string;
+  printTooLarge: string;
 }
 export interface PdfViewerLoadMessage {
   type: "pdf-load";

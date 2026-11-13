@@ -1,3 +1,4 @@
+import { createPdfFixture as fixture } from "./pdf-preview-fixture.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -25,33 +26,6 @@ const installedVersion = JSON.parse(
   await fs.readFile(require.resolve("pdfjs-dist/package.json")),
 ).version;
 assert.equal(pdfRuntimeVersion, installedVersion, "Stale PDF runtime: rebuild before testing");
-function fixture(count = 3) {
-  const objects = [
-    "<< /Type /Catalog /Pages 2 0 R /OpenAction << /S /JavaScript /JS (app.alert('must-not-run')) >> >>",
-    `<< /Type /Pages /Kids [${Array.from({ length: count }, (_, index) => `${index + 3} 0 R`).join(" ")}] /Count ${count} >>`,
-  ];
-  for (let page = 1; page <= count; page++)
-    objects.push(
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${page === 2 ? "842 595" : "595 842"}] /Resources << /Font << /F1 ${count + 3} 0 R >> >> /Contents ${count + 3 + page} 0 R >>`,
-    );
-  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-  for (let page = 1; page <= count; page++) {
-    const top = page === 2 ? 450 : 700;
-    const text = `0.15 0.35 0.65 rg 40 ${top - 70} 515 150 re f BT /F1 26 Tf 1 1 1 rg 65 ${top} Td (PDF Preview Page ${page}) Tj ET BT /F1 16 Tf 0 0 0 rg 65 ${top - 140} Td (Readable original file, not a text reconstruction.) Tj ET`;
-    objects.push(`<< /Length ${text.length} >>\nstream\n${text}\nendstream`);
-  }
-  let pdf = "%PDF-1.7\n";
-  const offsets = [0];
-  for (const [index, object] of objects.entries()) {
-    offsets.push(Buffer.byteLength(pdf));
-    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
-  }
-  const xref = Buffer.byteLength(pdf);
-  pdf += `xref\n0 ${offsets.length}\n0000000000 65535 f \n`;
-  for (const offset of offsets.slice(1)) pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
-  pdf += `trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
-  return Buffer.from(pdf).toString("base64");
-}
 const labels = {
   loading: "Loading PDF",
   failed: "PDF failed",
@@ -65,8 +39,11 @@ const labels = {
   fitWidth: "Fit width",
   openOriginal: "Original",
   password: "Password required",
+  printPreparing: "Preparing print",
+  printFailed: "Print failed",
+  printTooLarge: "Print too large",
 };
-const harness = `<!doctype html><style>html,body{margin:0;height:100%;background:#171a1a}iframe{border:0;width:100%;height:100%}</style><iframe title="PDF" sandbox="allow-scripts"></iframe><script>
+const harness = `<!doctype html><style>html,body{margin:0;height:100%;background:#171a1a}iframe{border:0;width:100%;height:100%}</style><iframe title="PDF" sandbox="allow-scripts allow-modals"></iframe><script>
 const frame=document.querySelector('iframe');window.events=[];window.saved={width:110,collapsed:false};
 function send(bytes){frame.contentWindow.postMessage({type:'pdf-load',bytes,preferences:window.saved,labels:${JSON.stringify(labels)},dark:true},'*',[bytes]);}
 window.loadLong=()=>{const raw=atob(${JSON.stringify(fixture(80))});send(Uint8Array.from(raw,c=>c.charCodeAt(0)).buffer)};
@@ -126,6 +103,14 @@ try {
   assert.equal(await frame.locator("#fit").innerText(), "Fit width");
   assertions++;
   const divider = frame.locator("#divider");
+  assert.equal(await divider.evaluate((node) => node.getBoundingClientRect().width), 1);
+  assertions++;
+  assert.equal(await divider.evaluate((node) => getComputedStyle(node, "::before").width), "10px");
+  assertions++;
+  await divider.hover();
+  assert.equal(await divider.evaluate((node) => getComputedStyle(node, "::after").width), "1px");
+  assertions++;
+
   const box = await divider.boundingBox();
   if (!box) throw Error("Missing divider");
   await page.mouse.move(box.x + 3, box.y + 70);

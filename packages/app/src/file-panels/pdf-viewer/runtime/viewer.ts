@@ -1,3 +1,4 @@
+import { printPdfDocument, PdfPrintLimitError } from "./print";
 import {
   getDocument,
   GlobalWorkerOptions,
@@ -53,6 +54,7 @@ export function createPdfViewer(root: HTMLElement, bridge: ViewerBridge) {
   let pdf: PDFDocumentProxy | null = null;
   let loading: ReturnType<typeof getDocument> | null = null;
   let disposed = false;
+  let printJob: AbortController | null = null;
   let generation = 0;
   let scale: number | "width" = "width";
   let pageNumber = 1;
@@ -406,6 +408,7 @@ export function createPdfViewer(root: HTMLElement, bridge: ViewerBridge) {
     text: PdfViewerLabels,
     dark: boolean,
   ) {
+    printJob?.abort();
     const revision = ++generation;
     labels = text;
     preferences = parsePdfPreferences(initial) ?? { ...DEFAULT_PDF_PREFERENCES };
@@ -480,7 +483,26 @@ export function createPdfViewer(root: HTMLElement, bridge: ViewerBridge) {
       }
     }
   }
+  async function print() {
+    if (!pdf || printJob || disposed) return;
+    const controller = new AbortController();
+    printJob = controller;
+    bridge.send({ type: "pdf-print-state", busy: true });
+    status.textContent = labels.printPreparing;
+    try {
+      await printPdfDocument(pdf, controller.signal);
+      if (!disposed && !controller.signal.aborted) status.textContent = "";
+    } catch (error) {
+      if (!disposed && !controller.signal.aborted)
+        status.textContent =
+          error instanceof PdfPrintLimitError ? labels.printTooLarge : labels.printFailed;
+    } finally {
+      if (printJob === controller) printJob = null;
+      if (!disposed) bridge.send({ type: "pdf-print-state", busy: false });
+    }
+  }
   function reset() {
+    printJob?.abort();
     generation += 1;
     for (const view of views.values()) clearBitmap(view);
     views.clear();
@@ -496,6 +518,7 @@ export function createPdfViewer(root: HTMLElement, bridge: ViewerBridge) {
   }
   function destroy() {
     disposed = true;
+    printJob?.abort();
     generation += 1;
     eventLifetime.abort();
     clearTimeout(repaintTimer);
@@ -508,5 +531,5 @@ export function createPdfViewer(root: HTMLElement, bridge: ViewerBridge) {
     if (workerUrl) URL.revokeObjectURL(workerUrl);
     root.replaceChildren();
   }
-  return { load, reset, destroy };
+  return { load, reset, print, destroy };
 }
