@@ -95,7 +95,7 @@ unfinished deployment path safe.
 ## Stable launcher
 
 `scripts/launch-stable-runtime.mjs` is the maintained version of the installed
-Desktop shortcut target. It reads local `workspaces/paseo-runtime-control/active.json`,
+Desktop shortcut target. It reads local `workspaces/paseo/.dev/runtime-control/active.json`,
 verifies release/UI hashes and allows a separately versioned `daemonRelease`.
 `selfDevelopmentPolicy` contains the absolute lab path and protected roots, and
 is passed to a cold-started daemon. Existing daemons are not silently restarted

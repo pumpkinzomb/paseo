@@ -22,6 +22,29 @@ export function resolvePlan(root, manifest) {
     throw new Error("Lab identity mismatch");
   for (const protectedRoot of manifest.protectedRoots) {
     const resolved = fs.realpathSync(protectedRoot);
+    // Only the explicitly configured, linked Git checkout may live under its source.
+    if (manifest.projectSource === resolved && root === path.join(resolved, ".dev", "lab")) {
+      const gitPath = (cwd, flag) =>
+        fs.realpathSync(
+          execFileSync("git", ["-C", cwd, "rev-parse", "--path-format=absolute", flag], {
+            encoding: "utf8",
+          }).trim(),
+        );
+      if (
+        fs.lstatSync(path.join(root, ".git")).isFile() &&
+        gitPath(root, "--show-toplevel") === root &&
+        gitPath(resolved, "--show-toplevel") === resolved &&
+        gitPath(root, "--git-common-dir") === gitPath(resolved, "--git-common-dir") &&
+        inside(
+          path.join(gitPath(resolved, "--git-common-dir"), "worktrees"),
+          gitPath(root, "--git-dir"),
+        ) &&
+        fs.realpathSync(
+          fs.readFileSync(path.join(gitPath(root, "--git-dir"), "gitdir"), "utf8").trim(),
+        ) === path.join(root, ".git")
+      )
+        continue;
+    }
     if (root === resolved || inside(resolved, root) || inside(root, resolved))
       throw new Error("Lab overlaps a protected runtime/source");
   }

@@ -5,10 +5,44 @@ import crypto from "node:crypto";
 import net from "node:net";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
-const control = path.join(os.homedir(), "workspaces/paseo-runtime-control");
+const control = path.join(os.homedir(), "workspaces/paseo/.dev/runtime-control");
+// Supervised installations use sealed releases, not legacy UI hash metadata.
+const supervised = path.join(control, "supervised");
+if (
+  await fs.stat(path.join(supervised, "state.json")).then(
+    () => true,
+    (error) => {
+      if (error.code === "ENOENT") return false;
+      throw error;
+    },
+  )
+) {
+  const config = JSON.parse(await fs.readFile(path.join(supervised, "config.json"), "utf8"));
+  const state = JSON.parse(await fs.readFile(path.join(supervised, "state.json"), "utf8"));
+  const releases = await fs.realpath(path.join(os.homedir(), "workspaces/paseo/.dev/runtimes"));
+  if (config.releases !== releases) throw new Error("Unexpected supervised release store");
+  const { verifyRelease } = await import("./dev-update-store.mjs");
+  await verifyRelease(releases, state.current.id, state.current.digest);
+  if (process.argv.includes("--check")) {
+    if (state.previous) await verifyRelease(releases, state.previous.id, state.previous.digest);
+    console.log("Supervised release verification complete; no processes started.");
+  } else {
+    const child = spawn(
+      process.execPath,
+      [path.join(supervised, "controller/dev-update.mjs"), "start", "--control", supervised],
+      { stdio: "inherit" },
+    );
+    const code = await new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", resolve);
+    });
+    if (code !== 0) throw new Error("Supervised startup failed");
+  }
+  process.exit(0);
+}
 const cfg = JSON.parse(await fs.readFile(path.join(control, "active.json"), "utf8"));
 const root = await fs.realpath(cfg.release),
-  allowed = await fs.realpath(path.join(os.homedir(), "workspaces/paseo-runtimes"));
+  allowed = await fs.realpath(path.join(os.homedir(), "workspaces/paseo/.dev/runtimes"));
 if (!root.startsWith(allowed + path.sep)) throw new Error("Unapproved runtime location");
 const manifest = JSON.parse(await fs.readFile(path.join(root, "release.json"), "utf8"));
 for (const [f, h] of Object.entries(manifest.artifacts))
