@@ -5613,15 +5613,19 @@ export class DaemonClient {
     workspaceId: string,
     expectedAgentIds: string[],
     expectedWorkspaceIds?: string[],
+    deleteNativeSessions = false,
   ) {
     if (!this.lastServerInfoMessage?.features?.workspaceSessionDeletion)
       throw new Error("Update this host to delete grouped sessions.");
+    if (deleteNativeSessions && !this.lastServerInfoMessage?.features?.nativeSessionDeletion)
+      throw new Error("Update this host to delete original provider sessions.");
     return this.sendCorrelatedSessionRequest({
       message: {
         type: "workspace.sessions.delete.request",
         workspaceId,
         expectedAgentIds,
         expectedWorkspaceIds,
+        ...(deleteNativeSessions ? { deleteNativeSessions: true as const } : {}),
       },
       responseType: "workspace.sessions.delete.response",
     });

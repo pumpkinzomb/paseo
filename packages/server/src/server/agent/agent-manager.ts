@@ -1,3 +1,8 @@
+import { planNativeSessionDeletion } from "./native-session-deletion.js";
+import {
+  deleteNativeSessionsBeforeRecords,
+  type NativeDeletionReceipt,
+} from "./native-session-deletion-transaction.js";
 import {
   ensureManagedDependenciesReady,
   needsManagedDependencyCheck,
@@ -4282,12 +4287,13 @@ export class AgentManager {
     }
   }
 
-  /** Local Paseo records only: never delete or archive native provider history. */
+  /** Native deletion requires a new explicit protocol opt-in after user confirmation. */
   async mutateAssistantConversationRecords(
     agentIds: string[],
     action: "archive" | "restore" | "delete",
     assistantOnly: boolean | null = true,
     expectedWorkspaceId?: string | readonly string[],
+    deleteNativeSessions = false,
   ): Promise<void> {
     const ids = [
       ...new Set(agentIds.map((id) => validateAgentId(id, "conversation lifecycle"))),
@@ -4346,6 +4352,78 @@ export class AgentManager {
       }
       await this.flush();
       await validateWorkspace();
+      if (deleteNativeSessions) {
+        if (action !== "delete") throw new Error("Native deletion requires delete action");
+        const inventory = await registry.listAll();
+        const targets = planNativeSessionDeletion(ids, inventory);
+        for (const target of targets) {
+          if (!this.clients.get(target.provider)?.deleteNativeSession)
+            throw new Error("Provider does not support permanent native deletion.");
+        }
+        await deleteNativeSessionsBeforeRecords(targets, {
+          assertIdleAndExclusive: async () => {
+            await validateWorkspace();
+            await this.validateAssistantConversationMutation(ids, action, assistantOnly);
+            const fresh = planNativeSessionDeletion(ids, await registry.listAll());
+            if (JSON.stringify(fresh) !== JSON.stringify(targets))
+              throw new Error("Native deletion scope changed.");
+          },
+          read: async (target) => {
+            const group = targets.find(
+              (t) => t.provider === target.provider && t.sessionId === target.sessionId,
+            )!;
+            const states = await Promise.all(
+              group.agentIds.map(
+                async (id) => (await registry.get(id))?.metadata?.nativeSessionDeletion,
+              ),
+            );
+            if (
+              states.every(
+                (state) =>
+                  state &&
+                  typeof state === "object" &&
+                  !Array.isArray(state) &&
+                  state.provider === target.provider &&
+                  state.sessionId === target.sessionId &&
+                  state.state === "deleted",
+              )
+            )
+              return "deleted";
+            if (states.some(Boolean)) return "pending";
+            return null;
+          },
+          write: async (target, state: NativeDeletionReceipt) => {
+            const group = targets.find(
+              (t) => t.provider === target.provider && t.sessionId === target.sessionId,
+            )!;
+            for (const id of group.agentIds) {
+              const record = await registry.get(id);
+              if (!record) throw new Error("Native deletion record disappeared.");
+              await registry.upsert({
+                ...record,
+                metadata: {
+                  ...record.metadata,
+                  nativeSessionDeletion: {
+                    provider: target.provider,
+                    sessionId: target.sessionId,
+                    state,
+                  },
+                },
+              });
+            }
+          },
+          removeNative: async (target) => {
+            const group = targets.find(
+              (t) => t.provider === target.provider && t.sessionId === target.sessionId,
+            )!;
+            const record = await registry.get(group.agentIds[0]!);
+            if (!record?.persistence) throw new Error("Native deletion handle disappeared.");
+            await this.clients.get(target.provider)!.deleteNativeSession!(record.persistence);
+          },
+          // The ordinary record deletion below runs only after every native acknowledgement.
+          removePaseoRecords: async () => {},
+        });
+      }
       for (const id of ids) {
         const record = await registry.get(id);
         if (action === "delete") {

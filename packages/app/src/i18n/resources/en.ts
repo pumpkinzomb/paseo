@@ -155,6 +155,8 @@ export const en = {
     retry: "Retry",
   },
   workspaceSessionDeletion: {
+    nativeConfirm:
+      "Permanently delete all {{count}} Paseo records and their linked Codex/Claude original sessions, including model segments and child transcripts? This cannot be undone. Close these sessions in Codex/Claude and other apps before confirming. Shared project files, worktrees and attachments are preserved. If a native deletion fails or is uncertain, Paseo records remain and retries may require manual review.",
     completedMenu: "Delete completed sessions",
     completedTitle: "Delete all completed sub-sessions?",
     completedConfirm:

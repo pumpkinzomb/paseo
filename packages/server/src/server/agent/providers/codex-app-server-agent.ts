@@ -8009,6 +8009,19 @@ export class CodexAppServerAgentClient implements AgentClient {
     }
   }
 
+  async deleteNativeSession(handle: AgentPersistenceHandle): Promise<void> {
+    if (handle.provider !== this.provider) throw new Error("Native deletion provider mismatch");
+    const threadId = handle.nativeHandle ?? handle.sessionId;
+    if (typeof threadId !== "string" || !threadId.trim())
+      throw new Error("Native deletion requires an exact thread ID");
+    const client = await this.startAppServer();
+    try {
+      await client.request("thread/delete", { threadId });
+    } finally {
+      await client.dispose();
+    }
+  }
+
   async archiveNativeSession(handle: AgentPersistenceHandle): Promise<void> {
     await this.updateNativeThreadArchiveState(handle, "archive");
   }
