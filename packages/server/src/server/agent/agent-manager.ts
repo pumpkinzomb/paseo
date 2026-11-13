@@ -4418,7 +4418,9 @@ export class AgentManager {
             )!;
             const record = await registry.get(group.agentIds[0]!);
             if (!record?.persistence) throw new Error("Native deletion handle disappeared.");
-            await this.clients.get(target.provider)!.deleteNativeSession!(record.persistence);
+            await this.clients.get(target.provider)!.deleteNativeSession!(record.persistence, {
+              env: record.launchEnv,
+            });
           },
           // The ordinary record deletion below runs only after every native acknowledgement.
           removePaseoRecords: async () => {},

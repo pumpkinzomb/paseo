@@ -618,7 +618,8 @@ function wrapClientProvider(
         }
       : undefined,
     deleteNativeSession: deleteNativeSession
-      ? async (handle) => await deleteNativeSession({ ...handle, provider: inner.provider })
+      ? async (handle, context) =>
+          await deleteNativeSession({ ...handle, provider: inner.provider }, context)
       : undefined,
     archiveNativeSession: archiveNativeSession
       ? async (handle) => await archiveNativeSession({ ...handle, provider: inner.provider })
