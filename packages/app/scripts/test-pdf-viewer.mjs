@@ -103,12 +103,12 @@ try {
   assert.equal(await frame.locator("#fit").innerText(), "Fit width");
   assertions++;
   const divider = frame.locator("#divider");
-  assert.equal(await divider.evaluate((node) => node.getBoundingClientRect().width), 1);
+  assert.equal(await divider.evaluate((node) => node.getBoundingClientRect().width), 2);
   assertions++;
   assert.equal(await divider.evaluate((node) => getComputedStyle(node, "::before").width), "10px");
   assertions++;
   await divider.hover();
-  assert.equal(await divider.evaluate((node) => getComputedStyle(node, "::after").width), "1px");
+  assert.equal(await divider.evaluate((node) => getComputedStyle(node, "::after").width), "2px");
   assertions++;
 
   const box = await divider.boundingBox();

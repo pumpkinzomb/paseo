@@ -9,8 +9,8 @@ workbooks and the browser share its tab rail; ordinary code editing retains its 
 app-owned PDF.js viewer, not Chromium's fixed-width internal PDF UI. Other types keep the fully
 sandboxed frame. The native adapter is unchanged; mobile device QA is not claimed.
 
-- Page thumbnails start at **110 px**, with a **72–240 px** user range. The boundary is a 1 px
-  hairline with a transparent 10 px grab region, matching the existing pointer sidebar handle. Pointer capture supports
+- Page thumbnails start at **110 px**, with a **72–240 px** user range. The boundary is a 2 px
+  line with a transparent 10 px grab region, using the requested sidebar thickness. Pointer capture supports
   dragging; cancellation restores the initial width. Arrow keys resize by 8 px (Shift: 20), Home/End
   choose the limits, and double-click restores 110 px.
 - The toggle collapses thumbnails. Narrow containers under 360 px hide them without overwriting the
