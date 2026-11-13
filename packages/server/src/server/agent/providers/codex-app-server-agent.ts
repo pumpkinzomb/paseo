@@ -7745,9 +7745,9 @@ export class CodexAppServerAgentClient implements AgentClient {
   }
 
   private async startAppServer(
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal; environment?: Record<string, string> } = {},
   ): Promise<CodexAppServerClient> {
-    const environment = buildCodexAppServerEnv(this.runtimeSettings);
+    const environment = options.environment ?? buildCodexAppServerEnv(this.runtimeSettings);
     const spawn = await this.prepareAppServerSpawn({ environment });
     const { client } = await codexAppServerStartup.start({
       stateDirKey: codexStartupStateDirKey(environment),
@@ -8009,12 +8009,23 @@ export class CodexAppServerAgentClient implements AgentClient {
     }
   }
 
-  async deleteNativeSession(handle: AgentPersistenceHandle): Promise<void> {
+  async deleteNativeSession(
+    handle: AgentPersistenceHandle,
+    context?: { env?: Record<string, string> },
+  ): Promise<void> {
     if (handle.provider !== this.provider) throw new Error("Native deletion provider mismatch");
     const threadId = handle.nativeHandle ?? handle.sessionId;
     if (typeof threadId !== "string" || !threadId.trim())
       throw new Error("Native deletion requires an exact thread ID");
-    const client = await this.startAppServer();
+    const stored = (handle.metadata ?? {}) as Partial<AgentSessionConfig>;
+    const scope = await resolveCodexLeadRuntime({
+      config: { ...stored, provider: CODEX_PROVIDER, cwd: stored.cwd ?? process.cwd() },
+      environment: buildCodexAppServerEnv(this.runtimeSettings, context?.env),
+      isResume: true,
+      resumeMetadata: handle.metadata,
+      paseoHome: this.deps.leadRuntimePaseoHome,
+    });
+    const client = await this.startAppServer({ environment: scope.environment });
     try {
       await client.request("thread/delete", { threadId });
     } finally {

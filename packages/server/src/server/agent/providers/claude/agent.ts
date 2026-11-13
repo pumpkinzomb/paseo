@@ -1769,8 +1769,11 @@ export class ClaudeAgentClient implements AgentClient {
     };
   }
 
-  async deleteNativeSession(handle: AgentPersistenceHandle): Promise<void> {
-    await deleteClaudeNativeSession(handle, claudeConfigDir(this.buildProviderEnv()));
+  async deleteNativeSession(
+    handle: AgentPersistenceHandle,
+    context?: { env?: Record<string, string> },
+  ): Promise<void> {
+    await deleteClaudeNativeSession(handle, claudeConfigDir(this.buildProviderEnv(context?.env)));
   }
 
   async listImportableSessions(

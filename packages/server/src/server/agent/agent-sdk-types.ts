@@ -897,7 +897,10 @@ export interface AgentClient {
    */
   archiveNativeSession?(handle: AgentPersistenceHandle): Promise<void>;
   /** Permanent provider deletion. Errors must propagate; never substitute archive. */
-  deleteNativeSession?(handle: AgentPersistenceHandle): Promise<void>;
+  deleteNativeSession?(
+    handle: AgentPersistenceHandle,
+    context?: { env?: Record<string, string> },
+  ): Promise<void>;
   /**
    * Unarchive a durable native session in the provider.
    * Called before Paseo clears its archived flag so provider resume can succeed.
