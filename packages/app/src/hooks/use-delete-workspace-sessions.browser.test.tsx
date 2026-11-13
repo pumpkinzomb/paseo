@@ -83,9 +83,10 @@ it("one confirmation deletes the full authoritative group with no session picker
       "workspace",
       ["parent", "segment", "child"],
       undefined,
+      true,
     ),
   );
-  expect(mocks.confirm.mock.calls[0][0].message).toBe("workspaceSessionDeletion.confirm:3");
+  expect(mocks.confirm.mock.calls[0][0].message).toBe("workspaceSessionDeletion.nativeConfirm:3");
   expect(mocks.close).toHaveBeenCalledTimes(1);
 });
 it("repeated clicks cannot send duplicate deletion requests", async () => {
@@ -216,6 +217,7 @@ it("sends the confirmed descendant workspace scope and closes child tabs in thei
       "workspace",
       ["parent", "child"],
       ["workspace", "child-workspace"],
+      true,
     ),
   );
   expect(mocks.closeTabs).toHaveBeenCalledWith(

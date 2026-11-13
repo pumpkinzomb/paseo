@@ -55,7 +55,7 @@ export function useDeleteWorkspaceSessions(
   const { t } = useTranslation();
   const toast = useToast();
   const client = useHostRuntimeClient(serverId);
-  const supported = useHostFeature(serverId, "workspaceSessionDeletion");
+  const supported = useHostFeature(serverId, "nativeSessionDeletion");
   const queryClient = useQueryClient();
   const activeWorkspace = useActiveWorkspaceSelection();
   const activeWorkspaceRef = useRef(activeWorkspace);
@@ -87,7 +87,7 @@ export function useDeleteWorkspaceSessions(
       if (!stillCurrent()) return;
       const confirmed = await confirmDialog({
         title: t("workspaceSessionDeletion.title"),
-        message: t("workspaceSessionDeletion.confirm", { count: preview.agentIds.length }),
+        message: t("workspaceSessionDeletion.nativeConfirm", { count: preview.agentIds.length }),
         confirmLabel: t("workspaceSessionDeletion.menu"),
         cancelLabel: t("common.actions.cancel"),
         destructive: true,
@@ -99,6 +99,7 @@ export function useDeleteWorkspaceSessions(
         workspaceId,
         preview.agentIds,
         preview.workspaceIds,
+        true,
       );
       responseReceived = true;
       const workspaces = new Map(

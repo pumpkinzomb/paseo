@@ -158,6 +158,8 @@ export const ko: TranslationResources = {
     retry: "다시 시도",
   },
   workspaceSessionDeletion: {
+    nativeConfirm:
+      "Paseo 기록 {{count}}개와 연결된 Codex·Claude 원본 대화를 영구 삭제할까요? 모델 전환 구간과 하위 대화 기록도 포함하며 복구할 수 없습니다. 확인하기 전에 Codex·Claude 및 다른 앱에서 해당 세션을 종료해 주세요. 공유 프로젝트·worktree·첨부 파일은 보존합니다. 원본 삭제가 실패하거나 결과가 불확실하면 Paseo 기록을 유지하며 재시도 전 확인이 필요할 수 있습니다.",
     completedMenu: "완료된 세션 삭제",
     completedTitle: "완료된 하위 세션을 모두 삭제할까요?",
     completedConfirm:

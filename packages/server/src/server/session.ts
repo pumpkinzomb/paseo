@@ -5143,6 +5143,8 @@ export class Session {
               "delete",
               null,
               workspaceIds,
+              request.type === "workspace.sessions.delete.request" &&
+                request.deleteNativeSessions === true,
             );
           },
         });

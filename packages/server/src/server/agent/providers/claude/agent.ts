@@ -1,3 +1,4 @@
+import { deleteClaudeNativeSession } from "./native-session-deletion.js";
 import { setImmediate } from "node:timers/promises";
 import { ClaudeRuntimeSafety } from "./runtime-safety.js";
 import type { ProviderOptions } from "@getpaseo/protocol/agent-types";
@@ -1766,6 +1767,10 @@ export class ClaudeAgentClient implements AgentClient {
       controls: buildClaudeControls(this.assertConfig(config).model),
       options: config.providerOptions ?? {},
     };
+  }
+
+  async deleteNativeSession(handle: AgentPersistenceHandle): Promise<void> {
+    await deleteClaudeNativeSession(handle, claudeConfigDir(this.buildProviderEnv()));
   }
 
   async listImportableSessions(

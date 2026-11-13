@@ -2549,6 +2549,26 @@ describe("Codex app-server provider", () => {
     appServer.assertNoErrors();
   });
 
+  test("permanently deletes only the exact native thread through the official API", async () => {
+    const requests: unknown[] = [];
+    const appServer = createFakeCodexAppServer({
+      "thread/delete": (params) => {
+        requests.push(params);
+        return {};
+      },
+    });
+    const provider = new CodexAppServerAgentClient(createTestLogger(), undefined, {
+      appServerProcess: createFakeCodexAppServerProcess(() => appServer.child),
+    });
+    await provider.deleteNativeSession({
+      provider: "codex",
+      sessionId: "stored-id",
+      nativeHandle: "exact-native-id",
+    });
+    expect(requests).toEqual([{ threadId: "exact-native-id" }]);
+    appServer.assertNoErrors();
+  });
+
   test("unarchives a persisted Codex thread using sessionId when nativeHandle is absent", async () => {
     const threadRequests: Array<{ method: string; params: unknown }> = [];
     const appServer = createFakeCodexAppServer({

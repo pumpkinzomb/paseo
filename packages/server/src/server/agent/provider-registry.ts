@@ -500,6 +500,7 @@ function wrapClientProvider(
   const importSession = inner.importSession?.bind(inner);
   const listControls = inner.listControls?.bind(inner);
   const archiveNativeSession = inner.archiveNativeSession?.bind(inner);
+  const deleteNativeSession = inner.deleteNativeSession?.bind(inner);
   const unarchiveNativeSession = inner.unarchiveNativeSession?.bind(inner);
   const configuredModelIds = [...profileModels, ...additionalModels].map((model) => model.id);
   // Converted where it is used, so a malformed configured default fails the call that reads it
@@ -615,6 +616,9 @@ function wrapClientProvider(
             persistence,
           };
         }
+      : undefined,
+    deleteNativeSession: deleteNativeSession
+      ? async (handle) => await deleteNativeSession({ ...handle, provider: inner.provider })
       : undefined,
     archiveNativeSession: archiveNativeSession
       ? async (handle) => await archiveNativeSession({ ...handle, provider: inner.provider })

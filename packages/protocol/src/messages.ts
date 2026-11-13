@@ -3051,6 +3051,7 @@ export const WorkspaceSessionsDeleteRequestSchema = z.object({
   requestId: z.string(),
   workspaceId: z.string().regex(/^wks_[a-f0-9]{16}$/),
   expectedAgentIds: z.array(z.string().uuid()),
+  deleteNativeSessions: z.literal(true).optional(),
   expectedWorkspaceIds: z.array(z.string().regex(/^wks_[a-f0-9]{16}$/)).optional(),
 });
 export const WorkspaceSessionsDeleteInspectResponseSchema = z.object({
@@ -4315,6 +4316,7 @@ export const ServerInfoStatusPayloadSchema = z
         assistantConversationLifecycle: z.boolean().optional(),
         agentRecordDeletion: z.boolean().optional(),
         workspaceSessionDeletion: z.boolean().optional(),
+        nativeSessionDeletion: z.boolean().optional(),
         localProviderSessions: z.boolean().optional(),
         diffSubscription: z.boolean().optional(),
         binaryChunkingV1: z.boolean().optional(),

@@ -15447,3 +15447,31 @@ test("lead profile follows role on create and refresh without changing native wo
     for (const agent of manager.listAgents()) await manager.closeAgent(agent.id);
   }
 });
+
+test("explicit native deletion completes provider removal before Paseo removal", async () => {
+  const f = await conversationLifecycleFixture();
+  const agent = await f.create();
+  const remove = vi.fn(async () => {
+    expect(await f.storage.get(agent.id)).not.toBeNull();
+  });
+  Object.assign(f.client, { deleteNativeSession: remove });
+  await f.manager.mutateAssistantConversationRecords([agent.id], "delete", true, undefined, true);
+  expect(remove).toHaveBeenCalledTimes(1);
+  expect(await f.storage.get(agent.id)).toBeNull();
+});
+test("failed native deletion retains records and cannot blindly repeat the provider operation", async () => {
+  const f = await conversationLifecycleFixture();
+  const agent = await f.create();
+  const remove = vi.fn(async () => {
+    throw Error("native acknowledgement lost");
+  });
+  Object.assign(f.client, { deleteNativeSession: remove });
+  await expect(
+    f.manager.mutateAssistantConversationRecords([agent.id], "delete", true, undefined, true),
+  ).rejects.toThrow("retained");
+  expect(await f.storage.get(agent.id)).not.toBeNull();
+  await expect(
+    f.manager.mutateAssistantConversationRecords([agent.id], "delete", true, undefined, true),
+  ).rejects.toThrow("uncertain");
+  expect(remove).toHaveBeenCalledTimes(1);
+});
