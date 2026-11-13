@@ -1831,7 +1831,9 @@ function ProjectBlock({
 
     setIsRemovingProject(true);
     void (async () => {
-      const readiness = getCurrentProjectRemoveReadiness({ hosts: project.hosts });
+      const readiness = getCurrentProjectRemoveReadiness({ hosts: project.hosts }, (serverId) =>
+        getHostRuntimeStore().getClient(serverId),
+      );
       if (readiness.kind === "host_unavailable") {
         toast.error(t("sidebar.project.toasts.hostDisconnected"));
         return;

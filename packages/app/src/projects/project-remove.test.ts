@@ -3,6 +3,7 @@ import { en } from "@/i18n/resources/en";
 import { ko } from "@/i18n/resources/ko";
 import {
   getProjectRemoveReadiness,
+  getCurrentProjectRemoveReadiness,
   canOfferProjectHostUpdate,
   inspectProjectRemovalFromHosts,
   removeProjectFromHosts,
@@ -197,4 +198,18 @@ it("offers verified local updates only for the exact native host", () => {
   expect(canOfferProjectHostUpdate(["local"], undefined, true)).toBe(false);
   expect(canOfferProjectHostUpdate(["local"], "local", false)).toBe(false);
   expect(canOfferProjectHostUpdate([], "local", true)).toBe(false);
+});
+
+it("uses the live handshake even before the session replica has host information", () => {
+  expect(
+    getCurrentProjectRemoveReadiness(project, () => ({
+      getLastServerInfoMessage: () => ({ features: { projectRemoveSessions: true } }) as never,
+    })),
+  ).toEqual({ kind: "ready", targets: project.hosts });
+});
+it("never substitutes stale replica capabilities for a missing live handshake", () => {
+  expect(getCurrentProjectRemoveReadiness(project, () => null)).toEqual({
+    kind: "host_unavailable",
+    serverIds: ["host-a", "host-b"],
+  });
 });
