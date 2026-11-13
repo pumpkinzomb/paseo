@@ -19,6 +19,7 @@ export class UpdateBlocked extends Error {}
 /** Callers must retain/retry durable deliveries when admission returns null. */
 export class UpdateAdmissionFence {
   private fenced = false;
+  private shuttingDown = false;
   private active = 0;
   private revision = 0;
   get epoch(): number {
@@ -51,7 +52,13 @@ export class UpdateAdmissionFence {
     this.fenced = true;
   }
   open(): void {
-    this.fenced = false;
+    if (!this.shuttingDown) this.fenced = false;
+  }
+  /** Irreversible for this process. Lease expiry, abort, plugin events and dispose
+   * must never reopen admission once official graceful shutdown has begun. */
+  sealForShutdown(): void {
+    this.shuttingDown = true;
+    this.fenced = true;
   }
 }
 
@@ -158,6 +165,31 @@ export function createUpdateQuiescence(options: UpdateQuiescenceOptions) {
       throw new UpdateBlocked("Runtime set changed during probe");
     }
   }
+  async function commit(ticket: UpdateTicket, persistApprovedHold?: () => Promise<void>) {
+    validate(ticket);
+    if (phase !== "ready") throw new UpdateBlocked("Lease not ready");
+    phase = "preparing";
+    try {
+      await probe(ticket);
+    } catch (error) {
+      if (lease?.token === ticket.token) release();
+      throw error;
+    }
+    if (ticket.mode === "renderer") {
+      phase = "held";
+      return { ...lease! };
+    }
+    phase = "committing";
+    clearTimeout(timer);
+    options.fence.sealForShutdown();
+    // A persisted update intent may now exist. Any failure must remain fenced;
+    // only scoped recovery can reconcile it, not TTL expiry or renderer abort.
+    if (persistApprovedHold) {
+      await persistApprovedHold();
+      await probe(ticket);
+    }
+    await options.stop({ keepTerminals: true });
+  }
   return {
     dispose() {
       release();
@@ -226,24 +258,10 @@ export function createUpdateQuiescence(options: UpdateQuiescenceOptions) {
       if (phase === "committing") throw new UpdateBlocked("Commit outcome must be reconciled");
       release();
     },
-    async commit(ticket: UpdateTicket) {
-      validate(ticket);
-      if (phase !== "ready") throw new UpdateBlocked("Lease not ready");
-      phase = "preparing";
-      try {
-        await probe(ticket);
-      } catch (error) {
-        if (lease?.token === ticket.token) release();
-        throw error;
-      }
-      if (ticket.mode === "renderer") {
-        phase = "held";
-        return { ...lease! };
-      }
-      phase = "committing";
-      clearTimeout(timer);
-      // From this point an error is an uncertain stop, not permission to admit work.
-      await options.stop({ keepTerminals: true });
+    async commitToShutdown(ticket: UpdateTicket, persistApprovedHold: () => Promise<void>) {
+      if (ticket.mode !== "daemon") throw new UpdateBlocked("Daemon lease required");
+      return commit(ticket, persistApprovedHold);
     },
+    commit,
   };
 }

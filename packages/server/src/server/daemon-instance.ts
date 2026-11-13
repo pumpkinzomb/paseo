@@ -1,3 +1,4 @@
+import { assertNoPendingHomeMigration } from "./migration-startup-barrier.js";
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -260,6 +261,7 @@ export async function startDaemonInstance(input: {
   onReady?: (instance: PidLockInfo & { listen: string }) => void;
 }): Promise<{ instance: PidLockInfo; spawned: boolean; exitCode?: number }> {
   input.signal?.throwIfAborted();
+  await assertNoPendingHomeMigration(input.home);
   const existing = await readDaemonInstance(input.home);
   if (existing) return { instance: existing, spawned: false };
   const {

@@ -30,6 +30,15 @@ interface AttachedBrowserRegistration {
 }
 
 contextBridge.exposeInMainWorld("paseoDesktop", {
+  localUpdate: {
+    status: () => ipcRenderer.invoke("local-update:status"),
+    request: (token: string) => {
+      if (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token)) {
+        return Promise.reject(new Error("Invalid local update token"));
+      }
+      return ipcRenderer.invoke("local-update:request", token);
+    },
+  },
   devUpdate: {
     onPrepare: (handler: (request: unknown) => Promise<unknown>) => {
       const listener = (_event: Electron.IpcRendererEvent, request: { checkpointId: string }) => {

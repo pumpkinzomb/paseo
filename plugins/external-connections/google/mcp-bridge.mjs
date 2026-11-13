@@ -23,9 +23,18 @@ const tools = [
     description:
       "Insert text into a document at an exact revision. Requires explicit document-write permission.",
     scope: googleWriteScopes.docs,
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+    },
     inputSchema: schema(
-      { id: string, text: string, revisionId: string, index: { type: "integer", minimum: 1 } },
+      {
+        id: string,
+        text: string,
+        revisionId: string,
+        index: { type: "integer", minimum: 1 },
+      },
       ["id", "text", "revisionId"],
     ),
   },
@@ -34,7 +43,11 @@ const tools = [
     description:
       "Replace cells in the specified range with RAW values. Requires explicit sheet-write permission.",
     scope: googleWriteScopes.sheets,
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+    },
     inputSchema: schema(
       {
         id: string,
@@ -118,6 +131,8 @@ export function createGoogleMcpBridge({
   let server = null;
   let port = null;
   let starting = false;
+  let requests = 0;
+  const streams = new Set();
 
   async function handle(incoming, outgoing) {
     try {
@@ -177,7 +192,11 @@ export function createGoogleMcpBridge({
       send(outgoing, 200, { jsonrpc: "2.0", id: message.id, result: value });
     }
     function error(code, text) {
-      send(outgoing, 200, { jsonrpc: "2.0", id: message.id, error: { code, message: text } });
+      send(outgoing, 200, {
+        jsonrpc: "2.0",
+        id: message.id,
+        error: { code, message: text },
+      });
     }
     if (message.method === "initialize") {
       const supported = ["2024-11-05", "2025-03-26", "2025-06-18"];
@@ -220,7 +239,11 @@ export function createGoogleMcpBridge({
         tool: tool.name,
         input: message.params.arguments,
         getAccessToken: (scope) =>
-          getAccessToken({ agentId: session.agentId, provider: session.provider, scope }),
+          getAccessToken({
+            agentId: session.agentId,
+            provider: session.provider,
+            scope,
+          }),
         request,
       });
       result({ content: [{ type: "text", text: JSON.stringify(value) }] });
@@ -244,14 +267,29 @@ export function createGoogleMcpBridge({
   }
 
   return {
+    getUpdateBlockers() {
+      return [
+        ...(starting ? ["google MCP starting"] : []),
+        ...(sessions.activeCount ? [`google MCP sessions: ${sessions.activeCount}`] : []),
+        ...(requests ? [`google MCP requests: ${requests}`] : []),
+        ...(streams.size ? [`google MCP streams: ${streams.size}`] : []),
+      ];
+    },
     async start() {
       if (server || starting) throw new Error("BRIDGE_ALREADY_STARTED");
       starting = true;
       const next = createServer((incoming, outgoing) => {
-        handle(incoming, outgoing).catch(() => {
-          if (!outgoing.headersSent) send(outgoing, 500, { error: "BRIDGE_FAILED" });
-          else outgoing.destroy();
-        });
+        requests++;
+        streams.add(outgoing);
+        outgoing.once("close", () => streams.delete(outgoing));
+        handle(incoming, outgoing)
+          .finally(() => {
+            requests--;
+          })
+          .catch(() => {
+            if (!outgoing.headersSent) send(outgoing, 500, { error: "BRIDGE_FAILED" });
+            else outgoing.destroy();
+          });
       });
       next.requestTimeout = 15000;
       next.headersTimeout = 10000;

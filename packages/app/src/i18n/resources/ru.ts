@@ -2,6 +2,12 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ru: TranslationResources = {
+  localAppUpdate: {
+    version: "App version {{version}}",
+    developmentBuild: "Development build: {{label}}",
+    updateAndRestart: "Update and restart",
+    updating: "Requesting update",
+  },
   pdfViewer: en.pdfViewer,
   documentPreview: en.documentPreview,
   fileCitation: en.fileCitation,

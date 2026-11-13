@@ -6,6 +6,9 @@ import { openConnections } from "./server/open.js";
 
 export default function contribute(server: PluginServerContext) {
   const google = deferredGoogleService(server.builtinHost);
+  const removeUpdateProbe = server.builtinHost?.registerUpdateProbe?.(
+    () => google?.getUpdateBlockers?.() ?? ["google service snapshot unknown"],
+  );
   registerGoogleConnectionRpc(server, google);
   const settings = server.registerSettings(preferences);
   const removeOpen = server.addHook("agent.open.before", async ({ request }) => {
@@ -26,7 +29,11 @@ export default function contribute(server: PluginServerContext) {
         ...next,
         mcpServers: {
           ...next.mcpServers,
-          "paseo-google": { type: "http", url: session.url, headers: session.headers },
+          "paseo-google": {
+            type: "http",
+            url: session.url,
+            headers: session.headers,
+          },
         },
       };
     } catch {
@@ -37,6 +44,7 @@ export default function contribute(server: PluginServerContext) {
     google?.closeAgent(agent.id);
   });
   return () => {
+    removeUpdateProbe?.();
     removeOpen();
     removeClose();
     void google?.dispose();

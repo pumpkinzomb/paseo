@@ -190,3 +190,17 @@ independent and does not extend local bearer authority.
 MCP SDK 1.29.0 StreamableHTTPClientTransport completed real local connect,
 listTools and callTool against the bridge with injected fake Google responses.
 No extra dependencies were installed or copied for that smoke test.
+
+### Update quiescence snapshot
+
+The builtin host registers a synchronous, memory-only `getUpdateBlockers` probe.
+It counts queued/in-flight host and provisioning operations, preparation, OAuth
+completion (including cancellation before completion settles), live unexpired MCP
+capabilities, in-flight HTTP handlers and open response streams. It never invokes
+status, Keychain, helper compilation or Google requests to discover readiness.
+Unloaded, failed or older downstream implementations without a snapshot stay
+unknown, not idle. Idle listeners without capabilities or requests do not block.
+
+This is a factual snapshot, not an ingress lock. The update coordinator must still
+seal new work and revalidate before shutdown; this probe alone does not establish
+atomic admission exclusion or a completed signed-update E2E.

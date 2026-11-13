@@ -1,3 +1,4 @@
+import { DevelopmentBuildBadge } from "@/components/app-version-status";
 import { ComposerDockBackground } from "@/composer/dock";
 import { useMemo, type ReactNode } from "react";
 import type { LayoutChangeEvent } from "react-native";
@@ -60,7 +61,10 @@ export function ScreenHeader({
         >
           <TitlebarDragRegion />
           <View style={leftCombinedStyle}>{left}</View>
-          <View style={rightCombinedStyle}>{right}</View>
+          <View style={rightCombinedStyle}>
+            {right}
+            {!isMobile && <DevelopmentBuildBadge />}
+          </View>
         </WindowChromeSafeArea>
       </View>
     </ComposerDockBackground>

@@ -89,6 +89,7 @@ export function labEnv(plan, inherited) {
       labRoot: plan.root,
       protectedRoots: plan.protectedRoots,
     }),
+    PASEO_ISOLATED_DEV: "1",
     PASEO_HOME: plan.home,
     PASEO_DEV_ROOT: plan.state,
     PASEO_DEV_MANAGED_HOME: "1",

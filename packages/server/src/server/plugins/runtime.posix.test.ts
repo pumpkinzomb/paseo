@@ -2255,3 +2255,113 @@ describe("renderer retention of reviewed builtins", () => {
     }
   });
 });
+
+describe("document preview authoritative quiescence", () => {
+  it("accepts only the trusted exact idle builtin shape and blocks pending work/shape drift", async () => {
+    const runtime = createTestRuntime({}, pino({ level: "silent" }), "0.15.4");
+    const directory = fileURLToPath(
+      new URL("../../../../../plugins/document-preview", import.meta.url),
+    );
+    await runtime.startBuiltinPlugin({ id: "document-preview", directory });
+    const internals = runtime as unknown as {
+      plugins: Map<string, { pending: Map<string, unknown>; methods: Set<string> }>;
+    };
+    const plugin = internals.plugins.get("document-preview")!;
+    try {
+      expect(runtime.getUpdateBlockers()).toEqual([]);
+      plugin.pending.set("request", {});
+      expect(runtime.getUpdateBlockers()).toContain("plugin work active: document-preview");
+      plugin.pending.clear();
+      plugin.methods.add("unknown");
+      expect(runtime.getUpdateBlockers()).toContain(
+        "plugin renderer safety unknown: document-preview",
+      );
+      plugin.methods.delete("unknown");
+    } finally {
+      plugin.pending.clear();
+      await runtime.stopAll();
+    }
+  });
+});
+
+it("internal worker counts actual handlers even if parent pending tracking is lost", async () => {
+  const directory = await createPlugin(
+    "quiescence-fixture",
+    `
+    import {defineRpc} from "@getpaseo/plugin";
+    import {z} from "zod";
+    export default function contribute(server) { server.handle(defineRpc({name:"wait",input:z.object({}),output:z.object({done:z.boolean()})}), async()=>{await new Promise(r=>setTimeout(r,150));return {done:true};}); return () => {}; }
+  `,
+  );
+  const runtime = createTestRuntime({}, pino({ level: "silent" }), "0.15.4");
+  await writeFile(
+    path.join(directory, "paseo-plugin.json"),
+    JSON.stringify({ id: "quiescence-fixture", requirements: { paseo: ">=0.15.4" } }),
+  );
+  await runtime.startBuiltinPlugin({ id: "quiescence-fixture", directory });
+  const loaded = (
+    runtime as unknown as { plugins: Map<string, { child: { getUpdateBlockers(): string[] } }> }
+  ).plugins.get("quiescence-fixture")!;
+  try {
+    const result = runtime.invoke("quiescence-fixture", "wait", {});
+    expect(loaded.child.getUpdateBlockers()).toContain("builtin handlers active");
+    await new Promise((r) => setTimeout(r, 25));
+    expect(loaded.child.getUpdateBlockers()).toContain("builtin handlers active");
+    await result;
+    expect(loaded.child.getUpdateBlockers()).toEqual([]);
+  } finally {
+    await runtime.stopAll();
+  }
+});
+
+it("external connection registered shape remains pinned", async () => {
+  const settingsDirectory = await mkdtemp(path.join(tmpdir(), "paseo-probe-settings-"));
+  temporaryDirectories.push(settingsDirectory);
+  const runtime = createTestRuntime({ settingsDirectory }, pino({ level: "silent" }), "0.15.4");
+  await runtime.startBuiltinPlugin({
+    id: "external-connections",
+    directory: fileURLToPath(
+      new URL("../../../../../plugins/external-connections", import.meta.url),
+    ),
+  });
+  const plugin = (
+    runtime as unknown as {
+      plugins: Map<
+        string,
+        {
+          methods: Set<string>;
+          hooks: string[];
+          providers: unknown[];
+          usageSources: unknown[];
+          subscriptionMethods: Set<string>;
+        }
+      >;
+    }
+  ).plugins.get("external-connections")!;
+  try {
+    expect({
+      methods: [...plugin.methods].sort(),
+      hooks: plugin.hooks,
+      providers: plugin.providers.length,
+      usage: plugin.usageSources.length,
+      subscriptions: plugin.subscriptionMethods.size,
+    }).toEqual({
+      methods: [
+        "google.begin",
+        "google.cancel",
+        "google.configure",
+        "google.forget",
+        "google.status",
+        "settings.connections.read",
+        "settings.connections.reset",
+        "settings.connections.write",
+      ],
+      hooks: ["agent.open.before", "agent.close.after"],
+      providers: 0,
+      usage: 0,
+      subscriptions: 0,
+    });
+  } finally {
+    await runtime.stopAll();
+  }
+});

@@ -47,7 +47,12 @@ export class GoogleBridgeSessions {
     if (this.#sessions.size >= 128) throw new GoogleBridgeError("SESSION_LIMIT");
     const token = randomBytes(32).toString("base64url");
     const expiresAt = this.#clock() + this.#ttl;
-    this.#sessions.set(digest(token), { agentId, provider, scopes: new Set(scopes), expiresAt });
+    this.#sessions.set(digest(token), {
+      agentId,
+      provider,
+      scopes: new Set(scopes),
+      expiresAt,
+    });
     return { authorization: `Bearer ${token}`, expiresAt };
   }
 
@@ -57,7 +62,11 @@ export class GoogleBridgeSessions {
       throw new GoogleBridgeError("SESSION_UNAUTHORIZED");
     const session = this.#sessions.get(digest(authorization.slice(7)));
     if (!session) throw new GoogleBridgeError("SESSION_UNAUTHORIZED");
-    return { agentId: session.agentId, provider: session.provider, scopes: [...session.scopes] };
+    return {
+      agentId: session.agentId,
+      provider: session.provider,
+      scopes: [...session.scopes],
+    };
   }
 
   authorize(authorization, scope) {
@@ -70,6 +79,12 @@ export class GoogleBridgeSessions {
     for (const [key, session] of this.#sessions) {
       if (session.agentId === agentId) this.#sessions.delete(key);
     }
+  }
+
+  get activeCount() {
+    let count = 0;
+    for (const session of this.#sessions.values()) if (session.expiresAt > this.#clock()) count++;
+    return count;
   }
 
   revokeAll() {

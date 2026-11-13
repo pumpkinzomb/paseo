@@ -1,3 +1,4 @@
+import { ConnectedAppVersionStatus } from "./app-version-status";
 import { SidebarLeadIdentitySheet } from "./sidebar/sidebar-lead-identity";
 import { SidebarConnectedDevicesMenu } from "./sidebar/sidebar-connected-devices";
 import { SidebarViewSlot } from "@/plugins/sidebar-view";
@@ -7,7 +8,6 @@ import {
   CircleUserRound,
   CircleGauge,
   FolderPlus,
-  GitBranch,
   Server,
   Settings,
   type LucideIcon,
@@ -99,8 +99,6 @@ type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
 /** The footer icon line's inset; the overflow layout counts it as space the buttons can't use. */
 const FOOTER_ROW_PADDING = SPACING[2];
-
-const DEV_BUILD_LABEL = process.env.EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL?.trim() || null;
 
 interface SidebarSharedProps {
   theme: SidebarTheme;
@@ -408,26 +406,6 @@ function IconTooltipContent({
   );
 }
 
-function SidebarBuildStatus() {
-  const { theme } = useUnistyles();
-  if (!DEV_BUILD_LABEL) return null;
-  return (
-    <View style={styles.buildStatusRow} testID="sidebar-build-status">
-      <View
-        pointerEvents="none"
-        style={styles.devBuildBadge}
-        testID="dev-build-label"
-        accessibilityLabel={`Development build: ${DEV_BUILD_LABEL}`}
-      >
-        <GitBranch size={12} color={theme.colors.accentForeground} />
-        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.devBuildBadgeText}>
-          {DEV_BUILD_LABEL}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 function SidebarFooter({
   handleOpenProject,
   handleSettings,
@@ -478,7 +456,7 @@ function SidebarFooter({
     <UsageSidebarRoot>
       <View style={styles.footerContainer} testID="sidebar-footer">
         <SidebarFooterRows onBeforeNavigate={onBeforeNavigate} />
-        <SidebarBuildStatus />
+        <ConnectedAppVersionStatus />
         <View
           style={styles.sidebarFooter}
           onLayout={handleRowLayout}
@@ -1010,32 +988,7 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: "transparent",
   },
-  buildStatusRow: {
-    minHeight: 32,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  devBuildBadge: {
-    maxWidth: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: 2,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.accent,
-  },
-  devBuildBadgeText: {
-    minWidth: 0,
-    flexShrink: 1,
-    color: theme.colors.accentForeground,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-  },
+
   footerContainer: {
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,

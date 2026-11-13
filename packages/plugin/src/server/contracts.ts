@@ -45,6 +45,8 @@ export interface PluginServerContext extends PluginLifecycleRegistration {
     readonly stateDirectory: string;
     readonly pluginDirectory: string;
     readonly runtimeMode: "development" | "packaged";
+    /** Synchronous host-owned work snapshot; must not perform I/O. */
+    readonly registerUpdateProbe?: (probe: () => readonly string[]) => () => void;
   };
 
   registerSettings<Schema extends ZodType>(

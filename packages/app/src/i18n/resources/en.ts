@@ -1,4 +1,10 @@
 export const en = {
+  localAppUpdate: {
+    version: "App version {{version}}",
+    developmentBuild: "Development build: {{label}}",
+    updateAndRestart: "Update and restart",
+    updating: "Requesting update",
+  },
   pdfViewer: {
     printPreparing: "Preparing all PDF pages for printing…",
     printFailed: "Could not prepare printing. Download the PDF and print from its original viewer.",

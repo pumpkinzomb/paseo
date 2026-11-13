@@ -1,3 +1,4 @@
+import { checkMigrationAfterPidLock } from "../src/server/migration-startup-barrier.js";
 import { fileURLToPath } from "url";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
@@ -122,6 +123,10 @@ async function main(): Promise<void> {
     }
     throw error;
   }
+
+  await checkMigrationAfterPidLock(paseoHome, () =>
+    releasePidLock(paseoHome, { ownerPid: process.pid }),
+  );
 
   let lockReleased = false;
   let requestSupervisorShutdown: ((reason: string) => void) | null = null;

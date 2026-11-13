@@ -392,7 +392,8 @@ export function createFinishSubscriptions(deps: Dependencies): FinishSubscriptio
       });
     },
     async close() {
-      assertUpdateOpen();
+      // Shutdown drains existing observers after ingress is permanently sealed.
+      // It must not reopen admission or be treated as a new registration.
       closed = true;
       await mutations;
       for (const group of watches.values())

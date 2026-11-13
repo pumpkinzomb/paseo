@@ -28,6 +28,7 @@ const { autoUpdaterMock } = vi.hoisted(() => {
 vi.mock("electron", () => ({
   app: {
     getPath: vi.fn(),
+    getAppPath: () => path.resolve(import.meta.dirname, "../.."),
     isPackaged: true,
   },
 }));

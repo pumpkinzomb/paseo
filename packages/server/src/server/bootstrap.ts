@@ -1,3 +1,10 @@
+import { homedir } from "node:os";
+import { verifyInstalledUpdateApproval } from "./installed-update-approval.js";
+import { assertNoPendingHomeMigration } from "./migration-startup-barrier.js";
+import {
+  createShutdownQuiescenceTracker,
+  type ShutdownQuiescenceSnapshot,
+} from "./shutdown-quiescence.js";
 import { resolvePaseoNodeEnv } from "./paseo-env.js";
 import { resolveLeadPersona } from "./default-assistant/persona.js";
 import {
@@ -520,6 +527,8 @@ export interface PaseoDaemon {
   stop(options?: { keepTerminals?: boolean }): Promise<void>;
   getListenTarget(): ListenTarget | null;
   getServerId(): string;
+  /** Diagnostic only: returned stop does not establish writer quiescence. */
+  getShutdownQuiescence?(): ShutdownQuiescenceSnapshot;
 }
 
 export interface PaseoDaemonDependencies {
@@ -640,6 +649,15 @@ export async function createPaseoDaemon(
   config: PaseoDaemonConfig,
   rootLogger: Logger,
   dependencies: PaseoDaemonDependencies = {},
+): Promise<PaseoDaemon> {
+  await assertNoPendingHomeMigration(config.paseoHome);
+  return createPaseoDaemonInternal(config, rootLogger, dependencies);
+}
+
+async function createPaseoDaemonInternal(
+  config: PaseoDaemonConfig,
+  rootLogger: Logger,
+  dependencies: PaseoDaemonDependencies,
 ): Promise<PaseoDaemon> {
   configureGitProcessPolicy(config.git ?? resolveGitProcessPolicy({ env: process.env }));
   const logger = rootLogger.child({ module: "bootstrap" });
@@ -1998,7 +2016,11 @@ export async function createPaseoDaemon(
       // model loading doesn't block the server from accepting connections.
       speechService.start();
       scriptHealthMonitor.start();
-      const updateDirectory = process.env.PASEO_DEV_UPDATE_DAEMON_CONTROL;
+      const installedUpdate =
+        process.env.PASEO_INSTALLED_UPDATE_CONTROL === "1" && Boolean(config.onLifecycleIntent);
+      const updateDirectory = installedUpdate
+        ? path.join(homedir(), ".paseo-installed", "update-control")
+        : process.env.PASEO_DEV_UPDATE_DAEMON_CONTROL;
       if (updateDirectory) {
         const lock = await getPidLockInfo(config.paseoHome);
         if (!lock) throw new Error("Update control requires an owned daemon PID lock");
@@ -2029,9 +2051,15 @@ export async function createPaseoDaemon(
             ...(browserToolsBroker.getPendingRequestCount() ? ["browser requests pending"] : []),
           ],
           stop: async () => {
-            throw new UpdateBlocked(
-              "Full daemon update requires a verified no-force supervisor path",
-            );
+            if (!installedUpdate || !config.onLifecycleIntent)
+              throw new UpdateBlocked("Installed update lifecycle unavailable");
+            config.onLifecycleIntent({
+              type: "shutdown",
+              clientId: "installed-update",
+              requestId: randomUUID(),
+              reason: "verified installed update",
+              keepTerminals: true,
+            });
           },
         });
         releaseUpdateLease = () => quiescence.dispose();
@@ -2049,6 +2077,18 @@ export async function createPaseoDaemon(
             epoch: z.number().int().nonnegative(),
           })
           .strict();
+        const assertCurrentUpdateInstance = async () => {
+          const current = await getPidLockInfo(config.paseoHome);
+          if (
+            !current ||
+            current.pid !== instance.pid ||
+            current.startedAt !== instance.startedAt ||
+            current.uid !== instance.uid ||
+            current.hostname !== instance.hostname ||
+            (current.bootId ?? null) !== instance.bootId
+          )
+            throw new UpdateBlocked("Daemon instance changed");
+        };
         updateControl = await startUpdateControl({
           directory: updateDirectory,
           descriptor: {
@@ -2060,7 +2100,7 @@ export async function createPaseoDaemon(
             instance,
             capabilities: {
               rendererLease: true,
-              daemonCommit: false,
+              daemonCommit: installedUpdate,
               managedDependencyRetirement: Boolean(
                 process.env.PASEO_MANAGED_DEPENDENCY_REGISTRY &&
                 process.env.PASEO_WORKTREE_SETUP_HELPER,
@@ -2069,16 +2109,7 @@ export async function createPaseoDaemon(
             ttlMs: 15_000,
           },
           handle: async (request) => {
-            const current = await getPidLockInfo(config.paseoHome);
-            if (
-              !current ||
-              current.pid !== instance.pid ||
-              current.startedAt !== instance.startedAt ||
-              current.uid !== instance.uid ||
-              current.hostname !== instance.hostname ||
-              (current.bootId ?? null) !== instance.bootId
-            )
-              throw new UpdateBlocked("Daemon instance changed");
+            await assertCurrentUpdateInstance();
             if (request.operation === "reclaimDependencies") {
               const registry = process.env.PASEO_MANAGED_DEPENDENCY_REGISTRY;
               const helper = process.env.PASEO_WORKTREE_SETUP_HELPER;
@@ -2111,20 +2142,52 @@ export async function createPaseoDaemon(
             }
             if (request.operation === "prepare") {
               const binding = bindingSchema.parse(request.binding) as UpdateBinding;
-              if (binding.mode !== "renderer")
-                throw new UpdateBlocked(
-                  "Full daemon update unsupported: no-force shutdown not verified",
-                );
+              if (binding.mode === "daemon") {
+                if (!installedUpdate)
+                  throw new UpdateBlocked("Installed update lifecycle unavailable");
+                await verifyInstalledUpdateApproval({
+                  userHome: homedir(),
+                  current: {
+                    uid: lock.uid,
+                    home: config.paseoHome,
+                    serverId,
+                    pid: lock.pid,
+                    startedAt: lock.startedAt,
+                    listen: formatListenTarget(listenTarget) ?? "",
+                    version: daemonVersion,
+                  },
+                  candidateDigest: binding.candidateDigest,
+                  requireHold: false,
+                });
+              }
               return quiescence.prepare(binding);
             }
             const ticket = ticketSchema.parse(request.ticket) as UpdateTicket;
-            if (ticket.mode !== "renderer")
-              throw new UpdateBlocked("Full daemon update unsupported");
+            if (ticket.mode === "daemon" && !installedUpdate)
+              throw new UpdateBlocked("Installed update lifecycle unavailable");
             if (request.operation === "inspect") return quiescence.inspect(ticket);
             if (request.operation === "renew") return quiescence.renew(ticket);
             if (request.operation === "abort") {
               quiescence.abort(ticket);
               return { released: true };
+            }
+            if (ticket.mode === "daemon") {
+              return quiescence.commitToShutdown(ticket, async () => {
+                await verifyInstalledUpdateApproval({
+                  userHome: homedir(),
+                  current: {
+                    uid: lock.uid,
+                    home: config.paseoHome,
+                    serverId,
+                    pid: lock.pid,
+                    startedAt: lock.startedAt,
+                    listen: formatListenTarget(listenTarget) ?? "",
+                    version: daemonVersion,
+                  },
+                  candidateDigest: ticket.candidateDigest,
+                  requireHold: true,
+                });
+              });
             }
             return quiescence.commit(ticket);
           },
@@ -2146,7 +2209,8 @@ export async function createPaseoDaemon(
     }
   };
 
-  const stop = async (options?: { keepTerminals?: boolean }) => {
+  const shutdownQuiescence = createShutdownQuiescenceTracker();
+  const stopInternal = async (options?: { keepTerminals?: boolean }) => {
     releaseUpdateLease?.();
     await updateControl?.close();
     const keepTerminals = options?.keepTerminals === true;
@@ -2160,7 +2224,7 @@ export async function createPaseoDaemon(
     unsubscribePluginProviders();
     unsubscribePluginSessionChanges();
     await hubRelationships.stop();
-    workspaceReconciliation.dispose();
+    await workspaceReconciliation.close();
     scriptHealthMonitor.stop();
     unsubscribeIdleRuntimeCleanup();
     await idleRuntimeCleanup.close();
@@ -2175,10 +2239,15 @@ export async function createPaseoDaemon(
       promise: pluginRuntime.drainEvents(),
       timeoutMs: AGENT_CLOSE_TIMEOUT_MS,
       label: "drain plugin lifecycle events",
-    }).catch((error) => logger.warn({ err: error }, "Plugin lifecycle events did not finish"));
-    await agentManager.flushForShutdown().catch(() => undefined);
+    }).catch((error) => {
+      shutdownQuiescence.failure("plugin-lifecycle-events");
+      logger.warn({ err: error }, "Plugin lifecycle events did not finish");
+    });
+    await agentManager
+      .flushForShutdown()
+      .catch(() => shutdownQuiescence.failure("agent-manager-flush"));
     detachAgentStoragePersistence();
-    await agentStorage.flush().catch(() => undefined);
+    await agentStorage.flush().catch(() => shutdownQuiescence.failure("agent-storage-flush"));
     await agentProviderRuntime.shutdown();
     await pluginRuntime.stopAllPlugins();
     try {
@@ -2195,8 +2264,8 @@ export async function createPaseoDaemon(
       logger.error({ err: error }, "Terminal shutdown failed");
     }
     await speechService.stop();
-    await scheduleService.stop().catch(() => undefined);
-    await relayRuntime?.stop().catch(() => undefined);
+    await scheduleService.stop().catch(() => shutdownQuiescence.failure("schedule-stop"));
+    await relayRuntime?.stop().catch(() => shutdownQuiescence.failure("relay-stop"));
     if (wsServer) {
       await wsServer.close();
     }
@@ -2221,7 +2290,29 @@ export async function createPaseoDaemon(
     }
   };
 
+  // Coalesce concurrent shutdown calls; preserve any rejected outcome and evidence.
+  let stopPromise: Promise<void> | null = null;
+  const stop = (options?: { keepTerminals?: boolean }): Promise<void> => {
+    if (!stopPromise) {
+      // Synchronous boundary before stopInternal yields or disposes its lease.
+      updateAdmission.sealForShutdown();
+      shutdownQuiescence.begin();
+      stopPromise = stopInternal(options).then(
+        () => {
+          return shutdownQuiescence.finish(true);
+        },
+        (error) => {
+          shutdownQuiescence.failure("stop-rejected");
+          shutdownQuiescence.finish(false);
+          throw error;
+        },
+      );
+    }
+    return stopPromise;
+  };
+
   return {
+    getShutdownQuiescence: () => shutdownQuiescence.snapshot(),
     config,
     agentManager,
     agentStorage,

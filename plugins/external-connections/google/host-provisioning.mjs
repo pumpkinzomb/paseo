@@ -1,3 +1,4 @@
+import { observeService, downstreamBlockers } from "./update-snapshot.mjs";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -70,7 +71,10 @@ export function createHostGoogleService({
           write: (account, value) => store.write(`${namespace}-${account}`, value),
           delete: (account) => store.delete(`${namespace}-${account}`),
         };
-        const service = createProvisioned({ stateDirectory, store: scopedStore });
+        const service = createProvisioned({
+          stateDirectory,
+          store: scopedStore,
+        });
         if (stopped) {
           await service.dispose();
           throw new Error("GOOGLE_SERVICE_STOPPED");
@@ -82,43 +86,57 @@ export function createHostGoogleService({
       });
     return preparing;
   }
-  return {
-    async status() {
-      if (stopped) throw new Error("GOOGLE_SERVICE_STOPPED");
-      // No compiler/Keychain activity merely from opening settings before setup.
-      if (!prepared && !(await configured()))
-        return { status: "setup-required", scopes: [], reason: "oauth-client-missing" };
-      let service;
-      try {
-        service = await ensure();
-      } catch {
-        return { status: "setup-required", scopes: [], reason: "secure-store-unavailable" };
-      }
-      return service.status();
+  return observeService(
+    {
+      async status() {
+        if (stopped) throw new Error("GOOGLE_SERVICE_STOPPED");
+        // No compiler/Keychain activity merely from opening settings before setup.
+        if (!prepared && !(await configured()))
+          return {
+            status: "setup-required",
+            scopes: [],
+            reason: "oauth-client-missing",
+          };
+        let service;
+        try {
+          service = await ensure();
+        } catch {
+          return {
+            status: "setup-required",
+            scopes: [],
+            reason: "secure-store-unavailable",
+          };
+        }
+        return service.status();
+      },
+      async configure(input) {
+        return (await ensure()).configure(input);
+      },
+      async begin(scopes) {
+        return (await ensure()).begin(scopes);
+      },
+      async cancel() {
+        return prepared ? prepared.cancel() : false;
+      },
+      async forget() {
+        return (await ensure()).forget();
+      },
+      async openAgent(input) {
+        if (!(await configured())) throw new Error("GOOGLE_SETUP_REQUIRED");
+        return (await ensure()).openAgent(input);
+      },
+      closeAgent(agentId) {
+        if (prepared) prepared.closeAgent(agentId);
+      },
+      async dispose() {
+        stopped = true;
+        if (preparing) await preparing.catch(() => {});
+        if (prepared) await prepared.dispose();
+      },
     },
-    async configure(input) {
-      return (await ensure()).configure(input);
-    },
-    async begin(scopes) {
-      return (await ensure()).begin(scopes);
-    },
-    async cancel() {
-      return prepared ? prepared.cancel() : false;
-    },
-    async forget() {
-      return (await ensure()).forget();
-    },
-    async openAgent(input) {
-      if (!(await configured())) throw new Error("GOOGLE_SETUP_REQUIRED");
-      return (await ensure()).openAgent(input);
-    },
-    closeAgent(agentId) {
-      if (prepared) prepared.closeAgent(agentId);
-    },
-    async dispose() {
-      stopped = true;
-      if (preparing) await preparing.catch(() => {});
-      if (prepared) await prepared.dispose();
-    },
-  };
+    () => [
+      ...(preparing ? ["google preparing"] : []),
+      ...downstreamBlockers(prepared, "google provisioned service"),
+    ],
+  );
 }

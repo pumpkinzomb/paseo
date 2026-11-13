@@ -516,7 +516,6 @@ test("update admission rejects new registrations reversibly and exposes durable 
   updateAdmission.close();
   await expect(state.service.register(intent)).rejects.toThrow("update_in_progress");
   expect(await state.store.list()).toEqual([]);
-  await expect(state.service.close()).rejects.toThrow("update_in_progress");
   updateAdmission.open();
   await state.service.register(intent);
   await until(() => state.observation.waits.length === 1);
@@ -533,4 +532,20 @@ test("update admission rejects new registrations reversibly and exposes durable 
   state.delivery.acknowledgments[0]!.resolve("steered");
   await until(() => state.service.getUpdateBlockers().length === 0);
   expect(await state.store.list()).toEqual([]);
+});
+
+test("shutdown drains observers with sealed admission and preserves durable intent", async () => {
+  const admission = new UpdateAdmissionFence();
+  const state = await scenario(undefined, 0, 1, admission);
+  await state.service.register(intent);
+  await until(() => state.observation.waits.length === 1);
+  const before = await state.store.list();
+  admission.sealForShutdown();
+  await expect(state.service.close()).resolves.toBeUndefined();
+  await expect(state.service.register(intent)).rejects.toThrow("update_in_progress");
+  expect(state.delivery.prompts).toEqual([]);
+  expect(await state.store.list()).toEqual(before);
+  // Durable unfinished intent remains conservative; it is not declared safe.
+  expect(state.service.getUpdateBlockers()).toEqual(["finish-subscriptions-pending"]);
+  expect(admission.enter()).toBeNull();
 });

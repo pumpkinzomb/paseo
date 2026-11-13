@@ -1,3 +1,4 @@
+import { observeService, downstreamBlockers } from "./update-snapshot.mjs";
 import { createGoogleTokenBroker } from "./token-broker.mjs";
 import { createGoogleMcpBridge } from "./mcp-bridge.mjs";
 import { startGoogleOAuthCallback } from "./oauth-callback.mjs";
@@ -15,6 +16,7 @@ export function createGoogleConnectionService({
   let phase = null;
   let lastError;
   let login = null;
+  const oauthFlows = new Set();
   let disposed = false;
   let grantRevision = 0;
   let bridgeStarted = false;
@@ -61,111 +63,128 @@ export function createGoogleConnectionService({
     phase = null;
   }
 
-  return {
-    async status() {
-      if (reason) return { status: "setup-required", scopes: [], reason };
-      ready();
-      if (phase) return { status: phase, scopes: [] };
-      const state = await broker.status(account);
-      return lastError ? { ...state, lastError } : state;
-    },
-    async begin(scopes) {
-      ready();
-      if (phase) throw new Error("GOOGLE_AUTH_ALREADY_ACTIVE");
-      lastError = undefined;
-      phase = "authorizing";
-      let flow;
-      try {
-        flow = await openCallback({
-          clientId,
-          scopes,
-          onExchange: (exchange) => {
-            phase = "exchanging";
+  return observeService(
+    {
+      async status() {
+        if (reason) return { status: "setup-required", scopes: [], reason };
+        ready();
+        if (phase) return { status: phase, scopes: [] };
+        const state = await broker.status(account);
+        return lastError ? { ...state, lastError } : state;
+      },
+      async begin(scopes) {
+        ready();
+        if (phase) throw new Error("GOOGLE_AUTH_ALREADY_ACTIVE");
+        lastError = undefined;
+        phase = "authorizing";
+        let flow;
+        try {
+          flow = await openCallback({
+            clientId,
+            scopes,
+            onExchange: (exchange) => {
+              phase = "exchanging";
+              bridge.revokeAll();
+              return broker.acceptAuthorization({
+                account,
+                exchange,
+                requestedScopes: scopes,
+              });
+            },
+          });
+        } catch {
+          phase = null;
+          throw new Error("GOOGLE_AUTH_START_FAILED");
+        }
+        if (disposed) {
+          flow.cancel();
+          throw new Error("GOOGLE_SERVICE_STOPPED");
+        }
+        login = flow;
+        oauthFlows.add(flow);
+        flow.completion
+          .then(() => {
+            // Reconsent may change account/grants. Existing capabilities must not survive.
             bridge.revokeAll();
-            return broker.acceptAuthorization({ account, exchange, requestedScopes: scopes });
-          },
+            return null;
+          })
+          .catch(() => {
+            if (login === flow) lastError = "authorization-failed";
+          })
+          .finally(() => {
+            oauthFlows.delete(flow);
+            if (login === flow) {
+              login = null;
+              phase = null;
+            }
+          });
+        return { authorizationUrl: flow.authorizationUrl };
+      },
+      async cancel() {
+        ready();
+        if (!login) return false;
+        const cancelled = login.cancel();
+        if (cancelled) {
+          login = null;
+          phase = null;
+        }
+        return cancelled;
+      },
+      async forget() {
+        ready();
+        if (phase && !login) throw new Error("GOOGLE_AUTH_STARTING");
+        await endLogin();
+        bridge.revokeAll();
+        await broker.forget(account);
+      },
+      async openAgent({ agentId, provider }) {
+        ready();
+        if (phase) throw new Error("GOOGLE_AUTH_IN_PROGRESS");
+        const revision = grantRevision;
+        const state = await broker.status(account);
+        if (state.status !== "credentials-stored") throw new Error("LOGIN_REQUIRED");
+        if (!bridgeStarted) {
+          if (!startingBridge)
+            startingBridge = rawBridge
+              .start()
+              .then(() => {
+                bridgeStarted = true;
+                return null;
+              })
+              .finally(() => {
+                startingBridge = null;
+              });
+          await startingBridge;
+        }
+        if (disposed) throw new Error("GOOGLE_SERVICE_STOPPED");
+        if (phase || revision !== grantRevision) throw new Error("GOOGLE_GRANTS_CHANGED");
+        // Grant scopes are derived from host storage, never supplied by the agent.
+        const session = rawBridge.openSession({
+          agentId,
+          provider,
+          scopes: state.scopes,
         });
-      } catch {
-        phase = null;
-        throw new Error("GOOGLE_AUTH_START_FAILED");
-      }
-      if (disposed) {
-        flow.cancel();
-        throw new Error("GOOGLE_SERVICE_STOPPED");
-      }
-      login = flow;
-      flow.completion
-        .then(() => {
-          // Reconsent may change account/grants. Existing capabilities must not survive.
-          bridge.revokeAll();
-          return null;
-        })
-        .catch(() => {
-          if (login === flow) lastError = "authorization-failed";
-        })
-        .finally(() => {
-          if (login === flow) {
-            login = null;
-            phase = null;
-          }
-        });
-      return { authorizationUrl: flow.authorizationUrl };
+        agents.add(agentId);
+        return session;
+      },
+      closeAgent(agentId) {
+        if (rawBridge) rawBridge.revokeAgent(agentId);
+        agents.delete(agentId);
+      },
+      async dispose() {
+        if (disposed) return;
+        disposed = true;
+        await endLogin();
+        if (startingBridge) await startingBridge.catch(() => {});
+        if (rawBridge) await rawBridge.stop();
+        agents.clear();
+        if (broker) broker.clearCache();
+      },
     },
-    async cancel() {
-      ready();
-      if (!login) return false;
-      const cancelled = login.cancel();
-      if (cancelled) {
-        login = null;
-        phase = null;
-      }
-      return cancelled;
-    },
-    async forget() {
-      ready();
-      if (phase && !login) throw new Error("GOOGLE_AUTH_STARTING");
-      await endLogin();
-      bridge.revokeAll();
-      await broker.forget(account);
-    },
-    async openAgent({ agentId, provider }) {
-      ready();
-      if (phase) throw new Error("GOOGLE_AUTH_IN_PROGRESS");
-      const revision = grantRevision;
-      const state = await broker.status(account);
-      if (state.status !== "credentials-stored") throw new Error("LOGIN_REQUIRED");
-      if (!bridgeStarted) {
-        if (!startingBridge)
-          startingBridge = rawBridge
-            .start()
-            .then(() => {
-              bridgeStarted = true;
-              return null;
-            })
-            .finally(() => {
-              startingBridge = null;
-            });
-        await startingBridge;
-      }
-      if (disposed) throw new Error("GOOGLE_SERVICE_STOPPED");
-      if (phase || revision !== grantRevision) throw new Error("GOOGLE_GRANTS_CHANGED");
-      // Grant scopes are derived from host storage, never supplied by the agent.
-      const session = rawBridge.openSession({ agentId, provider, scopes: state.scopes });
-      agents.add(agentId);
-      return session;
-    },
-    closeAgent(agentId) {
-      if (rawBridge) rawBridge.revokeAgent(agentId);
-      agents.delete(agentId);
-    },
-    async dispose() {
-      if (disposed) return;
-      disposed = true;
-      await endLogin();
-      if (startingBridge) await startingBridge.catch(() => {});
-      if (rawBridge) await rawBridge.stop();
-      agents.clear();
-      if (broker) broker.clearCache();
-    },
-  };
+    () => [
+      ...(phase || login || oauthFlows.size ? [`google OAuth pending: ${oauthFlows.size}`] : []),
+      ...(startingBridge ? ["google bridge starting"] : []),
+      ...downstreamBlockers(rawBridge, "google MCP bridge"),
+    ],
+  );
 }

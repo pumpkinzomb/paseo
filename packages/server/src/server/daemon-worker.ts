@@ -1,3 +1,4 @@
+import { assertNoPendingHomeMigration } from "./migration-startup-barrier.js";
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { initializeEnvironmentProxy } from "./network/index.js";
@@ -70,9 +71,10 @@ function writeWorkerLifecycleLog(
   }
 }
 
-function bootstrapFromEnvironment(): BootstrapResult {
+async function bootstrapFromEnvironment(): Promise<BootstrapResult> {
   try {
     const paseoHome = resolvePaseoHome();
+    await assertNoPendingHomeMigration(paseoHome);
     const config = loadConfig(paseoHome);
     const logger = createRootLogger({ log: config.log }, { paseoHome, file: false });
     return { paseoHome, logger, config };
@@ -132,7 +134,7 @@ function applyCliFlagOverrides(config: ReturnType<typeof loadConfig>): void {
 }
 
 async function main() {
-  const { paseoHome, logger, config } = bootstrapFromEnvironment();
+  const { paseoHome, logger, config } = await bootstrapFromEnvironment();
   for (const variable of initializeEnvironmentProxy()) {
     writeWorkerLifecycleLog(paseoHome, "Ignoring invalid or unsupported HTTP proxy variable", {
       variable,

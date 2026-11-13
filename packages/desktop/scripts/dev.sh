@@ -5,6 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DESKTOP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ROOT_DIR="$(cd "$DESKTOP_DIR/../.." && pwd)"
 
+# Validate before configure_dev_paseo_home can create, seed, reset or write state.
+if [ "${PASEO_ISOLATED_DEV:-}" = "1" ]; then
+  node "$SCRIPT_DIR/dev-isolation-guard.mjs" "$ROOT_DIR"
+fi
+
 source "$ROOT_DIR/scripts/dev-home.sh"
 
 export PATH="$ROOT_DIR/node_modules/.bin:$PATH"

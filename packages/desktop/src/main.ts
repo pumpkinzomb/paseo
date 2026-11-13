@@ -1,3 +1,6 @@
+import { createInstalledUpdateCoordinator } from "./local-update/installed-update-coordinator.js";
+import { registerLocalUpdateIpc } from "./local-update/ipc.js";
+import { isTrustedLocalUpdateSender } from "./local-update/trusted-sender.js";
 import { createUsageAuthenticator } from "./features/usage-auth.js";
 import { updateActivity } from "./dev-update/activity.js";
 import { createOpenWindowUpdate } from "./dev-update/open-window.js";
@@ -33,7 +36,10 @@ import {
   shell,
   webContents,
 } from "electron";
-import { registerDaemonManager } from "./daemon/daemon-manager.js";
+import {
+  registerDaemonManager,
+  initializeRegisteredDaemonConnection,
+} from "./daemon/daemon-manager.js";
 import { parsePassthroughCliArgsFromArgv, runPassthroughCli } from "./daemon/cli/passthrough.js";
 import { closeAllTransportSessions } from "./daemon/local-transport.js";
 import {
@@ -131,6 +137,7 @@ const devUpdateHandoff = createDevUpdateHandoff({
   onError: (error) => log.error("[dev-update] handoff failed", error),
 });
 let initialRendererLoaded = false;
+const localUpdateWindowIds = new Set<number>();
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
 const APP_SCHEME = "paseo";
@@ -771,6 +778,7 @@ async function createWindowImpl(
     });
   }
   const webContentsId = mainWindow.webContents.id;
+  localUpdateWindowIds.add(webContentsId);
   options.onCreated?.(webContentsId);
   mainWindow.webContents.on("did-start-navigation", (_event, _url, isSameDocument, isMainFrame) => {
     if (isMainFrame && !isSameDocument) {
@@ -778,6 +786,7 @@ async function createWindowImpl(
     }
   });
   mainWindow.on("closed", () => {
+    localUpdateWindowIds.delete(webContentsId);
     options.onClosed?.(webContentsId);
     agentNavigationInbox.removeWindow(webContentsId);
     unregisterPaseoBrowserHost(webContentsId);
@@ -991,6 +1000,11 @@ async function bootstrap(): Promise<void> {
   if (!setupSingleInstanceLock()) {
     return;
   }
+  // A verified stopped update must resume before the normal connection-only
+  // registration probe. Only the single owning app process may run this phase.
+  const installedUpdate = await createInstalledUpdateCoordinator();
+  await installedUpdate?.resumeIfPending();
+  await initializeRegisteredDaemonConnection();
 
   await app.whenReady();
 
@@ -1031,6 +1045,26 @@ async function bootstrap(): Promise<void> {
   });
   ensureNotificationCenterRegistration();
   registerDaemonManager();
+  // No local approval manifest means no update capability or button.
+  // Exact signed/approved updates alone use the scoped handoff coordinator;
+  // ordinary registered daemon controls remain connection-only.
+  const disposeLocalUpdate = registerLocalUpdateIpc({
+    ipcMain,
+    isTrustedSender: (event) => {
+      const sender = (event as Electron.IpcMainInvokeEvent | null)?.sender;
+      return Boolean(
+        sender && localUpdateWindowIds.has(sender.id) && isTrustedLocalUpdateSender(event, sender),
+      );
+    },
+    productionReady: installedUpdate !== null,
+    driver: installedUpdate?.driver ?? {
+      readStatus: async () => ({ currentVersion: app.getVersion(), phase: "idle" }),
+      requestUpdate: async () => {
+        throw new Error("Coordinated installed daemon update capability is not provisioned");
+      },
+    },
+  });
+  app.once("will-quit", disposeLocalUpdate);
   registerWindowManager({ mode: DESKTOP_WINDOW_CHROME_MODE });
   registerDialogHandlers();
   registerMicrophonePermissionHandlers();

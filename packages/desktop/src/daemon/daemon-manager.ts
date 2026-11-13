@@ -1,5 +1,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import os from "node:os";
+import {
+  readRegisteredDaemon,
+  isRegisteredCredentialTarget,
+  assertRegisteredDaemonEvidence,
+  assertDaemonLifecycleAllowed,
+  type RegisteredDaemon,
+} from "../profile/registered-daemon.js";
 import { app, ipcMain, powerMonitor } from "electron";
 import log from "electron-log/main";
 import {
@@ -66,6 +74,41 @@ import {
 const DAEMON_LOG_FILENAME = "daemon.log";
 let ownedLaunch: { home: string; instance: DaemonInstance; retained?: boolean } | null = null;
 let checkedDevUpdateDaemonHandoff = false;
+let registeredDaemon: RegisteredDaemon | null = null;
+
+export async function initializeRegisteredDaemonConnection(): Promise<void> {
+  if (!app.isPackaged) return;
+  const metadata: unknown = JSON.parse(
+    readFileSync(path.join(app.getAppPath(), "package.json"), "utf8"),
+  );
+  registeredDaemon = readRegisteredDaemon({
+    packaged: app.isPackaged,
+    metadata,
+    userHome: os.homedir(),
+    version: app.getVersion(),
+  });
+  if (!registeredDaemon) return;
+  if (
+    process.env.PASEO_ELECTRON_USER_DATA_DIR ||
+    process.env.PASEO_HOME ||
+    process.env.PASEO_DISABLE_SINGLE_INSTANCE_LOCK
+  )
+    throw new Error("Registered installed connection refuses development profile overrides");
+  await validateRegisteredConnection();
+}
+async function validateRegisteredConnection(): Promise<Record<string, unknown>> {
+  if (!registeredDaemon) throw new Error("No registered daemon");
+  const instance = await readDaemonInstance(registeredDaemon.home);
+  const status = (await runExternalCliJsonCommand([
+    "daemon",
+    "status",
+    "--home",
+    registeredDaemon.home,
+    "--json",
+  ])) as Record<string, unknown>;
+  assertRegisteredDaemonEvidence(registeredDaemon, instance, status);
+  return status;
+}
 
 type DesktopDaemonState = "starting" | "running" | "stopped" | "errored";
 const DESKTOP_DAEMON_STOP_REASON_VALUES = [
@@ -134,7 +177,7 @@ function parseDesktopDaemonStopReason(
 // ---------------------------------------------------------------------------
 
 function getPaseoHome(): string {
-  return resolvePaseoHome(process.env);
+  return registeredDaemon?.home ?? resolvePaseoHome(process.env);
 }
 
 function logFilePath(): string {
@@ -142,7 +185,7 @@ function logFilePath(): string {
 }
 
 export function isDesktopManagedDaemonRunningSync(): boolean {
-  if (!ownedLaunch) return false;
+  if (registeredDaemon || !ownedLaunch) return false;
   try {
     const lock = JSON.parse(readFileSync(path.join(ownedLaunch.home, "paseo.pid"), "utf8"));
     return isSameDaemonInstance(lock, ownedLaunch.instance) && isProcessRunning(lock.pid);
@@ -234,6 +277,7 @@ export async function resolveDesktopDaemonStatus(): Promise<DesktopDaemonStatus>
   const home = getPaseoHome();
 
   try {
+    if (registeredDaemon) return statusFromDaemonProbe(await validateRegisteredConnection(), home);
     // The app polls this while no local daemon runs. Answer that case in-process,
     // since launching the CLI once per poll keeps spawning processes while idle.
     const instance = await readDaemonInstance(home);
@@ -312,6 +356,8 @@ function assertBuiltInDaemonManagementEnabled(settings: DesktopSettings): void {
 }
 
 async function startDaemon(): Promise<DesktopDaemonStatus> {
+  if (registeredDaemon)
+    return statusFromDaemonProbe(await validateRegisteredConnection(), registeredDaemon.home);
   assertBuiltInDaemonManagementEnabled(await getDesktopSettingsStore().get());
 
   const current = await resolveDesktopDaemonStatus();
@@ -364,6 +410,7 @@ export async function stopDesktopDaemon(
   reason: DesktopDaemonStopReason = DEFAULT_DESKTOP_DAEMON_STOP_REASON,
   confirmedInstance?: { pid: number; startedAt: string },
 ): Promise<DesktopDaemonStatus> {
+  assertDaemonLifecycleAllowed(registeredDaemon);
   const home = getPaseoHome();
   const instance = await readDaemonInstance(home);
   const owned = Boolean(
@@ -407,6 +454,7 @@ export interface StopCapturedDaemonInput {
 
 /** Stops the supervisor desktop captured, keeping its terminals when asked and supported. */
 export async function stopCapturedDaemon(input: StopCapturedDaemonInput): Promise<void> {
+  assertDaemonLifecycleAllowed(registeredDaemon);
   const stopInstance = input.stopInstance ?? stopDaemonInstance;
   const runCliJson = input.runCliJson ?? runExternalCliJsonCommand;
   const logLifecycle = input.log ?? logDesktopDaemonLifecycle;
@@ -462,6 +510,7 @@ export function keepsTerminalsOnStop(
 }
 
 async function restartDaemon(): Promise<DesktopDaemonStatus> {
+  assertDaemonLifecycleAllowed(registeredDaemon);
   await runExternalCliJsonCommand(["daemon", "restart", "--home", getPaseoHome(), "--json"]);
   return resolveDesktopDaemonStatus();
 }
@@ -508,6 +557,23 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
     }),
     desktop_daemon_status: () => resolveDesktopDaemonStatus(),
     desktop_local_credential: async (args) => {
+      if (registeredDaemon) {
+        const registration = registeredDaemon;
+        if (!isRegisteredCredentialTarget(registration, args?.listen)) return null;
+        const status = await validateRegisteredConnection();
+        assertRegisteredDaemonEvidence(
+          registration,
+          await readDaemonInstance(registration.home),
+          status,
+        );
+        const credential = readLocalCredentialForTarget(registration.home, registration.listen);
+        assertRegisteredDaemonEvidence(
+          registration,
+          await readDaemonInstance(registration.home),
+          status,
+        );
+        return credential;
+      }
       const instance = await readDaemonInstance(getPaseoHome());
       if (!instance?.desktopManaged || typeof args?.listen !== "string") return null;
       return readLocalCredentialForTarget(getPaseoHome(), args.listen);

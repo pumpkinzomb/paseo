@@ -1,3 +1,4 @@
+import { createWorkDrain } from "./work-drain.js";
 import { watch as watchPath } from "node:fs";
 import { stat } from "node:fs/promises";
 import { setImmediate as yieldToLoop } from "node:timers/promises";
@@ -123,6 +124,7 @@ interface CachedCheckoutRead {
 export type DirectoryState = "directory" | "missing" | "unreadable";
 
 export class WorkspaceReconciliationService {
+  private readonly workDrain = createWorkDrain();
   // Timed-out fs operations retain their slot until the OS returns. Never use
   // the deadline to admit more work into libuv's shared threadpool.
   private readonly timedOutPaths = new Set<string>();
@@ -173,7 +175,12 @@ export class WorkspaceReconciliationService {
     this.debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
   }
 
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    if (this.disposed) return Promise.reject(new Error("Workspace reconciliation is disposed"));
+    return this.workDrain.run(() => this.startInternal());
+  }
+
+  private async startInternal(): Promise<void> {
     if (this.started) return;
     this.started = true;
     this.unsubscribeRegistry =
@@ -193,11 +200,17 @@ export class WorkspaceReconciliationService {
         }
       }) ?? null;
     await this.syncProjectRootWatches();
+    if (this.disposed) return;
     this.rescanTimer = this.clock.setInterval(
       () => this.reconcileObservedGitMetadata("full"),
       this.rescanIntervalMs,
     );
     this.rescanTimer.unref?.();
+  }
+
+  async close(): Promise<void> {
+    this.dispose();
+    await this.workDrain.close();
   }
 
   dispose(): void {
@@ -212,7 +225,12 @@ export class WorkspaceReconciliationService {
   }
 
   /** Reconciles mutable Git facts only; never archives missing records. */
-  async reconcileGitMetadata(): Promise<ReconciliationResult> {
+  reconcileGitMetadata(): Promise<ReconciliationResult> {
+    if (this.disposed) return Promise.reject(new Error("Workspace reconciliation is disposed"));
+    return this.workDrain.run(() => this.reconcileGitMetadataInternal());
+  }
+
+  private async reconcileGitMetadataInternal(): Promise<ReconciliationResult> {
     const start = Date.now();
     const changes: ReconciliationChange[] = [];
     const [projects, workspaces] = await Promise.all([
@@ -244,7 +262,12 @@ export class WorkspaceReconciliationService {
     return { changesApplied: changes, durationMs: Date.now() - start };
   }
 
-  async runOnce(): Promise<ReconciliationResult> {
+  runOnce(): Promise<ReconciliationResult> {
+    if (this.disposed) return Promise.reject(new Error("Workspace reconciliation is disposed"));
+    return this.workDrain.run(() => this.runOnceInternal());
+  }
+
+  private async runOnceInternal(): Promise<ReconciliationResult> {
     const start = Date.now();
     const changes: ReconciliationChange[] = [];
 
@@ -529,9 +552,12 @@ export class WorkspaceReconciliationService {
     }, this.debounceMs);
   }
 
-  private async reconcileObservedGitMetadata(
-    mode: "metadata" | "full" = "metadata",
-  ): Promise<void> {
+  private reconcileObservedGitMetadata(mode: "metadata" | "full" = "metadata"): Promise<void> {
+    if (this.disposed) return Promise.resolve();
+    return this.workDrain.run(() => this.reconcileObservedGitMetadataInternal(mode));
+  }
+
+  private async reconcileObservedGitMetadataInternal(mode: "metadata" | "full"): Promise<void> {
     if (this.disposed) return;
     if (this.reconciling) {
       if (mode === "full" || this.reconcileQueuedMode === null) {
@@ -542,7 +568,8 @@ export class WorkspaceReconciliationService {
     this.reconciling = true;
     try {
       await this.syncProjectRootWatches();
-      const result = mode === "full" ? await this.runOnce() : await this.reconcileGitMetadata();
+      const result =
+        mode === "full" ? await this.runOnceInternal() : await this.reconcileGitMetadataInternal();
       const workspaceIds = new Set<string>();
       const projectIds = new Set<string>();
       for (const change of result.changesApplied) {
@@ -561,6 +588,7 @@ export class WorkspaceReconciliationService {
         await this.onWorkspacesChanged?.(Array.from(workspaceIds));
       }
     } catch (error) {
+      this.workDrain.recordFailure(error);
       if (!this.disposed) {
         this.logger.warn({ err: error }, "Workspace reconciliation failed");
       }

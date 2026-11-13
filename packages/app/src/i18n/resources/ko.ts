@@ -2,6 +2,12 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
+  localAppUpdate: {
+    version: "앱 버전 {{version}}",
+    developmentBuild: "개발 빌드: {{label}}",
+    updateAndRestart: "업데이트 후 재시작",
+    updating: "업데이트 요청 중",
+  },
   pdfViewer: {
     printPreparing: "PDF 전체 페이지 인쇄를 준비하는 중…",
     printFailed: "인쇄를 준비하지 못했어. PDF를 다운로드해서 기본 뷰어에서 인쇄해줘.",

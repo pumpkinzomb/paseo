@@ -204,7 +204,18 @@ export interface DesktopMicrophoneBridge {
   requestAccess(): Promise<string>;
 }
 
+export interface DesktopLocalUpdateStatus {
+  currentVersion: string;
+  phase: "idle" | "applying" | "failed";
+  canApply: boolean;
+  candidate?: { version: string; token: string };
+}
+export interface DesktopLocalUpdateBridge {
+  status(): Promise<DesktopLocalUpdateStatus>;
+  request(token: string): Promise<void>;
+}
 export interface DesktopHostBridge {
+  localUpdate?: DesktopLocalUpdateBridge;
   usageAuth?: { start(sourceId: string): Promise<void> };
   microphone?: DesktopMicrophoneBridge;
   devUpdate?: DesktopDevUpdateBridge;

@@ -325,9 +325,39 @@ function hasReviewedRendererRegistration(plugin: LoadedPlugin): boolean {
   );
 }
 
+function hasReviewedServiceRegistration(plugin: LoadedPlugin): boolean {
+  if (plugin.providers.length || plugin.usageSources.length || plugin.subscriptionMethods.size)
+    return false;
+  if (plugin.id === "document-preview")
+    return (
+      plugin.methods.size === 0 &&
+      plugin.hooks.length === 1 &&
+      plugin.hooks[0] === "agent.open.before"
+    );
+  if (plugin.id !== "external-connections") return false;
+  const methods = [
+    "google.status",
+    "google.configure",
+    "google.begin",
+    "google.cancel",
+    "google.forget",
+    "settings.connections.read",
+    "settings.connections.reset",
+    "settings.connections.write",
+  ];
+  return (
+    plugin.methods.size === methods.length &&
+    methods.every((method) => plugin.methods.has(method)) &&
+    plugin.hooks.length === 2 &&
+    plugin.hooks.includes("agent.open.before") &&
+    plugin.hooks.includes("agent.close.after")
+  );
+}
+
 export class PluginRuntime {
   private readonly plugins = new Map<string, LoadedPlugin>();
   private readonly retainedBuiltins = new WeakSet<LoadedPlugin>();
+  private readonly builtinUpdateProbes = new WeakMap<LoadedPlugin, () => readonly string[]>();
   private onUpdateActivity: (() => void) | undefined;
 
   setUpdateActivityListener(listener: () => void): void {
@@ -409,12 +439,25 @@ export class PluginRuntime {
     const contribute = evaluateBundle(bundles.serverBundle);
     // Credential helpers must never take a path from settings, RPC or environment.
     // Only this trusted built-in receives a daemon-owned state directory.
-    const builtinHost = builtinHostContext(
+    let updateProbe: (() => readonly string[]) | undefined;
+    const baseBuiltinHost = builtinHostContext(
       input.id,
       directory,
       this.dependencies.settingsDirectory,
       this.dependencies.builtinRuntimeMode,
     );
+    const builtinHost = baseBuiltinHost
+      ? {
+          ...baseBuiltinHost,
+          registerUpdateProbe: (probe: () => readonly string[]) => {
+            if (updateProbe) throw new Error("Builtin update probe already registered");
+            updateProbe = probe;
+            return () => {
+              if (updateProbe === probe) updateProbe = undefined;
+            };
+          },
+        }
+      : undefined;
     const loaded = await this.launchPlugin({
       pluginId: input.id,
       pluginDirectory: directory,
@@ -424,6 +467,9 @@ export class PluginRuntime {
       clientBundle: bundles.clientBundle ?? "",
     });
     this.retainedBuiltins.add(loaded);
+    this.builtinUpdateProbes.set(loaded, () =>
+      updateProbe ? updateProbe() : ["builtin work snapshot unavailable"],
+    );
     this.onUpdateActivity?.();
     this.plugins.set(input.id, loaded);
     this.notifySessionOpenChange(loaded);
@@ -660,8 +706,25 @@ export class PluginRuntime {
   getUpdateBlockers(): string[] {
     const blockers = this.pendingEvents.size ? ["plugin lifecycle events active"] : [];
     for (const plugin of this.plugins.values()) {
-      if (!this.retainedBuiltins.has(plugin) || !hasReviewedRendererRegistration(plugin))
+      const reviewedService =
+        this.retainedBuiltins.has(plugin) && hasReviewedServiceRegistration(plugin);
+      if (reviewedService && plugin.child instanceof InternalPluginChild) {
+        blockers.push(...plugin.child.getUpdateBlockers().map((value) => `${plugin.id}: ${value}`));
+        if (plugin.id === "external-connections") {
+          try {
+            const probe = this.builtinUpdateProbes.get(plugin);
+            blockers.push(
+              ...(probe ? probe() : ["builtin work snapshot unavailable"]).map(
+                (value) => `${plugin.id}: ${value}`,
+              ),
+            );
+          } catch {
+            blockers.push(`${plugin.id}: builtin work snapshot failed`);
+          }
+        }
+      } else if (!this.retainedBuiltins.has(plugin) || !hasReviewedRendererRegistration(plugin)) {
         blockers.push(`plugin renderer safety unknown: ${plugin.id}`);
+      }
       if (plugin.pending.size || plugin.subscriptions.size || plugin.providerConnections.size)
         blockers.push(`plugin work active: ${plugin.id}`);
     }

@@ -12,11 +12,21 @@ export class InternalPluginChild extends EventEmitter {
   private readonly worker: ReturnType<typeof createPluginWorker>;
   private readonly workerMessages = new Set<(message: PluginProcessRequest) => void>();
   private closing: Promise<void> | null = null;
+  private readonly updateRequests = new Set<string>();
+
+  getUpdateBlockers(): string[] {
+    return [
+      ...(this.closing || !this.connected ? ["builtin worker unavailable"] : []),
+      ...(this.updateRequests.size ? ["builtin handlers active"] : []),
+    ];
+  }
 
   constructor(contribute: PluginServerContribution) {
     super();
     const channel: PluginWorkerChannel = {
       send: (message: PluginProcessMessage, callback?: () => void) => {
+        if ((message.type === "result" || message.type === "error") && "requestId" in message)
+          this.updateRequests.delete(message.requestId);
         const copy = structuredClone(message);
         queueMicrotask(() => {
           if (this.connected) this.emit("message", copy);
@@ -37,6 +47,8 @@ export class InternalPluginChild extends EventEmitter {
       callback?.(new Error("Plugin child is disconnected"));
       return false;
     }
+    if ("requestId" in message && !message.type.endsWith(".cancel"))
+      this.updateRequests.add(message.requestId);
     const copy = structuredClone(message);
     queueMicrotask(() => {
       for (const handler of this.workerMessages) handler(copy);

@@ -194,3 +194,68 @@ it("allows unpersisted renderer sessions only with a provider proof, never daemo
     "Runtime safety unknown",
   );
 });
+
+it("official shutdown sealing survives lease dispose, expiry and activity interruption", async () => {
+  vi.useFakeTimers();
+  const f = fixture();
+  await f.lease.prepare(binding);
+  f.fence.sealForShutdown();
+  f.lease.dispose();
+  f.fence.interrupt();
+  f.fence.open();
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(f.fence.enter()).toBeNull();
+  expect(() => f.fence.assertOpen()).toThrow("update_in_progress");
+});
+it("shutdown sealing preserves already admitted work accounting", () => {
+  const fence = new UpdateAdmissionFence();
+  const leave = fence.enter()!;
+  fence.sealForShutdown();
+  expect(fence.pending).toBe(1);
+  expect(fence.enter()).toBeNull();
+  leave();
+  expect(fence.pending).toBe(0);
+  fence.interrupt();
+  expect(fence.enter()).toBeNull();
+});
+
+it("durable daemon handoff keeps ingress sealed until official stop", async () => {
+  const f = fixture();
+  const ticket = await f.lease.prepare(binding);
+  const events: string[] = [];
+  f.options.stop.mockImplementation(async () => {
+    events.push("stop");
+    expect(f.fence.enter()).toBeNull();
+  });
+  await f.lease.commitToShutdown(ticket, async () => {
+    expect(f.fence.enter()).toBeNull();
+    events.push("persist");
+  });
+  expect(events).toEqual(["persist", "stop"]);
+  f.lease.dispose();
+  expect(f.fence.enter()).toBeNull();
+});
+it("failed durable hold never stops or reopens admission", async () => {
+  const f = fixture();
+  const ticket = await f.lease.prepare(binding);
+  await expect(
+    f.lease.commitToShutdown(ticket, async () => {
+      throw Error("fsync failed");
+    }),
+  ).rejects.toThrow("fsync failed");
+  f.lease.dispose();
+  f.fence.interrupt();
+  expect(f.options.stop).not.toHaveBeenCalled();
+  expect(f.fence.enter()).toBeNull();
+});
+it("activity changing during durable persistence prevents stop and stays fenced", async () => {
+  const f = fixture();
+  const ticket = await f.lease.prepare(binding);
+  await expect(
+    f.lease.commitToShutdown(ticket, async () => {
+      f.fence.interrupt();
+    }),
+  ).rejects.toThrow("Stale");
+  expect(f.options.stop).not.toHaveBeenCalled();
+  expect(f.fence.enter()).toBeNull();
+});
