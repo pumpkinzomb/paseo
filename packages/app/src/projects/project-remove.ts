@@ -86,13 +86,20 @@ export function getProjectRemoveReadiness(input: {
 
 export function getCurrentProjectRemoveReadiness(
   project: ProjectRemoveProject,
+  getClient?: (serverId: string) => Pick<DaemonClient, "getLastServerInfoMessage"> | null,
 ): ProjectRemoveReadiness {
   const sessionState = useSessionStore.getState();
+  const liveInfo = (serverId: string) => getClient?.(serverId)?.getLastServerInfoMessage();
   return getProjectRemoveReadiness({
     project,
-    hasHostInfo: (serverId) => Boolean(sessionState.sessions[serverId]?.serverInfo),
+    hasHostInfo: (serverId) =>
+      getClient
+        ? Boolean(liveInfo(serverId))
+        : Boolean(sessionState.sessions[serverId]?.serverInfo),
     supportsProjectRemove: (serverId) =>
-      selectHostFeature(sessionState, serverId, "projectRemoveSessions"),
+      getClient
+        ? liveInfo(serverId)?.features?.projectRemoveSessions === true
+        : selectHostFeature(sessionState, serverId, "projectRemoveSessions"),
   });
 }
 
