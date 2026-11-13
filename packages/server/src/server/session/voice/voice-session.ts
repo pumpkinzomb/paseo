@@ -127,11 +127,13 @@ export interface VoiceSessionHost {
     agentId: string,
     overrides: Partial<AgentSessionConfig>,
   ): Promise<ManagedAgent>;
+  recordNativeCall(agentId: string, voiceCallId: string, startedAt: string): Promise<void>;
   recordNativeTranscript(
     agentId: string,
     role: "user" | "assistant",
     text: string,
     messageId: string,
+    voiceCallId?: string,
   ): Promise<void>;
   sendSpokenInput(agentId: string, text: string): Promise<void>;
   interruptAgentIfRunning(agentId: string): Promise<void>;
@@ -514,6 +516,25 @@ export class VoiceSession {
     }
   }
 
+  async handleNativeVoiceCatalog(
+    msg: Extract<SessionInboundMessage, { type: "voice.native.catalog.request" }>,
+  ): Promise<void> {
+    let voices: string[] = [];
+    let error: string | null = null;
+    try {
+      const agent = await this.host.loadAgent(msg.agentId);
+      if (!agent.session?.listNativeVoices)
+        throw new Error("This agent does not support a native voice catalog");
+      voices = await agent.session.listNativeVoices();
+    } catch (failure) {
+      error = getErrorMessage(failure);
+    }
+    this.emit({
+      type: "voice.native.catalog.response",
+      payload: { requestId: msg.requestId, agentId: msg.agentId, version: "v3", voices, error },
+    });
+  }
+
   async handleNativeVoiceOffer(
     msg: Extract<SessionInboundMessage, { type: "voice.native.start.request" }>,
   ): Promise<void> {
@@ -558,14 +579,20 @@ export class VoiceSession {
     if (this.nativeVoiceSelected) throw new Error("Native voice is already active or starting");
     if (this.isVoiceMode || this.nativeVoice) await this.disableVoiceModeForActiveAgent(true);
     const generation = ++this.nativeGeneration;
+    const voiceCallId = uuidv4();
+    const startedAt = new Date().toISOString();
+    let callRecorded = false;
+    const pendingEvents: NativeVoiceEvent[] = [];
     this.nativeVoiceSelected = true;
     this.voiceModeAgentId = agentId;
     try {
       const connection = await agent.session.startNativeVoice(
         offerSdp,
         (event) => {
-          if (!this.closed && generation === this.nativeGeneration)
-            this.handleNativeVoiceEvent(agentId, event);
+          if (!this.closed && generation === this.nativeGeneration) {
+            if (callRecorded) this.handleNativeVoiceEvent(agentId, event, voiceCallId);
+            else pendingEvents.push(event);
+          }
         },
         voice,
       );
@@ -573,6 +600,19 @@ export class VoiceSession {
         await connection.stop();
         throw new Error("Native voice startup was cancelled");
       }
+      try {
+        await this.host.recordNativeCall(agentId, voiceCallId, startedAt);
+      } catch (error) {
+        await connection.stop();
+        throw error;
+      }
+      if (this.closed || generation !== this.nativeGeneration) {
+        await connection.stop();
+        throw new Error("Native voice startup was cancelled");
+      }
+      callRecorded = true;
+      for (const event of pendingEvents) this.handleNativeVoiceEvent(agentId, event, voiceCallId);
+      pendingEvents.length = 0;
       this.nativeVoice = connection;
       this.isVoiceMode = true;
       return connection;
@@ -586,14 +626,20 @@ export class VoiceSession {
     }
   }
 
-  private handleNativeVoiceEvent(agentId: string, event: NativeVoiceEvent): void {
+  private handleNativeVoiceEvent(
+    agentId: string,
+    event: NativeVoiceEvent,
+    voiceCallId: string,
+  ): void {
     if (event.type === "transcript") {
       if ((event.role === "user" || event.role === "assistant") && event.text.trim()) {
         const role = event.role;
         const messageId = uuidv4();
         this.nativeTranscriptPending += 1;
         this.nativeTranscriptWrites = this.nativeTranscriptWrites
-          .then(() => this.host.recordNativeTranscript(agentId, role, event.text, messageId))
+          .then(() =>
+            this.host.recordNativeTranscript(agentId, role, event.text, messageId, voiceCallId),
+          )
           .catch((error: unknown) => {
             this.nativeTranscriptError = error;
             this.sessionLogger.error({ err: error, agentId }, "Failed to save voice transcript");

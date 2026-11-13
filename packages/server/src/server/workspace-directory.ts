@@ -75,6 +75,7 @@ export interface WorkspaceDirectoryDeps {
   };
   workspaceRegistry: {
     listActive(): Promise<PersistedWorkspaceRecord[]>;
+    listAll(): Promise<PersistedWorkspaceRecord[]>;
     get(id: string): Promise<PersistedWorkspaceRecord | null>;
   };
   listAgentPayloads(workspaceIds?: Iterable<string>): Promise<AgentSnapshotPayload[]>;
@@ -91,6 +92,25 @@ export interface WorkspaceDirectoryDeps {
     projectRecord?: PersistedProjectRecord | null;
     includeGitData: boolean;
   }): Promise<WorkspaceDescriptorPayload>;
+}
+
+export function deletedChildOnlyProjectIds(workspaces: PersistedWorkspaceRecord[]): Set<string> {
+  const deletedChildOnlyProjects = new Set<string>();
+  const projectsWithRetainedHistory = new Set<string>();
+  for (const workspace of workspaces) {
+    if (
+      workspace.parentWorkspaceId &&
+      workspace.archivedAt &&
+      typeof workspace.metadata?.sessionRecordsDeletedAt === "string"
+    ) {
+      deletedChildOnlyProjects.add(workspace.projectId);
+    } else {
+      projectsWithRetainedHistory.add(workspace.projectId);
+    }
+  }
+  return new Set(
+    [...deletedChildOnlyProjects].filter((id) => !projectsWithRetainedHistory.has(id)),
+  );
 }
 
 export function summarizeFetchWorkspacesEntries(entries: Iterable<FetchWorkspacesResponseEntry>): {
@@ -574,6 +594,15 @@ export class WorkspaceDirectory {
     return candidates.at(-1) ?? null;
   }
 
+  async listVisibleProjects(): Promise<PersistedProjectRecord[]> {
+    const [projects, workspaces] = await Promise.all([
+      this.deps.projectRegistry.list(),
+      this.deps.workspaceRegistry.listAll(),
+    ]);
+    const hidden = deletedChildOnlyProjectIds(workspaces);
+    return projects.filter((project) => !project.archivedAt && !hidden.has(project.projectId));
+  }
+
   // Project parents that have no active workspaces. The wire field is the
   // sidebar projection bucket for projects whose workspace list is currently
   // empty; it is not a separate domain record.
@@ -581,7 +610,7 @@ export class WorkspaceDirectory {
     includeBackground?: boolean;
   }): Promise<WorkspaceProjectDescriptor[]> {
     const [persistedWorkspaces, persistedProjects] = await Promise.all([
-      this.deps.workspaceRegistry.listActive(),
+      this.deps.workspaceRegistry.listAll(),
       this.deps.projectRegistry.list(),
     ]);
     // A project whose only workspaces are hidden reads as empty to that caller.
@@ -593,9 +622,16 @@ export class WorkspaceDirectory {
         )
         .map((workspace) => workspace.projectId),
     );
+    // Deleted children must not resurrect their incidental project as a blank
+    // lead-agent creation row. Keep fresh projects and any root-workspace history.
+    // This is only a sidebar projection; project metadata and source files remain.
+    const hiddenProjectIds = deletedChildOnlyProjectIds(persistedWorkspaces);
     return persistedProjects
       .filter(
-        (project) => !project.archivedAt && !projectIdsWithActiveWorkspaces.has(project.projectId),
+        (project) =>
+          !project.archivedAt &&
+          !projectIdsWithActiveWorkspaces.has(project.projectId) &&
+          !hiddenProjectIds.has(project.projectId),
       )
       .map((project) => ({
         projectId: project.projectId,

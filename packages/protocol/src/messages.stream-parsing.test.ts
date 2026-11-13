@@ -468,3 +468,15 @@ it("preserves voice origins through actual message validation and wire serializa
     }),
   ).toHaveProperty("voice", "coral");
 });
+
+it("preserves exact voice call IDs on markers and both speakers without requiring them on legacy rows", async () => {
+  const { AgentTimelineItemPayloadSchema } = await import("./messages.js");
+  const voiceCallId = "call-1";
+  for (const item of [
+    { type: "notification", level: "info", message: "Voice call connected", voiceCallId },
+    { type: "user_message", source: "native_voice", text: "hello", voiceCallId },
+    { type: "assistant_message", source: "native_voice", text: "hi", voiceCallId },
+    { type: "user_message", source: "native_voice", text: "legacy" },
+  ])
+    expect(AgentTimelineItemPayloadSchema.parse(item)).toEqual(item);
+});

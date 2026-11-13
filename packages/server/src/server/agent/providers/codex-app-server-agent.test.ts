@@ -1620,7 +1620,11 @@ describe("Codex app-server provider", () => {
       modeId: undefined,
       providerOptions: { sandbox_mode: "read-only" },
       mcpServers: {
-        hub: { type: "http", url: "http://127.0.0.1/hub" },
+        hub: {
+          type: "http",
+          url: "http://127.0.0.1/hub",
+          headers: { Authorization: "Bearer test-ephemeral-session" },
+        },
       },
       toolPolicy: {
         preapproved: [{ kind: "mcp", server: "hub", tool: "finish_execution" }],
@@ -1643,6 +1647,7 @@ describe("Codex app-server provider", () => {
         sandbox_mode: "read-only",
         mcp_servers: {
           hub: {
+            http_headers: { Authorization: "Bearer test-ephemeral-session" },
             enabled_tools: ["finish_execution"],
             default_tools_approval_mode: "prompt",
             tools: { finish_execution: { approval_mode: "approve" } },

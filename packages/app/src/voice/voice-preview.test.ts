@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { apiVoiceSample, createVoicePreview } from "./voice-preview";
+import { apiVoiceSample, apiVoiceTone, createVoicePreview } from "./voice-preview";
 
 it("limits official API samples to the selected official route and known voices", () => {
   expect(apiVoiceSample("coral", "")).toBe("https://cdn.openai.com/API/docs/audio/coral.wav");
@@ -57,4 +57,76 @@ it("publishes playback and errors, and aborts old playback when switched", async
   await Promise.resolve();
   preview.stop();
   expect(playbackSignal?.aborted).toBe(true);
+});
+
+it("resumes output synchronously before fetching a reference", async () => {
+  const order: string[] = [];
+  const preview = createVoicePreview({
+    onState() {},
+    player: {
+      initialize: async () => {
+        order.push("initialize");
+      },
+      play: async () => {
+        order.push("play");
+        return 1;
+      },
+    },
+    fetchAudio: async () => {
+      order.push("fetch");
+      return new Blob(["audio"]);
+    },
+  });
+  const playing = preview.play("sample");
+  expect(order).toEqual(["initialize"]);
+  await playing;
+  expect(order).toEqual(["initialize", "fetch", "play"]);
+});
+
+it("does not fetch after cancelling output initialization", async () => {
+  let initialized!: () => void;
+  const fetchAudio = vi.fn();
+  const preview = createVoicePreview({
+    onState() {},
+    fetchAudio,
+    player: {
+      initialize: () =>
+        new Promise<void>((resolve) => {
+          initialized = resolve;
+        }),
+      play: vi.fn(),
+    },
+  });
+  const playing = preview.play("sample");
+  preview.stop();
+  initialized();
+  await playing;
+  expect(fetchAudio).not.toHaveBeenCalled();
+});
+
+it("reports unavailable output initialization without fetching", async () => {
+  const onState = vi.fn();
+  const fetchAudio = vi.fn();
+  const preview = createVoicePreview({
+    onState,
+    fetchAudio,
+    player: {
+      initialize: async () => {
+        throw new Error("blocked");
+      },
+      play: vi.fn(),
+    },
+  });
+  await preview.play("sample");
+  expect(onState).toHaveBeenLastCalledWith("failed");
+  expect(fetchAudio).not.toHaveBeenCalled();
+});
+
+it("labels reference tone without inventing samples for unknown voices", () => {
+  expect(apiVoiceTone("coral")).toBe("feminine");
+  expect(apiVoiceTone("ash")).toBe("masculine");
+  expect(apiVoiceTone("alloy")).toBe("neutral");
+  expect(apiVoiceTone("marin")).toBeNull();
+  expect(apiVoiceSample("marin", "")).toBeNull();
+  expect(apiVoiceSample("cedar", "")).toBeNull();
 });

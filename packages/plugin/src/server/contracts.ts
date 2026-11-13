@@ -40,6 +40,13 @@ export interface PluginSettings<Schema extends ZodType> {
 }
 
 export interface PluginServerContext extends PluginLifecycleRegistration {
+  /** Host-owned storage root. Supplied only to a trusted built-in, never external plugins. */
+  readonly builtinHost?: {
+    readonly stateDirectory: string;
+    readonly pluginDirectory: string;
+    readonly runtimeMode: "development" | "packaged";
+  };
+
   registerSettings<Schema extends ZodType>(
     definition: import("../settings.js").SettingsDefinition<Schema>,
   ): PluginSettings<Schema>;

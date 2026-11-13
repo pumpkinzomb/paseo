@@ -4,7 +4,9 @@
     "strict": true,
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+    "incremental": true,
+    "tsBuildInfoFile": "../../.lab/typecheck/app.tsbuildinfo"
   },
   "include": [
     "**/*.ts",

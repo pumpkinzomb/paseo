@@ -1,3 +1,4 @@
+import { useConsolidateAssistantConversationTabs } from "@/default-assistant/conversation-tabs";
 import { resolveAgentPanelInteraction } from "./agent-panel-interaction";
 import { AssistantConversationHistory } from "@/default-assistant/conversation-history";
 import {
@@ -361,6 +362,7 @@ export function AgentConversationPanel() {
     target.kind === "agent" ? target.agentId : undefined,
   );
   const conversation = logical.data ?? null;
+  useConsolidateAssistantConversationTabs(serverId, conversation, workspaceId, isInteractive);
   useViewedAssistantSegment(serverId, pane.tabId, conversation?.activeAgentId);
   const resolvedTarget = useMemo(
     () =>
@@ -1251,7 +1253,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       style={animatedStaticStyles.content}
       onStartShouldSetResponderCapture={handleAttentionInteraction}
     >
-      <AssistantConversationHistory serverId={serverId} />
+      <AssistantConversationHistory serverId={serverId} agentId={agentId} />
       {showsComposer ? null : <SheetAgentFacts serverId={serverId} agentId={agentId} />}
       <RenderProfile id={`AgentStreamSection:${agentId}`}>
         <AgentStreamSection

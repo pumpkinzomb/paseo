@@ -37,3 +37,19 @@ it("keeps actual speakers once across loaded pages/head overlap and survives cal
   expect(collectCallTranscript(rows, [])).toEqual(record);
   expect(collectCallTranscript([], [])).toEqual([]);
 });
+
+it("never mixes calls or guesses boundaries for legacy rows", () => {
+  const row = (id: string, voiceCallId?: string): StreamItem => ({
+    kind: "user_message",
+    id,
+    messageId: id,
+    voiceCallId,
+    source: "native_voice",
+    text: id,
+    timestamp: new Date(1),
+  });
+  const rows = [row("legacy"), row("first", "one"), row("second", "two")];
+  expect(collectCallTranscript(rows, [], "one").map((r) => r.text)).toEqual(["first"]);
+  expect(collectCallTranscript(rows, [], "two").map((r) => r.text)).toEqual(["second"]);
+  expect(collectCallTranscript(rows, []).map((r) => r.text)).toEqual(["legacy"]);
+});

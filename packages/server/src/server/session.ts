@@ -1361,8 +1361,16 @@ export class Session {
             }),
           reloadAgentSession: (agentId, overrides) =>
             this.agentManager.reloadAgentSession(agentId, overrides),
-          recordNativeTranscript: (agentId, role, text, messageId) =>
-            this.agentManager.appendNativeVoiceTranscript(agentId, role, text, messageId),
+          recordNativeCall: (agentId, voiceCallId, startedAt) =>
+            this.agentManager.appendNativeVoiceCall(agentId, voiceCallId, startedAt),
+          recordNativeTranscript: (agentId, role, text, messageId, voiceCallId) =>
+            this.agentManager.appendNativeVoiceTranscript(
+              agentId,
+              role,
+              text,
+              messageId,
+              voiceCallId,
+            ),
           sendSpokenInput: async (agentId, text) => {
             await this.handleSendAgentMessage(
               agentId,
@@ -1612,6 +1620,15 @@ export class Session {
 
   private async publishProjectUpdate(update: ProjectUpdate): Promise<void> {
     if (!this.wantsEvent("project.update")) return;
+    const projectId = update.kind === "upsert" ? update.project.projectId : update.projectId;
+    if (
+      update.kind === "upsert" &&
+      !(await this.workspaceDirectory.listVisibleProjects()).some(
+        (project) => project.projectId === projectId,
+      )
+    ) {
+      update = { kind: "remove", projectId: update.project.projectId };
+    }
     const projectedPayload =
       update.kind === "upsert"
         ? {
@@ -1977,6 +1994,12 @@ export class Session {
         [mutation.workspaceId],
         mutation.expectsInitialAgent ? { optimisticStatus: "running" } : undefined,
       );
+      // A deleted-child-only project disappears from both directory channels.
+      // New work in that project restores it without changing stored project metadata.
+      if (mutation.workspace && !this.isCleanedUp) {
+        const project = await this.projectRegistry.get(mutation.workspace.projectId);
+        if (project) await this.emitProjectUpdate({ kind: "upsert", project });
+      }
       // A parent lists its archived sub-sessions, so archiving or restoring one changes it too.
       const parentWorkspaceId = mutation.workspace?.parentWorkspaceId;
       if (parentWorkspaceId && !this.isCleanedUp) {
@@ -3174,6 +3197,7 @@ export class Session {
       case "abort_request":
       case "audio_played":
       case "set_voice_mode":
+      case "voice.native.catalog.request":
       case "voice.native.start.request":
       case "dictation_stream_start":
       case "dictation_stream_chunk":
@@ -7917,9 +7941,9 @@ export class Session {
   ): Promise<void> {
     try {
       const projects = await Promise.all(
-        (await this.projectRegistry.list())
-          .filter((project) => !project.archivedAt)
-          .map((project) => this.buildProjectDescriptor(project)),
+        (await this.workspaceDirectory.listVisibleProjects()).map((project) =>
+          this.buildProjectDescriptor(project),
+        ),
       );
       const synchronized = request.sync
         ? this.directorySync.synchronizeProjects(projects, request.sync)

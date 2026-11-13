@@ -30,11 +30,13 @@ import {
 import { configuredDiscovery, runDiscoveryWatch } from "./dev-update-watch.mjs";
 import {
   prepareDependencies,
-  verifyDependencyEntries,
+  verifyDependencyMetadata,
+  assertDependencyManifest,
   assertDiskReserve,
 } from "./dev-update-dependencies.mjs";
 import { registerDependencyScratch, withDependencyScratchLease } from "./dev-update-cleanup.mjs";
 import { pruneReleases } from "./dev-update-prune.mjs";
+import { reuseTypecheckCaches } from "./typecheck-cache.mjs";
 import { reclaimOwnedBuildOutputs } from "./owned-build-outputs.mjs";
 function pruneFromOptions(options, required) {
   return pruneReleases({
@@ -190,7 +192,11 @@ export async function stageRelease({
     process.env,
   );
   await run("git", ["checkout", "--detach", revision], staging, process.env);
-  const stagedPlan = { ...plan, root: staging, protectedRoots: [source, ...plan.protectedRoots] };
+  const stagedPlan = {
+    ...plan,
+    root: staging,
+    protectedRoots: [source, ...plan.protectedRoots],
+  };
   await atomicJson(path.join(staging, ".lab-config.json"), {
     role: "development-lab",
     root: staging,
@@ -213,6 +219,12 @@ export async function stageRelease({
     managedRoot,
     protectedPaths: [source, ...plan.protectedRoots],
   });
+  const typecheckCache = await reuseTypecheckCaches({
+    source,
+    staging,
+    revision,
+  });
+  console.log("Typecheck cache reuse:", JSON.stringify(typecheckCache));
   const checks = [
     ...(dependencies.mode === "install" ? [["npm", ["ci"]]] : []),
     [
@@ -243,9 +255,16 @@ export async function stageRelease({
       ],
     ],
   ];
-  await runStageChecks({ checks, staging, env, minFreeBytes, stagingIdentity, revision });
+  await runStageChecks({
+    checks,
+    staging,
+    env,
+    minFreeBytes,
+    stagingIdentity,
+    revision,
+  });
   if (dependencies.mode === "reuse") {
-    await verifyDependencyEntries(staging, dependencies.entries);
+    await verifyDependencyMetadata(staging, dependencies.entries);
     await verifyRelease(releases, dependencyDonor.id, dependencyDonor.digest);
   }
   const stagedStatus = (await exec("git", ["status", "--porcelain"], { cwd: staging })).stdout;
@@ -256,6 +275,8 @@ export async function stageRelease({
     await fs.rm(path.join(staging, relative), { recursive: true, force: true });
   await assertRuntimeArtifacts(staging);
   await detachStagingHardlinks(staging);
+  const entries = await scanRelease(staging);
+  if (dependencies.mode === "reuse") assertDependencyManifest(dependencies.entries, entries);
   const manifest = {
     schemaVersion: 1,
     id,
@@ -263,11 +284,12 @@ export async function stageRelease({
     stateCompatibility: "preserve",
     validatedAt: new Date().toISOString(),
     checks: checks.map(([command, args]) => [command, ...args].join(" ")),
+    typecheckCache,
     dependencies: {
       mode: dependencies.mode,
       ...(dependencies.donor ? { donor: dependencies.donor } : {}),
     },
-    entries: await scanRelease(staging),
+    entries,
   };
   await atomicJson(path.join(staging, "release.json"), manifest);
   await fs.rename(staging, target);
@@ -343,7 +365,10 @@ async function main() {
           statePreserving: options["state-preserving"] === true,
           dependencyDonor:
             options["dependency-release"] || options["dependency-digest"]
-              ? { id: required("dependency-release"), digest: required("dependency-digest") }
+              ? {
+                  id: required("dependency-release"),
+                  digest: required("dependency-digest"),
+                }
               : undefined,
           installDependencies: options["install-dependencies"] === true,
         }),
@@ -361,7 +386,10 @@ async function main() {
     const selected = await verifyRelease(config.releases, required("release"), required("digest"));
     const bootstrap =
       options["retain-current-daemon"] === true
-        ? await captureBootstrapDaemon(config, { ...selected, digest: options.digest })
+        ? await captureBootstrapDaemon(config, {
+            ...selected,
+            digest: options.digest,
+          })
         : null;
     await privateDirectory(control);
     if (await readOptionalJson(path.join(control, "state.json")))
@@ -388,6 +416,7 @@ async function main() {
       "managed-worktree-maintenance.mjs",
       "managed-worktree-retirement.mjs",
       "dev-update-validation.mjs",
+      "typecheck-cache.mjs",
       "isolated-lab.mjs",
     ])
       await fs.copyFile(

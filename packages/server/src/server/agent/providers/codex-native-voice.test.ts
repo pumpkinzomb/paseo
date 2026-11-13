@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CodexNativeVoice } from "./codex-native-voice.js";
+import { CodexNativeVoice, listCodexV3Voices } from "./codex-native-voice.js";
 
 function setup() {
   const voice = new CodexNativeVoice();
@@ -161,4 +161,33 @@ it("checks V3 availability and forwards an explicit choice without substituting 
     expect.anything(),
     expect.anything(),
   );
+});
+
+describe("Codex V3 catalog", () => {
+  it("reads only V3 and never starts a thread or voice connection", async () => {
+    const client = {
+      request: vi.fn().mockResolvedValue({
+        voices: {
+          v2: ["sage", "marin"],
+          v3: ["cove", "haetsal", "cove"],
+        },
+      }),
+    };
+    await expect(listCodexV3Voices(client)).resolves.toEqual(["cove", "haetsal"]);
+    expect(client.request.mock.calls).toEqual([["thread/realtime/listVoices", {}, 5000]]);
+  });
+  it("does not substitute V2 when V3 is missing", async () => {
+    const client = { request: vi.fn().mockResolvedValue({ voices: { v2: ["sage"] } }) };
+    await expect(listCodexV3Voices(client)).rejects.toThrow();
+  });
+  it("propagates discovery failure so a retry can request a fresh catalog", async () => {
+    const client = {
+      request: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockResolvedValueOnce({ voices: { v3: ["cove"] } }),
+    };
+    await expect(listCodexV3Voices(client)).rejects.toThrow("offline");
+    await expect(listCodexV3Voices(client)).resolves.toEqual(["cove"]);
+  });
 });

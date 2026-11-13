@@ -10,6 +10,7 @@ type VoiceMessage = Extract<
       | "abort_request"
       | "audio_played"
       | "set_voice_mode"
+      | "voice.native.catalog.request"
       | "voice.native.start.request"
       | "dictation_stream_start"
       | "dictation_stream_chunk"
@@ -109,6 +110,8 @@ export class VoiceSessions {
         return voice.handleAbort();
       case "audio_played":
         return voice.handleAudioPlayed(message.id);
+      case "voice.native.catalog.request":
+        return voice.handleNativeVoiceCatalog(message);
       case "voice.native.start.request":
         return voice.handleNativeVoiceOffer(message);
       case "set_voice_mode":
@@ -137,6 +140,7 @@ function isVoiceOutput(message: SessionOutboundMessage): boolean {
     case "voice_input_state":
     case "voice_session_ended":
     case "set_voice_mode_response":
+    case "voice.native.catalog.response":
     case "voice.native.start.response":
     case "dictation_stream_ack":
     case "dictation_stream_partial":

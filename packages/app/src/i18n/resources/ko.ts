@@ -4,6 +4,30 @@ import { pluginSettings } from "./plugin-settings";
 export const ko: TranslationResources = {
   fileCitation: { openPreview: "오른쪽에서 미리보기", openOriginal: "원본 열기" },
   voiceCall: {
+    nextVoiceSelection: "다음 통화: {{voice}}",
+    changeVoice: "목소리 변경",
+    nextCallVoiceHint:
+      "선택한 목소리는 다음 통화부터 적용돼요. 현재 통화는 지금 목소리로 계속됩니다.",
+    previousRecords: "이전 기록",
+    nativeRecovery:
+      "선택된 음성으로 Codex 통화를 시작할 수 없어요. 아래에서 지원하는 음성을 선택하고 다시 시도해 주세요.",
+    chooseSupportedVoice:
+      "저장된 {{voice}} 음성은 Codex V3에서 사용할 수 없어요. 목록의 음성이나 제공자 기본값을 선택해 주세요. 저장된 설정은 임의로 바꾸지 않았어요.",
+    savedVoiceUnavailable: "{{voice}} (저장된 선택 · 사용 불가)",
+    catalogFailed:
+      "Codex 음성 목록을 불러오지 못했어요. 호스트 연결을 확인하고 다시 시도해 주세요.",
+    catalogNeedsConversation: "Codex 대화를 먼저 열면 사용 가능한 음성 목록을 확인할 수 있어요.",
+    catalogLoading: "Codex V3 음성 목록을 불러오는 중…",
+    nativeReferenceHint:
+      "동일 이름의 공식 API 참고 음성입니다. Codex 통화 미리듣기가 아니며 실제 통화의 음색·말투는 다를 수 있어요. 마이크나 API 키를 사용하지 않습니다.",
+    referenceTone: "API 참고: {{tone}}",
+    playReference: "API 참고 음성 듣기",
+    sampleMissing:
+      "확인된 공개 샘플이 없는 목소리예요. API 참고가 표시된 다른 목소리를 선택해 주세요.",
+    selectVoiceForPreview:
+      "목소리를 선택하면 API 참고 음성을 들을 수 있어요. 제공자 기본값은 목소리 이름을 알려주지 않습니다.",
+    previewDuringCall: "참고 음성을 들으려면 현재 음성 통화를 먼저 종료해 주세요.",
+
     toneUnverified: "청감 미확인",
     connecting: "연결 중...",
     ending: "통화 종료 중...",
@@ -12,6 +36,13 @@ export const ko: TranslationResources = {
     connected: "연결됨",
     muted: "마이크 음소거",
     end: "통화 종료",
+    callConnected: "통화 연결 · 대화 보기",
+    legacyTranscript: "기존 통화 기록",
+    callTranscriptHint:
+      "선택한 통화에서 실제로 주고받은 발화만 표시합니다. 자동 전사에는 오류가 있을 수 있습니다.",
+    legacyTranscriptHint:
+      "통화별 식별자가 없던 이전 형식의 발화 기록입니다. 통화 경계를 추정하지 않고 보관된 내용을 표시합니다.",
+    transcriptIncomplete: "통화 기록을 완전히 불러오지 못했습니다. 다시 시도해 주세요.",
     transcript: "대화 기록",
     transcriptHint:
       "불러온 통화 기록의 실제 발화 자막입니다. 자동 전사에는 오류가 있을 수 있습니다.",
@@ -20,7 +51,7 @@ export const ko: TranslationResources = {
     assistant: "어시스턴트",
     nativeTitle: "Codex 실시간 통화",
     nativeHint:
-      "이 기기의 다음 Codex 통화에 적용됩니다. 음성을 바꾸려면 현재 통화를 종료하고 다시 연결하세요. 연결 시 Codex V3 지원 여부를 확인하며, 지원하지 않으면 다른 음성으로 바꾸지 않고 오류를 표시합니다.",
+      "이 대화의 Codex V3 지원 목록을 직접 조회합니다. 다음 통화에 적용되며, 통화 중에는 종료 후 다시 연결해 주세요.",
     providerDefault: "Codex 설정 기본값 (음성 이름 미제공)",
     previewUnavailable: "미리듣기 사용 불가",
     nativePreviewHint:

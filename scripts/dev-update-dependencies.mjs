@@ -31,7 +31,10 @@ function safeRelative(name) {
 }
 export async function dependencyInputs(source) {
   const files = (
-    await exec("git", ["ls-files", "-z"], { cwd: source, maxBuffer: 20 * 1024 ** 2 })
+    await exec("git", ["ls-files", "-z"], {
+      cwd: source,
+      maxBuffer: 20 * 1024 ** 2,
+    })
   ).stdout
     .split("\0")
     .filter(Boolean);
@@ -202,6 +205,25 @@ export async function cloneVerifiedReleaseEntries({ source, destination, entries
   await verifyDependencyEntries(destination, entries, source);
 }
 export async function verifyDependencyEntries(root, entries, donorRoot) {
+  return inspectDependencyEntries(root, entries, donorRoot, true);
+}
+export async function verifyDependencyMetadata(root, entries) {
+  return inspectDependencyEntries(root, entries, undefined, false);
+}
+// Use the final sealed release scan for payload comparison, not another byte scan.
+export function assertDependencyManifest(expected, scanned) {
+  for (const [name, entry] of Object.entries(expected)) {
+    const actual = scanned[name];
+    if (
+      !actual ||
+      (entry.link !== undefined
+        ? actual.link !== entry.link
+        : actual.sha256 !== entry.sha256 || actual.executable !== entry.executable)
+    )
+      throw new Error(`Dependency payload changed: ${name}`);
+  }
+}
+async function inspectDependencyEntries(root, entries, donorRoot, verifyBytes) {
   await mapVerification(Object.entries(entries), async ([name, expected]) => {
     const file = path.join(root, safeRelative(name)),
       info = await fs.lstat(file);
@@ -213,7 +235,7 @@ export async function verifyDependencyEntries(root, entries, donorRoot) {
         !info.isFile() ||
         info.nlink !== 1 ||
         Boolean(info.mode & 0o111) !== expected.executable ||
-        (await hashFile(file)) !== expected.sha256
+        (verifyBytes && (await hashFile(file)) !== expected.sha256)
       )
         throw new Error(`Dependency payload changed: ${name}`);
       if (donorRoot) {
@@ -293,7 +315,12 @@ export async function prepareDependencies({
   );
   if (!Object.keys(entries).length) throw new Error("Verified donor has no dependency artifacts");
   try {
-    await clone({ source: verified.root, destination: source, entries, minFreeBytes });
+    await clone({
+      source: verified.root,
+      destination: source,
+      entries,
+      minFreeBytes,
+    });
     await assertDiskReserve(source, minFreeBytes);
   } catch (error) {
     // No installer/build/test command has run. Only this exact private clone
@@ -310,5 +337,9 @@ export async function prepareDependencies({
     };
     throw error;
   }
-  return { mode: "reuse", donor: { id: donor.id, digest: donor.digest }, entries };
+  return {
+    mode: "reuse",
+    donor: { id: donor.id, digest: donor.digest },
+    entries,
+  };
 }

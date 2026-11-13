@@ -32,6 +32,7 @@ test("a failed speech close reports the failure without retaining observation de
         async reloadAgentSession() {
           throw new Error("Unexpected agent reload");
         },
+        async recordNativeCall() {},
         async recordNativeTranscript() {},
         async sendSpokenInput() {
           throw new Error("Unexpected spoken input");

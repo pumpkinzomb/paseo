@@ -388,3 +388,16 @@ Managed worktrees may now qualify after cherry-pick integration, but only if all
 unique linear nonempty patches and final affected file contents/modes match both
 main and the running release. Squash/merge ambiguity, dirty worktrees and active
 sessions still prevent automatic retirement.
+
+### Incremental type checks
+
+App and server type checks keep small compiler caches under `.lab/typecheck`.
+Stage copies only these known JSON files from a clean source at the exact frozen
+revision. Missing, malformed or stale caches are optional; every typecheck command
+still runs. The compiler checks file content, dependency declarations, options and
+compiler version itself. Build, lint, formatting and runtime checks are unchanged.
+
+This does not trust a prior successful hook as proof. The hook checks only staged
+lint/format inputs, and generated declarations can differ after a clean build.
+Caches are not code or rollback copies; they can be removed when a development
+workspace is retired. They are removed with `.lab` before release promotion.

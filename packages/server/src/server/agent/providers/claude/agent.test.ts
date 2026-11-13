@@ -667,7 +667,13 @@ describe("ClaudeAgentClient binary resolution", () => {
       instructionProfile: "paseo-lead",
       systemPrompt: "You are Sunny, the Paseo lead.",
       daemonAppendSystemPrompt: "Keep host permissions.",
-      mcpServers: { paseo: { type: "http", url: "http://localhost:12345/mcp" } },
+      mcpServers: {
+        paseo: {
+          type: "http",
+          url: "http://localhost:12345/mcp",
+          headers: { Authorization: "Bearer test-ephemeral-session" },
+        },
+      },
     });
     await (session as unknown as { ensureQuery(): Promise<unknown> }).ensureQuery();
     const options = queryFactory.mock.calls[0]?.[0].options;
@@ -677,7 +683,11 @@ describe("ClaudeAgentClient binary resolution", () => {
     expect(options.strictMcpConfig).toBe(true);
     expect(options.env.CLAUDE_CONFIG_DIR).toBe("/fixture/native-claude");
     expect(options.mcpServers).toEqual({
-      paseo: { type: "http", url: "http://localhost:12345/mcp" },
+      paseo: {
+        type: "http",
+        url: "http://localhost:12345/mcp",
+        headers: { Authorization: "Bearer test-ephemeral-session" },
+      },
     });
     expect(options.canUseTool).toEqual(expect.any(Function));
     await session.close();

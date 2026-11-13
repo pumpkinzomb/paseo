@@ -4780,6 +4780,16 @@ export class DaemonClient {
     return response;
   }
 
+  async listNativeVoiceCatalog(agentId: string): Promise<{ version: "v3"; voices: string[] }> {
+    const result = await this.sendCorrelatedSessionRequest({
+      message: { type: "voice.native.catalog.request", agentId },
+      responseType: "voice.native.catalog.response",
+      timeout: 15000,
+    });
+    if (result.error) throw new Error(result.error);
+    return { version: result.version, voices: result.voices };
+  }
+
   async startNativeVoice(agentId: string, offerSdp: string, voice?: string): Promise<string> {
     const result = await this.sendCorrelatedSessionRequest({
       message: { type: "voice.native.start.request", agentId, offerSdp, voice },

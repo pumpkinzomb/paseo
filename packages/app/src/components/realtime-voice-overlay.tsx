@@ -1,10 +1,10 @@
+import { NativeCallSettings } from "@/voice/native-call-settings";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Mic, MicOff, PhoneOff } from "lucide-react-native";
 import { useVoice, useVoiceTelemetry } from "@/contexts/voice-context";
 import { Button } from "@/components/ui/button";
-import { CallTranscript } from "@/voice/call-transcript";
 import { VolumeMeter } from "./volume-meter";
 
 interface RealtimeVoiceOverlayProps {
@@ -32,11 +32,22 @@ export function RealtimeVoiceOverlay({
   return (
     <View style={styles.container} testID="voice-call-controls">
       <View style={styles.status}>
-        <Text style={styles.text}>
-          {voice.voiceRoute === "native"
-            ? `${t("voiceCall.routeNative")} · ${voice.effectiveVoice || t("voiceCall.providerDefault")}`
-            : t("voiceCall.routeSpeech")}
-        </Text>
+        {voice.voiceRoute === "native" ? (
+          <View style={styles.voiceLabel}>
+            <Text style={styles.text}>{t("voiceCall.routeNative")}</Text>
+            {voice.activeServerId && voice.activeAgentId ? (
+              <NativeCallSettings
+                serverId={voice.activeServerId}
+                agentId={voice.activeAgentId}
+                currentVoice={voice.effectiveVoice}
+                inline
+                disabled={isSwitching || voice.phase === "stopping"}
+              />
+            ) : null}
+          </View>
+        ) : (
+          <Text style={styles.text}>{t("voiceCall.routeSpeech")}</Text>
+        )}
         <Text style={styles.text} accessibilityLiveRegion="polite">
           {t(`voiceCall.${status}`)}
         </Text>
@@ -47,9 +58,6 @@ export function RealtimeVoiceOverlay({
           orientation="horizontal"
         />
       </View>
-      {voice.activeServerId && voice.activeAgentId ? (
-        <CallTranscript serverId={voice.activeServerId} agentId={voice.activeAgentId} />
-      ) : null}
       <Button
         variant="ghost"
         leftIcon={isMuted ? MicOff : Mic}
@@ -77,6 +85,12 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[2],
     backgroundColor: theme.colors.surface1,
     borderRadius: theme.borderRadius.lg,
+  },
+  voiceLabel: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[1],
   },
   status: { flex: 1, gap: theme.spacing[1] },
   text: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },

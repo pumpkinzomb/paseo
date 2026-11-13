@@ -759,6 +759,7 @@ const ToolCallTimelineItemPayloadSchema: z.ZodType<ToolCallTimelineItem, unknown
 export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknown> = z.union([
   z.object({
     type: z.literal("user_message"),
+    voiceCallId: z.string().optional(),
     source: z.string().optional(),
     text: z.string(),
     messageId: z.string().optional(),
@@ -766,6 +767,7 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
   }),
   z.object({
     type: z.literal("assistant_message"),
+    voiceCallId: z.string().optional(),
     source: z.string().optional(),
     text: z.string(),
     messageId: z.string().optional(),
@@ -793,6 +795,7 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
   }),
   z.object({
     type: z.literal("notification"),
+    voiceCallId: z.string().optional(),
     level: z.enum(["info", "warning", "error"]),
     message: z.string(),
   }),
@@ -1191,6 +1194,22 @@ export const WorkspaceArchiveUndoRequestSchema = z.object({
   type: z.literal("workspace.archive.undo.request"),
   workspaceId: z.string(),
   requestId: z.string(),
+});
+
+export const NativeVoiceCatalogRequestSchema = z.object({
+  type: z.literal("voice.native.catalog.request"),
+  requestId: z.string(),
+  agentId: z.guid(),
+});
+export const NativeVoiceCatalogResponseSchema = z.object({
+  type: z.literal("voice.native.catalog.response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    version: z.literal("v3"),
+    voices: z.array(z.string()),
+    error: z.string().nullable(),
+  }),
 });
 
 export const NativeVoiceStartRequestSchema = z.object({
@@ -3720,6 +3739,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceRecoveryRestoreRequestSchema,
   WorkspaceArchiveUndoRequestSchema,
   SetVoiceModeMessageSchema,
+  NativeVoiceCatalogRequestSchema,
   NativeVoiceStartRequestSchema,
   SendAgentMessageRequestSchema,
   WaitForFinishRequestSchema,
@@ -4148,6 +4168,8 @@ export const ServerInfoStatusPayloadSchema = z
         speechSettings: z.boolean().optional(),
         // COMPAT(nativeVoiceCalls): added in v0.15.4, remove gate after 2027-05-12.
         nativeVoiceCalls: z.boolean().optional(),
+        // COMPAT(nativeVoiceCatalog): added in v0.15.4, remove gate after 2027-05-13.
+        nativeVoiceCatalog: z.boolean().optional(),
         // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.
         relayConfig: z.boolean().optional(),
         // COMPAT(pushTokenRevocation): added in v0.3.2, remove gate after 2027-02-10.
@@ -7759,6 +7781,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceMarkUnreadResponseSchema,
   SendAgentMessageResponseMessageSchema,
   SetVoiceModeResponseMessageSchema,
+  NativeVoiceCatalogResponseSchema,
   NativeVoiceStartResponseSchema,
   DaemonGetStatusResponseSchema,
   DaemonGetPairingOfferResponseSchema,
