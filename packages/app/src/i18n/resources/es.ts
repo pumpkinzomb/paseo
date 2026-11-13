@@ -2,6 +2,7 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const es: TranslationResources = {
+  fileCitation: en.fileCitation,
   voiceCall: en.voiceCall,
   supervisedUpdate: en.supervisedUpdate,
   leadIdentity: en.leadIdentity,

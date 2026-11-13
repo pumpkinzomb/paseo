@@ -14,6 +14,12 @@ Workspace file links use the shared file-link resolver. The workspace supplies i
 
 Resolve workspace image paths over the existing session RPC, then give the library a cached native file URL or web blob URL. HTTP(S) images pass through unchanged. This preserves relay, SSH and local socket connections, which do not expose a daemon HTTP endpoint. Each mounted renderer owns its image acquisition identity, so a later reply reads a rewritten path again while the earlier mounted reply retains its snapshot. Image taps open the attachment lightbox. File previews resolve relative images against the Markdown file's directory. An image alone on its line becomes its own paragraph before the library sees it, so it renders as a block on every platform; the library only treats sole-child paragraph images as blocks, and with hard soft breaks every newline is a break node, which left own-line images inline on iOS and web. Images that share a line with text stay inline at line height and keep their aspect ratio. A linked image counts as an image, so review-bot badges such as `[![Retrigger](badge.svg)](url) Confidence` stay inline on web; the library's web renderer only checked direct paragraph children, so it rendered them as full-width block images (local patch in `patches/react-native-enriched-markdown+*.patch`).
 
+## Connected document cards
+
+Standalone `:codex-file-citation{path="…"}` output directives render as file cards, not prose. Fenced, quoted, inline and incomplete examples stay literal. File cards open through the same workspace resolver, explicitly in the side pane on split layouts.
+
+The built-in `document-preview` tool takes content already read through a connected Google tool and writes a plain-text Markdown snapshot under `.paseo-document-previews` in the agent workspace. No OAuth token or browser session crosses this boundary. The preview states its timestamp and original link; local edits do not synchronize to Google. The agent must re-read the original after editing and refresh the snapshot. Remote URL-only citations remain clearly labelled original links, not authenticated previews.
+
 ## Engine constraints
 
 The pinned nightly has the same React Native package and core source trees as upstream commit `73ac5085eb1fdc743973b3473d4dba65abad5261`. Compatibility was checked with React Native 0.81.5. Native dependencies must be rebuilt when changing the highlighting configuration; JavaScript refresh cannot enable compiled grammars.

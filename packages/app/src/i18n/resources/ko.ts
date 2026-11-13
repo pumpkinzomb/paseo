@@ -2,6 +2,7 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
+  fileCitation: { openPreview: "오른쪽에서 미리보기", openOriginal: "원본 열기" },
   voiceCall: {
     toneUnverified: "청감 미확인",
     connecting: "연결 중...",

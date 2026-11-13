@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
@@ -1036,6 +1036,59 @@ test("session-open MCP configs are validated before a provider launches", async 
   try {
     await expect(h.create()).rejects.toThrow(/Plugin tools-test.*agent.open.before/s);
     expect(h.launches).toHaveLength(0);
+  } finally {
+    await h.close();
+  }
+}, 60_000);
+
+test("connected document tool publishes and refreshes a no-login workspace preview", async () => {
+  const h = await setup();
+  try {
+    await h.client.installDirectoryPlugin(
+      fileURLToPath(new URL("../../../../../plugins/document-preview", import.meta.url)),
+    );
+    const agent = await h.create();
+    const mcp = await h.mcp(agent.id);
+    expect((await mcp.listTools()).tools.map((tool) => tool.name)).toContain(
+      "show_connected_document",
+    );
+    const input = {
+      sourceUrl: "https://docs.google.com/document/d/fixture-document/edit",
+      language: "ko",
+      title: "연결 문서 테스트",
+      text: "연결 도구에서 읽은 테스트 본문",
+    };
+    const first = await mcp.callTool({ name: "show_connected_document", arguments: input });
+    expect(first.isError).not.toBe(true);
+    expect(first).toMatchObject({
+      structuredContent: {
+        title: input.title,
+        sourceUrl: input.sourceUrl,
+        kind: "connected-document-snapshot",
+      },
+    });
+    const directory = path.join(h.directory, ".paseo-document-previews");
+    const entries = await readdir(directory);
+    expect(entries).toHaveLength(1);
+    const entry = entries[0];
+    if (!entry) throw new Error("Expected a preview file");
+    const file = path.join(directory, entry);
+    expect(await readFile(file, "utf8")).toContain(input.text);
+    const updated = { ...input, text: "수정 후 다시 읽은 본문" };
+    const second = await mcp.callTool({ name: "show_connected_document", arguments: updated });
+    expect(second.isError).not.toBe(true);
+    expect(second).toMatchObject({ structuredContent: { path: await realpath(file) } });
+    expect(await readdir(directory)).toEqual(entries);
+    expect(await readFile(file, "utf8")).toContain(updated.text);
+    const rejected = await mcp.callTool({
+      name: "show_connected_document",
+      arguments: {
+        ...input,
+        sourceUrl: "https://untrusted.example/document/d/fixture-document",
+      },
+    });
+    expect(rejected.isError).toBe(true);
+    expect(await readFile(file, "utf8")).toContain(updated.text);
   } finally {
     await h.close();
   }

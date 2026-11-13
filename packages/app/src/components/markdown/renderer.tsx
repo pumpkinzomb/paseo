@@ -14,6 +14,8 @@ import type { Theme } from "@/styles/theme";
 import { isWeb } from "@/constants/platform";
 import { density, resolveDensity } from "@/styles/density";
 import { MarkdownBlockStack } from "./block-stack";
+import { splitFileCitations } from "./file-citations";
+import { FileCard } from "./file-card";
 import { WEB_RENDERERS } from "./renderers";
 import { createMarkdownStyles } from "./styles";
 import { PENDING_MARKDOWN_IMAGE } from "./source";
@@ -56,6 +58,20 @@ export interface MarkdownRendererProps extends MarkdownImageContext {
 
 /** All Markdown surfaces share the same engine and source adaptation. */
 export const MarkdownRenderer = memo(function MarkdownRenderer(props: MarkdownRendererProps) {
+  const segments = useMemo(() => splitFileCitations(props.text), [props.text]);
+  if (!segments.some((segment) => segment.kind === "file")) return <MarkdownContent {...props} />;
+  return (
+    <MarkdownBlockStack>
+      {segments.map((segment) => {
+        if (segment.kind === "file") return <FileCard key={segment.id} {...segment.citation} />;
+        if (!segment.text.trim()) return null;
+        return <MarkdownContent key={segment.id} {...props} text={segment.text} />;
+      })}
+    </MarkdownBlockStack>
+  );
+});
+
+const MarkdownContent = memo(function MarkdownContent(props: MarkdownRendererProps) {
   const streaming = !isWeb && !!props.streaming;
   // Only completed lines affect block closure. Do not run mdast on every reveal frame.
   const completeLines = streaming ? props.text.slice(0, props.text.lastIndexOf("\n") + 1) : "";

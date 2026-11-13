@@ -1,4 +1,5 @@
 export const en = {
+  fileCitation: { openPreview: "Open preview", openOriginal: "Open original" },
   voiceCall: {
     toneUnverified: "Perceived tone not verified",
     connecting: "Connecting...",
