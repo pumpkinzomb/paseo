@@ -4,6 +4,7 @@ import { ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { ZoomableImage } from "@/components/zoomable-viewport/image";
 import { useSessionStore } from "@/stores/session-store";
+import { DocumentPreviewPanel, PdfFilePanel } from "./document-preview/panel";
 import { FileHtmlPreview } from "./html-preview";
 import { FilePanelLoading } from "./loading";
 import { FileMarkdownPreview } from "./markdown-preview";
@@ -74,6 +75,8 @@ function FilePanelError({ message }: { message: string }) {
 }
 
 const components = {
+  "builtin:pdf": PdfFilePanel,
+  "builtin:document-preview": DocumentPreviewPanel,
   "builtin:markdown": MarkdownPanel,
   "builtin:html": HtmlPanel,
   "builtin:image": ImagePanel,

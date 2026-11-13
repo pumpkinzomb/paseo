@@ -2,6 +2,7 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const zhCN: TranslationResources = {
+  documentPreview: en.documentPreview,
   fileCitation: en.fileCitation,
   voiceCall: en.voiceCall,
   supervisedUpdate: en.supervisedUpdate,
@@ -2061,6 +2062,8 @@ export const zhCN: TranslationResources = {
         option: "{{title}} — {{owner}}",
         builtin: {
           owner: "Paseo",
+          pdf: en.panels.file.filePanels.builtin.pdf,
+          renderedDocument: en.panels.file.filePanels.builtin.renderedDocument,
           markdown: "Markdown",
           html: "HTML",
           image: "图片",

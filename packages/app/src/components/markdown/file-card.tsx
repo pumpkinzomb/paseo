@@ -11,7 +11,7 @@ export function FileCard({ path, title }: FileCitation) {
   const { t } = useTranslation();
   const actions = useAssistantFileLinkActions();
   const source = { href: citation.path, text: citation.path };
-  const open = useStableEvent(() => actions.open(source, "side"));
+  const open = useStableEvent(() => actions.open(source, "explorer"));
   const local = actions.canResolveFile(source);
   const detail = local ? t("fileCitation.openPreview") : t("fileCitation.openOriginal");
   return (

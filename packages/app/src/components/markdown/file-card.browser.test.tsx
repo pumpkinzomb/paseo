@@ -32,7 +32,7 @@ function mount(path: string, title: string | null) {
   act(() => root?.render(<FileCard path={path} title={title} />));
   return within(node);
 }
-it("shows a document card and explicitly opens the side pane", () => {
+it("shows a document card and opens the existing Explorer sidebar", () => {
   const ui = mount("/work/.paseo-document-previews/abc.md", "써니 문서 연결 테스트");
   const card = ui.getByRole("button", { name: "써니 문서 연결 테스트 — Open preview" });
   act(() => card.click());
@@ -41,7 +41,7 @@ it("shows a document card and explicitly opens the side pane", () => {
       href: "/work/.paseo-document-previews/abc.md",
       text: "/work/.paseo-document-previews/abc.md",
     },
-    "side",
+    "explorer",
   );
   expect(container?.textContent).not.toContain("codex-file-citation");
 });

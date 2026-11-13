@@ -1,3 +1,4 @@
+import { openFileInExplorer } from "@/workspace-tabs/open-file-in-explorer";
 import { openWorkspaceBrowserPage } from "@/desktop/browser/workspace-navigation";
 import { WorkspaceSessionToolbar } from "./workspace-session-toolbar";
 import {
@@ -1744,6 +1745,18 @@ function WorkspaceScreenContent({
     [openInSidePane, persistenceKey],
   );
 
+  const handleOpenExplorerFile = useStableEvent(
+    (location: WorkspaceFileLocation, parentTabId?: string | null) => {
+      const result = openFileInExplorer({
+        workspaceKey: persistenceKey,
+        isCompact: isMobile,
+        location,
+        parentTabId,
+      });
+      if (result.kind === "modified") toast.error(t("documentPreview.saveBeforeMoving"));
+    },
+  );
+
   const handleOpenWorkspaceFileFromPane = useStableEvent(function handleOpenWorkspaceFileFromPane({
     request,
     paneId,
@@ -1757,6 +1770,10 @@ function WorkspaceScreenContent({
   }) {
     if (focusPaneBeforeOpen && paneId && persistenceKey) {
       focusWorkspacePane(persistenceKey, paneId);
+    }
+    if (request.disposition === "explorer") {
+      handleOpenExplorerFile(request.location, parentTabId);
+      return;
     }
     if (request.disposition === "side") {
       const location = normalizeWorkspaceFileLocation(request.location);
@@ -3795,9 +3812,15 @@ function WorkspaceScreenContent({
     workspaceId: normalizedWorkspaceId,
     workspaceRoot: workspaceDirectory,
   });
-  const openMarkdownFile = useStableEvent((location: WorkspaceFileLocation) => {
-    handleOpenPreferredAssistantFile({ location, parentTabId: activeTabId });
-  });
+  const openMarkdownFile = useStableEvent(
+    (location: WorkspaceFileLocation, disposition: OpenFileDisposition) => {
+      if (disposition === "explorer") {
+        handleOpenExplorerFile(location, activeTabId);
+        return;
+      }
+      handleOpenPreferredAssistantFile({ location, parentTabId: activeTabId });
+    },
+  );
   const openMarkdownDirectory = useStableEvent((directoryPath: string) => {
     void revealDirectory(directoryPath);
     openExplorerSidebarView({

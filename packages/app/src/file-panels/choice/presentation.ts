@@ -4,6 +4,8 @@ import type { FilePanel } from "../panels";
 import { parseFilePanelSelectorKey } from "../resolve";
 
 const BUILTIN_PRESENTATION = {
+  "builtin:pdf": { title: "pdf", icon: "FileText" },
+  "builtin:document-preview": { title: "renderedDocument", icon: "FileText" },
   "builtin:markdown": { title: "markdown", icon: "FileText" },
   "builtin:html": { title: "html", icon: "FileCode" },
   "builtin:image": { title: "image", icon: "Image" },

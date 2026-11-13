@@ -1,7 +1,12 @@
+import { FileText } from "lucide-react-native";
 import { Text, View } from "react-native";
 import { useMemo } from "react";
 import invariant from "tiny-invariant";
 import { useTranslation } from "react-i18next";
+import { isManagedPreviewPath } from "@/file-panels/document-preview/model";
+import { collectAllTabs, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+import type { PanelDescriptorContext } from "@/panels/panel-registry";
 import { FilePane } from "@/file-pane/pane";
 import { usePaneContext } from "@/panels/pane-context";
 import { definePanel } from "@/panels/panel-registry";
@@ -15,15 +20,32 @@ const CENTERED_PADDED_STYLE = {
   padding: 16,
 } as const;
 
-function useFilePanelDescriptor(target: { kind: "file"; path: string }) {
+function useFilePanelDescriptor(
+  target: { kind: "file"; path: string },
+  context: PanelDescriptorContext,
+) {
+  const { t } = useTranslation();
+  const workspaceKey = buildWorkspaceTabPersistenceKey(context);
+  const connectedTitle = useWorkspaceLayoutStore((state) => {
+    const layout = workspaceKey ? state.layoutByWorkspace[workspaceKey] : null;
+    const tabState = layout
+      ? collectAllTabs(layout.root).find((tab) => tab.tabId === context.tabId)?.state
+      : null;
+    if (!tabState || typeof tabState !== "object" || Array.isArray(tabState)) return null;
+    return typeof tabState.connectedDocumentTitle === "string"
+      ? tabState.connectedDocumentTitle
+      : null;
+  });
   const fileName = target.path.split("/").findLast(Boolean) ?? target.path;
   const icon = useMemo(() => createMaterialFileIcon(fileName), [fileName]);
   return {
-    label: fileName,
+    label: isManagedPreviewPath(target.path)
+      ? (connectedTitle ?? t("documentPreview.document"))
+      : fileName,
     subtitle: target.path,
     tooltip: target.path,
     titleState: "ready" as const,
-    icon,
+    icon: isManagedPreviewPath(target.path) ? FileText : icon,
     statusBucket: null,
   };
 }

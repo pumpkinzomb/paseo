@@ -2,6 +2,22 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
+  documentPreview: {
+    rendererWarning:
+      "macOS 기본 엔진으로 렌더링했어. 글꼴·차트·고급 Office 기능은 원본 앱과 다를 수 있어.",
+    resourcesWarning: "일부 포함된 리소스를 표시하지 못했어.",
+    zoomOut: "축소",
+    zoomIn: "확대",
+    zoomReset: "배율 초기화",
+    document: "연결 문서",
+    snapshot: "파일 미리보기",
+    openOriginal: "원본 열기",
+    snapshotNotice:
+      "읽기 전용 파일 렌더링이야. 원본 수정 후 갱신이 필요하고, Word·Excel은 호스트 렌더러에 따라 일부 서식이 다를 수 있어.",
+    invalidSnapshot: "문서 미리보기를 읽을 수 없어. 도우미에게 갱신을 요청해줘.",
+    openFailed: "원본을 열지 못했어. 다시 시도해줘.",
+    saveBeforeMoving: "파일의 변경 내용을 저장하거나 취소한 뒤 파일 영역으로 이동해줘.",
+  },
   fileCitation: { openPreview: "오른쪽에서 미리보기", openOriginal: "원본 열기" },
   voiceCall: {
     nextVoiceSelection: "다음 통화: {{voice}}",
@@ -2351,6 +2367,8 @@ export const ko: TranslationResources = {
         option: "{{title}} — {{owner}}",
         builtin: {
           owner: "Paseo",
+          pdf: "PDF",
+          renderedDocument: "문서·워크북 미리보기",
           markdown: "Markdown",
           html: "HTML",
           image: "이미지",

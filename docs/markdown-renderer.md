@@ -16,9 +16,13 @@ Resolve workspace image paths over the existing session RPC, then give the libra
 
 ## Connected document cards
 
-Standalone `:codex-file-citation{path="…"}` output directives render as file cards, not prose. Fenced, quoted, inline and incomplete examples stay literal. File cards open through the same workspace resolver, explicitly in the side pane on split layouts.
+Standalone `:codex-file-citation{path="…"}` output directives render as file cards, not prose. Fenced, quoted, inline and incomplete examples stay literal. File cards open through the same workspace resolver in the existing Explorer file sidebar, never a new center split; compact layouts keep the normal file sheet. Reopening an old unmodified file tab moves it into Explorer and removes only its empty extra split. Unsaved editors are not remounted or displaced.
 
-The built-in `document-preview` tool takes content already read through a connected Google tool and writes a plain-text Markdown snapshot under `.paseo-document-previews` in the agent workspace. No OAuth token or browser session crosses this boundary. The preview states its timestamp and original link; local edits do not synchronize to Google. The agent must re-read the original after editing and refresh the snapshot. Remote URL-only citations remain clearly labelled original links, not authenticated previews.
+The built-in `document-preview.show_rendered_file` tool publishes an actual PDF, DOCX or XLSX file from the workspace or a short-lived connected-tool export reference. Google Docs should be exported as PDF; Google Sheets as XLSX. The tool stores a typed `.paseoview` manifest and content-addressed original in `.paseo-document-previews`. Signed URLs, OAuth tokens and browser cookies are never persisted. PDF uses the existing native document frame. Office files use the macOS Quick Look renderer, preserving its original table/cell styles, worksheet names and cached values; the app supplies worksheet tabs and zoom controls in the same Explorer dock. This is a cached read-only rendering, not a live Google session or Office editor. Original edits require re-exporting and refreshing the preview.
+
+Office conversion requires macOS; already-rendered artifacts can be read elsewhere. No exact Word/Excel pagination, fonts, charts or formula recalculation is promised. Encrypted archives, macros, embedded active content, external relationships (including hyperlinks), oversized archives and unsupported renderer output fail explicitly, rather than silently flattening the file into text. Generated HTML is bundled without remote assets or renderer scripts and displayed in an opaque sandbox with restrictive CSP. Native mobile rendering has not received device QA.
+
+The legacy `show_connected_document` tool remains an explicitly labelled plain-text Markdown snapshot, not a faithful file preview. Generic Markdown keeps its normal editor. Remote URL-only citations remain clearly labelled original links, not authenticated previews.
 
 ## Engine constraints
 

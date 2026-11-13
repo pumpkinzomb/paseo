@@ -1,6 +1,6 @@
 import { isAbsolutePath } from "@/utils/path";
 
-export type OpenFileDisposition = "main" | "preferred" | "side";
+export type OpenFileDisposition = "main" | "preferred" | "side" | "explorer";
 
 export interface WorkspaceFileLocation {
   path: string;

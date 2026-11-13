@@ -2,6 +2,7 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const fr: TranslationResources = {
+  documentPreview: en.documentPreview,
   fileCitation: en.fileCitation,
   voiceCall: en.voiceCall,
   supervisedUpdate: en.supervisedUpdate,
@@ -2137,6 +2138,8 @@ export const fr: TranslationResources = {
         option: "{{title}} — {{owner}}",
         builtin: {
           owner: "Paseo",
+          pdf: en.panels.file.filePanels.builtin.pdf,
+          renderedDocument: en.panels.file.filePanels.builtin.renderedDocument,
           markdown: "Markdown",
           html: "HTML",
           image: "Image",

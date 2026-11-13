@@ -1,4 +1,20 @@
 export const en = {
+  documentPreview: {
+    rendererWarning:
+      "Rendered by macOS Quick Look; fonts, charts and advanced Office features may differ.",
+    resourcesWarning: "Some embedded resources could not be displayed.",
+    zoomOut: "Zoom out",
+    zoomIn: "Zoom in",
+    zoomReset: "Reset zoom",
+    document: "Connected document",
+    snapshot: "Cached file preview",
+    openOriginal: "Open original",
+    snapshotNotice:
+      "Read-only file rendering. Refresh after editing the source. Word/Excel use the host renderer and may differ from Microsoft Office.",
+    invalidSnapshot: "Cannot read this document preview. Ask the assistant to refresh it.",
+    openFailed: "Could not open the original. Try again.",
+    saveBeforeMoving: "Save or discard this file’s edits before moving it into Files.",
+  },
   fileCitation: { openPreview: "Open preview", openOriginal: "Open original" },
   voiceCall: {
     nextVoiceSelection: "Next call: {{voice}}",
@@ -2365,6 +2381,8 @@ export const en = {
         option: "{{title}} — {{owner}}",
         builtin: {
           owner: "Paseo",
+          pdf: "PDF",
+          renderedDocument: "Document / workbook preview",
           markdown: "Markdown",
           html: "HTML",
           image: "Image",

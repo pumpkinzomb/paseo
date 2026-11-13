@@ -1093,3 +1093,50 @@ test("connected document tool publishes and refreshes a no-login workspace previ
     await h.close();
   }
 }, 60_000);
+
+test("rendered file tool publishes original Office bytes through the installed MCP plugin", async () => {
+  const h = await setup();
+  try {
+    const plugin = fileURLToPath(
+      new URL("../../../../../plugins/document-preview", import.meta.url),
+    );
+    await h.client.installDirectoryPlugin(plugin);
+    const agent = await h.create();
+    const mcp = await h.mcp(agent.id);
+    expect((await mcp.listTools()).tools.map((tool) => tool.name)).toContain("show_rendered_file");
+    if (process.platform !== "darwin") return;
+    await writeFile(
+      path.join(h.directory, "fixture.xlsx"),
+      await readFile(path.join(plugin, "test/workbook.xlsx")),
+    );
+    const result = await mcp.callTool({
+      name: "show_rendered_file",
+      arguments: {
+        title: "Synthetic workbook",
+        format: "xlsx",
+        source: { kind: "workspace-file", path: "fixture.xlsx" },
+      },
+    });
+    expect(result.isError).not.toBe(true);
+    expect(result).toMatchObject({
+      structuredContent: {
+        kind: "rendered-file-preview",
+        format: "xlsx",
+        sheetCount: 2,
+        renderer: "macos-quicklook",
+      },
+    });
+    const files = await readdir(path.join(h.directory, ".paseo-document-previews"));
+    const manifest = files.find((file) => file.endsWith(".paseoview"));
+    if (!manifest) throw new Error("Expected rendered manifest");
+    const artifact = JSON.parse(
+      await readFile(path.join(h.directory, ".paseo-document-previews", manifest), "utf8"),
+    );
+    expect(artifact.content.sheets.map((sheet: { name: string }) => sheet.name)).toEqual([
+      "Summary",
+      "Detail",
+    ]);
+  } finally {
+    await h.close();
+  }
+}, 60_000);

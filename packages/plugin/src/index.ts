@@ -41,3 +41,8 @@ export {
   type PluginSerializableIcon,
   type PluginSvgIcon,
 } from "./icons.js";
+export {
+  DocumentPreviewArtifactSchema,
+  DOCUMENT_PREVIEW_MAX_BYTES,
+  type DocumentPreviewArtifact,
+} from "./document-preview.js";

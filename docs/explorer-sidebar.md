@@ -87,7 +87,7 @@ follow the shared diff preference. Desktop pull requests use their Main panel, O
 Explorer sidebar setting. Automatic PR discovery follows that preference once per workspace without
 interrupting the user's work. Closing the tab opts that workspace out of future automatic opens,
 even for a different PR; moving or reordering it remains the user's choice.
-Callers request the content and never choose the shell.
+File cards use `workspace-tabs/open-file-in-explorer.ts` to share this dock with Files, Changes and Browser instead of allocating an ordinary split. The explicit `explorer` file disposition leaves ordinary preferred file links unchanged. Callers request the content and never assemble shell implementations.
 The composer Changes pill is a two-stage desktop action: it first reveals Explorer on Changes, then
 routes later presses to the working diff through the shared diff preference.
 

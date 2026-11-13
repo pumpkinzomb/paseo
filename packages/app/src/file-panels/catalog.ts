@@ -1,6 +1,13 @@
 import type { FilePanelCandidate } from "./resolve";
 
 const renderingPanels = [
+  { id: "builtin:pdf", builtin: true, files: { extensions: ["pdf"] }, fileKind: "binary" },
+  {
+    id: "builtin:document-preview",
+    builtin: true,
+    files: { extensions: ["paseoview"] },
+    fileKind: "text",
+  },
   {
     id: "builtin:markdown",
     builtin: true,
