@@ -24,7 +24,7 @@ it("publishes actual PDF bytes and a typed manifest, never a text recreation", a
   const result = await publishPreview({
     cwd,
     title: "Original file",
-    sourceUrl: "https://docs.google.com/document/d/test/edit",
+    sourceUrl: null,
     format: "pdf",
     source: { kind: "workspace-file", path: "test.pdf" },
     signal: new AbortController().signal,
@@ -195,4 +195,83 @@ it("rejects UTF-16 and entity-encoded external Office relationships", async () =
       ),
     ).rejects.toThrow("ACTIVE_OFFICE_CONTENT");
   }
+});
+
+it.each([
+  ["document", "docx", "word/document.xml"],
+  ["spreadsheets", "xlsx", "xl/workbook.xml"],
+  ["presentation", "pptx", "ppt/presentation.xml"],
+] as const)("keeps %s PDF preview separate from actual %s original", async (kind, format, part) => {
+  const cwd = await workspace();
+  const pdf = tinyPdf();
+  const original = officeZip({
+    "[Content_Types].xml": "<Types/>",
+    [part]: "<document>Editable original</document>",
+    "_rels/.rels":
+      '<Relationships><Relationship TargetMode="External" Target="https://example.test"/></Relationships>',
+  });
+  await writeFile(path.join(cwd, "preview.pdf"), pdf);
+  await writeFile(path.join(cwd, `original.${format}`), original);
+  const result = await publishPreview({
+    cwd,
+    title: "Editable file",
+    sourceUrl: `https://docs.google.com/${kind}/d/fixture/edit`,
+    format: "pdf",
+    source: { kind: "workspace-file", path: "preview.pdf" },
+    original: { format, source: { kind: "workspace-file", path: `original.${format}` } },
+    signal: new AbortController().signal,
+  });
+  const artifact = DocumentPreviewArtifactSchema.parse(
+    JSON.parse(await readFile(result.path, "utf8")),
+  );
+  expect(artifact.content.kind).toBe("pdf");
+  expect(artifact.download?.format).toBe(format);
+  if (artifact.content.kind !== "pdf" || !artifact.download) throw Error("Missing separate assets");
+  const directory = path.dirname(result.path);
+  expect(await readFile(path.join(directory, artifact.content.asset))).toEqual(pdf);
+  expect(await readFile(path.join(directory, artifact.download.asset))).toEqual(original);
+  expect(artifact.download.asset).not.toBe(artifact.content.asset);
+});
+it("does not label a native Google document PDF as its Word original", async () => {
+  const cwd = await workspace();
+  await writeFile(path.join(cwd, "preview.pdf"), tinyPdf());
+  await expect(
+    publishPreview({
+      cwd,
+      title: "Missing Word",
+      sourceUrl: "https://docs.google.com/document/d/fixture/edit",
+      format: "pdf",
+      source: { kind: "workspace-file", path: "preview.pdf" },
+      signal: new AbortController().signal,
+    }),
+  ).rejects.toThrow("ORIGINAL_REQUIRED");
+});
+it("rejects PDF bytes renamed to docx", async () => {
+  const cwd = await workspace();
+  await writeFile(path.join(cwd, "preview.pdf"), tinyPdf());
+  await writeFile(path.join(cwd, "fake.docx"), tinyPdf());
+  await expect(
+    publishPreview({
+      cwd,
+      title: "Bad original",
+      sourceUrl: "https://docs.google.com/document/d/fixture/edit",
+      format: "pdf",
+      source: { kind: "workspace-file", path: "preview.pdf" },
+      original: { format: "docx", source: { kind: "workspace-file", path: "fake.docx" } },
+      signal: new AbortController().signal,
+    }),
+  ).rejects.toThrow("INVALID_FILE");
+});
+it("download-only Office files do not weaken rendering validation", async () => {
+  const bytes = officeZip({
+    "[Content_Types].xml": "<Types/>",
+    "ppt/presentation.xml": "<presentation/>",
+    "ppt/embeddings/chart.xlsx": "embedded chart",
+    "ppt/_rels/presentation.xml.rels":
+      '<Relationship TargetMode="External" Target="https://example.test"/>',
+  });
+  await expect(validateOfficeArchive(bytes, "pptx")).rejects.toThrow("ACTIVE_OFFICE_CONTENT");
+  await expect(
+    validateOfficeArchive(bytes, "pptx", { purpose: "download" }),
+  ).resolves.toBeUndefined();
 });

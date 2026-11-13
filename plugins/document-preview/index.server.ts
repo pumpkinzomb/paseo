@@ -42,32 +42,37 @@ export const documentPreviewTool = defineAgentTool({
   },
 });
 
+const previewFileSourceSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("export"),
+    url: z
+      .string()
+      .max(8192)
+      .refine((value) => {
+        try {
+          validateExportUrl(value);
+          return true;
+        } catch {
+          return false;
+        }
+      }, "Use the verified provider export file reference"),
+  }),
+  z.object({ kind: z.literal("workspace-file"), path: z.string().min(1).max(4096) }),
+]);
+
 export const renderedFilePreviewTool = defineAgentTool({
   name: "show_rendered_file",
   title: "Show original document or workbook preview",
   description:
-    "Show an actual PDF/Word/Excel file inside Paseo's existing Files sidebar, not a text reconstruction. For connected Google Docs, export application/pdf using the connected Drive tool first, then pass its user-scoped download URL with format pdf. For Google Sheets, export application/vnd.openxmlformats-officedocument.spreadsheetml.sheet and pass format xlsx to retain sheet tabs and cached cell formatting. Word docx and Excel xlsx render through macOS Quick Look; unsupported hosts fail explicitly. Local source paths must be files within this agent workspace. Export URLs must be actual returned oaiusercontent file references; never invent a URL, use a Google webpage, or pass OAuth credentials. The signed URL is transient and is not saved in the artifact. Cached previews are read-only, not live Google editing; refresh by exporting and calling again. Renderer differences and missing assets are disclosed. Return the exact citation on its own line.",
+    "Show an actual PDF/Word/Excel file inside Paseo's existing Files sidebar, not a text reconstruction. Separate preview from downloadable original. Always set the known sourceUrl for Google-native files; do not omit it to bypass original-format validation. For Google Docs PDF preview, export BOTH application/pdf and application/vnd.openxmlformats-officedocument.wordprocessingml.document from the SAME known file; pass PDF as source/format pdf and DOCX as original {format:docx,source}. Google Slides uses PDF preview plus original PPTX (application/vnd.openxmlformats-officedocument.presentationml.presentation). A Google PDF preview without the appropriate editable original is rejected. Sheets XLSX preview already retains the actual XLSX original. Never rename PDF bytes to Office extensions. Original references are cached byte-for-byte; refresh both exports if the source changes. For Google Sheets, export application/vnd.openxmlformats-officedocument.spreadsheetml.sheet and pass format xlsx to retain sheet tabs and cached cell formatting. Word docx and Excel xlsx render through macOS Quick Look; unsupported hosts fail explicitly. Local source paths must be files within this agent workspace. Export URLs must be actual returned oaiusercontent file references; never invent a URL, use a Google webpage, or pass OAuth credentials. The signed URL is transient and is not saved in the artifact. Cached previews are read-only, not live Google editing; refresh by exporting and calling again. Renderer differences and missing assets are disclosed. Return the exact citation on its own line.",
   input: z.object({
     title: z.string().trim().min(1).max(256),
     sourceUrl: z.string().max(2048).nullable().default(null),
     format: z.enum(["pdf", "docx", "xlsx"]),
-    source: z.discriminatedUnion("kind", [
-      z.object({
-        kind: z.literal("export"),
-        url: z
-          .string()
-          .max(8192)
-          .refine((value) => {
-            try {
-              validateExportUrl(value);
-              return true;
-            } catch {
-              return false;
-            }
-          }, "Use the verified provider export file reference"),
-      }),
-      z.object({ kind: z.literal("workspace-file"), path: z.string().min(1).max(4096) }),
-    ]),
+    source: previewFileSourceSchema,
+    original: z
+      .object({ format: z.enum(["docx", "xlsx", "pptx"]), source: previewFileSourceSchema })
+      .optional(),
   }),
   async execute(input, { agent, signal }) {
     const artifact = await publishPreview({ ...input, cwd: agent.cwd, signal });

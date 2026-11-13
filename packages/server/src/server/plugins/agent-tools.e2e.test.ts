@@ -1140,3 +1140,39 @@ test("rendered file tool publishes original Office bytes through the installed M
     await h.close();
   }
 }, 60_000);
+
+test("rendered preview MCP retains a separate editable original", async () => {
+  const h = await setup();
+  try {
+    const plugin = fileURLToPath(
+      new URL("../../../../../plugins/document-preview", import.meta.url),
+    );
+    await h.client.installDirectoryPlugin(plugin);
+    const agent = await h.create();
+    const mcp = await h.mcp(agent.id);
+    const original = await readFile(path.join(plugin, "test/document.docx"));
+    await writeFile(path.join(h.directory, "editable.docx"), original);
+    await writeFile(path.join(h.directory, "preview.pdf"), "%PDF-1.4\nsynthetic preview fixture");
+    const result = await mcp.callTool({
+      name: "show_rendered_file",
+      arguments: {
+        title: "Editable original",
+        sourceUrl: "https://docs.google.com/document/d/fixture/edit",
+        format: "pdf",
+        source: { kind: "workspace-file", path: "preview.pdf" },
+        original: { format: "docx", source: { kind: "workspace-file", path: "editable.docx" } },
+      },
+    });
+    expect(result.isError).not.toBe(true);
+    expect(result).toMatchObject({ structuredContent: { format: "pdf", downloadFormat: "docx" } });
+    const directory = path.join(h.directory, ".paseo-document-previews");
+    const manifest = (await readdir(directory)).find((name) => name.endsWith(".paseoview"));
+    if (!manifest) throw Error("Missing artifact");
+    const artifact = JSON.parse(await readFile(path.join(directory, manifest), "utf8"));
+    expect(artifact.content.kind).toBe("pdf");
+    expect(artifact.download.format).toBe("docx");
+    expect(await readFile(path.join(directory, artifact.download.asset))).toEqual(original);
+  } finally {
+    await h.close();
+  }
+}, 60_000);

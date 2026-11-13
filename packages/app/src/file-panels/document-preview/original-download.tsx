@@ -5,7 +5,7 @@ import { Download } from "lucide-react-native";
 import { useMutation } from "@tanstack/react-query";
 import { withUnistyles } from "react-native-unistyles";
 import { useFileUrl, type PluginFile } from "@getpaseo/plugin/client";
-import type { DocumentPreviewArtifact } from "@getpaseo/plugin";
+import { googleDocumentDownloadFormat, type DocumentPreviewArtifact } from "@getpaseo/plugin";
 import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
@@ -13,7 +13,7 @@ import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppActivelyVisible } from "@/hooks/use-app-visible";
 import { resolveFilePreviewReadTarget } from "@/file-explorer/preview-target";
 import { useFileHandle, useFileHandleSnapshot } from "../file";
-import { previewOriginalPath, previewDownloadName } from "./model";
+import { originalDownloadDescriptor, previewOriginalPath, previewDownloadName } from "./model";
 import { canDownloadPreview, downloadPreviewFile } from "./download";
 export function OriginalDownload({
   artifact,
@@ -26,22 +26,28 @@ export function OriginalDownload({
   serverId: string;
   workspaceId: string;
 }) {
-  const path = previewOriginalPath(manifestPath, artifact.originalName);
-  const extension = artifact.originalName.split(".").at(-1);
-  const extensions = { word: "docx", workbook: "xlsx", pdf: "pdf" };
-  const expected = extensions[artifact.content.kind];
-  if (
-    !canDownloadPreview ||
-    !path ||
-    extension !== expected ||
-    (artifact.content.kind === "pdf" && artifact.content.asset !== artifact.originalName)
-  )
-    return null;
+  const { t } = useTranslation();
+  const original = originalDownloadDescriptor(artifact);
+  if (!canDownloadPreview) return null;
+  if (!original) {
+    const expected = googleDocumentDownloadFormat(artifact.sourceUrl);
+    return expected ? (
+      <ToolbarButton
+        label={t("documentPreview.originalUnavailable", { format: expected.toUpperCase() })}
+        disabled
+        onPress={unavailableDownload}
+      >
+        <DownloadIcon size={14} />
+      </ToolbarButton>
+    ) : null;
+  }
+  const path = previewOriginalPath(manifestPath, original.asset);
+  if (!path) return null;
   return (
     <OriginalDownloadFile
       path={path}
       title={artifact.title}
-      extension={expected}
+      extension={original.format}
       serverId={serverId}
       workspaceId={workspaceId}
     />
@@ -110,3 +116,7 @@ function DownloadFile({
   );
 }
 const DownloadIcon = withUnistyles(Download, mutedIconColorMapping);
+
+function unavailableDownload() {
+  return false;
+}

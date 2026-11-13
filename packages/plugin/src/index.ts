@@ -43,6 +43,9 @@ export {
 } from "./icons.js";
 export {
   DocumentPreviewArtifactSchema,
+  DocumentOriginalDownloadSchema,
+  googleDocumentDownloadFormat,
+  type DocumentDownloadFormat,
   DOCUMENT_PREVIEW_MAX_BYTES,
   type DocumentPreviewArtifact,
 } from "./document-preview.js";

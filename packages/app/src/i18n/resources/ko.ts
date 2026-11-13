@@ -21,6 +21,7 @@ export const ko: TranslationResources = {
     password: "암호가 있는 PDF는 기본 뷰어로 열어줘.",
   },
   documentPreview: {
+    originalUnavailable: "{{format}} 원본 다운로드 준비가 필요해",
     download: "{{format}} 다운로드",
     downloadFailed: "파일을 다운로드하지 못했어",
     print: "PDF 인쇄",

@@ -19,6 +19,7 @@ export const en = {
     password: "Password-protected PDFs must be opened in the original viewer.",
   },
   documentPreview: {
+    originalUnavailable: "{{format}} original export is not ready for download",
     download: "Download {{format}}",
     downloadFailed: "Could not download this file",
     print: "Print PDF",

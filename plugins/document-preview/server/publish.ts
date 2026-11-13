@@ -3,6 +3,7 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import {
   DocumentPreviewArtifactSchema,
+  googleDocumentDownloadFormat,
   DOCUMENT_PREVIEW_MAX_BYTES,
   type DocumentPreviewArtifact,
 } from "@getpaseo/plugin";
@@ -20,7 +21,9 @@ export class PreviewPublishError extends Error {
       | "OUTSIDE_WORKSPACE"
       | "INVALID_CACHE"
       | "RENDER_FAILED"
-      | "UNSUPPORTED_HOST",
+      | "UNSUPPORTED_HOST"
+      | "ORIGINAL_REQUIRED"
+      | "ORIGINAL_FORMAT_MISMATCH",
   ) {
     super(code);
     this.name = "PreviewPublishError";
@@ -34,6 +37,7 @@ export interface PublishPreviewInput {
   format: "pdf" | "docx" | "xlsx";
   source: { kind: "export"; url: string } | { kind: "workspace-file"; path: string };
   signal: AbortSignal;
+  original?: { format: "docx" | "xlsx" | "pptx"; source: PublishPreviewInput["source"] };
 }
 export function validateExportUrl(value: string): string {
   const url = new URL(value);
@@ -42,7 +46,7 @@ export function validateExportUrl(value: string): string {
     throw new PreviewPublishError("UNSUPPORTED_EXPORT_URL");
   return url.href;
 }
-async function download(url: string, signal: AbortSignal): Promise<Buffer> {
+async function fetchExportBytes(url: string, signal: AbortSignal): Promise<Buffer> {
   let response;
   try {
     response = await fetch(validateExportUrl(url), {
@@ -82,8 +86,11 @@ async function download(url: string, signal: AbortSignal): Promise<Buffer> {
   }
   return Buffer.concat(chunks);
 }
-async function originalBytes(input: PublishPreviewInput, root: string): Promise<Buffer> {
-  if (input.source.kind === "export") return download(input.source.url, input.signal);
+async function originalBytes(
+  input: Pick<PublishPreviewInput, "source" | "signal">,
+  root: string,
+): Promise<Buffer> {
+  if (input.source.kind === "export") return fetchExportBytes(input.source.url, input.signal);
   const candidate = path.resolve(root, input.source.path);
   const file = await fs.realpath(candidate);
   if (!file.startsWith(root + path.sep)) throw new PreviewPublishError("OUTSIDE_WORKSPACE");
@@ -104,6 +111,29 @@ async function atomicFile(file: string, bytes: string | Buffer, signal: AbortSig
     await fs.rm(temporary, { force: true });
   }
 }
+async function prepareOriginalDownload(
+  input: PublishPreviewInput,
+  root: string,
+  cache: string,
+  previewName: string,
+): Promise<NonNullable<DocumentPreviewArtifact["download"]>> {
+  const expected = googleDocumentDownloadFormat(input.sourceUrl);
+  const format = input.original?.format ?? input.format;
+  if (expected && format !== expected)
+    throw new PreviewPublishError(
+      input.original ? "ORIGINAL_FORMAT_MISMATCH" : "ORIGINAL_REQUIRED",
+    );
+  if (!input.original) return { asset: previewName, format: input.format };
+  if (input.format !== "pdf") throw new PreviewPublishError("ORIGINAL_FORMAT_MISMATCH");
+  const bytes = await originalBytes({ source: input.original.source, signal: input.signal }, root);
+  if (!bytes.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])))
+    throw new PreviewPublishError("INVALID_FILE");
+  // Download-only bytes never enter Quick Look. Preserve legitimate links/embedded Office charts.
+  await validateOfficeArchive(bytes, input.original.format, { purpose: "download" });
+  const asset = createHash("sha256").update(bytes).digest("hex") + "." + input.original.format;
+  await atomicFile(path.join(cache, asset), bytes, input.signal);
+  return { asset, format: input.original.format };
+}
 export async function publishPreview(input: PublishPreviewInput) {
   const root = await fs.realpath(input.cwd);
   const sourceUrl = input.sourceUrl === null ? null : normalizeSourceUrl(input.sourceUrl);
@@ -123,6 +153,12 @@ export async function publishPreview(input: PublishPreviewInput) {
   const digest = createHash("sha256").update(bytes).digest("hex");
   const originalName = digest + "." + input.format;
   const original = path.join(cache, originalName);
+  const download = await prepareOriginalDownload(
+    { ...input, sourceUrl },
+    root,
+    cache,
+    originalName,
+  );
   await atomicFile(original, bytes, input.signal);
   let content: DocumentPreviewArtifact["content"];
   const warnings: DocumentPreviewArtifact["warnings"] = [];
@@ -155,6 +191,7 @@ export async function publishPreview(input: PublishPreviewInput) {
     title: input.title,
     sourceUrl,
     originalName,
+    download,
     capturedAt: new Date().toISOString(),
     warnings,
     content,
@@ -171,6 +208,7 @@ export async function publishPreview(input: PublishPreviewInput) {
     path: file,
     title: input.title,
     format: input.format,
+    downloadFormat: download.format,
     renderer: content.renderer,
     sheetCount: content.kind === "workbook" ? content.sheets.length : null,
   };

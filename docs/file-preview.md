@@ -70,3 +70,21 @@ Automatic renderer handoff is held while PDF print preparation/dialog activity i
 Office print, physical printer behavior and platform print-dialog interaction are not claimed tested.
 `node packages/app/scripts/test-pdf-print.mjs` validates generated print PDF page count/orientation
 using synthetic files without opening a real printer dialog or sending paper output.
+
+## Original file vs preview
+
+`download` is an optional, typed descriptor separate from the preview's `content`. PDF can be the
+page renderer while the download asset is the actual DOCX/XLSX/PPTX. `originalName` remains a legacy
+preview input name; it must not be used to pretend a Google-native PDF export is an editable original.
+Native Google Docs require DOCX, Sheets require XLSX, and Slides require PPTX. The tool exports both
+from the same known source when using PDF preview, stores each byte-for-byte under its own content
+hash, and rejects a missing/wrong editable original or a PDF simply renamed to an Office extension.
+The caller must refresh both exports if the source changes; this is not an atomic Google revision
+snapshot. A local PDF's actual original remains PDF. Existing local DOCX/XLSX artifacts remain valid.
+
+Legacy Google PDF previews can still display/print, but their download action is disabled with an
+original-export-needed label until refreshed with the editable source. PPTX download metadata is
+supported with a separately supplied PDF preview; a general local PPTX-to-PDF converter is not added.
+Download-only Office bytes undergo bounded ZIP/part validation without entering Quick Look; ordinary
+external links and embedded chart workbooks are preserved. This does not relax the renderer's existing
+active/external-content restrictions. No Office binary is executed or externally fetched by storing it.

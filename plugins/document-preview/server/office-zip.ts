@@ -31,7 +31,7 @@ function xmlEntities(value: string): string {
     return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
   });
 }
-function checkXml(bytes: Buffer): void {
+function checkXml(bytes: Buffer, downloadOnly: boolean): void {
   const little = (bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0x3c && bytes[1] === 0);
   const big = (bytes[0] === 0xfe && bytes[1] === 0xff) || (bytes[0] === 0 && bytes[1] === 0x3c);
   let encoding = "utf-8";
@@ -46,7 +46,7 @@ function checkXml(bytes: Buffer): void {
   if (
     xml.includes(String.fromCharCode(0)) ||
     /<!\s*(DOCTYPE|ENTITY)/i.test(xml) ||
-    /TargetMode\s*=\s*["']\s*External\s*["']/i.test(xmlEntities(xml))
+    (!downloadOnly && /TargetMode\s*=\s*["']\s*External\s*["']/i.test(xmlEntities(xml)))
   )
     throw new OfficeArchiveError("ACTIVE_OFFICE_CONTENT");
 }
@@ -55,6 +55,7 @@ function centralEntry(
   cursor: number,
   centralStart: number,
   centralEnd: number,
+  downloadOnly: boolean,
 ): OfficeZipEntry {
   if (cursor + 46 > centralEnd || bytes.readUInt32LE(cursor) !== 0x02014b50)
     throw new OfficeArchiveError("INVALID_OFFICE_ARCHIVE");
@@ -79,7 +80,7 @@ function centralEntry(
     name.includes(String.fromCharCode(0))
   )
     throw new OfficeArchiveError("INVALID_OFFICE_ARCHIVE");
-  if (/vbaproject|activex|embeddings\//i.test(name))
+  if (!downloadOnly && /vbaproject|activex|embeddings\//i.test(name))
     throw new OfficeArchiveError("ACTIVE_OFFICE_CONTENT");
   if (local + 30 > bytes.length || bytes.readUInt32LE(local) !== 0x04034b50)
     throw new OfficeArchiveError("INVALID_OFFICE_ARCHIVE");
@@ -87,7 +88,11 @@ function centralEntry(
   if (start + compressed > centralStart) throw new OfficeArchiveError("INVALID_OFFICE_ARCHIVE");
   return { name, size, method, start, compressed, next };
 }
-async function checkEntry(bytes: Buffer, entry: OfficeZipEntry): Promise<void> {
+async function checkEntry(
+  bytes: Buffer,
+  entry: OfficeZipEntry,
+  downloadOnly: boolean,
+): Promise<void> {
   let content: Buffer;
   try {
     content =
@@ -100,10 +105,15 @@ async function checkEntry(bytes: Buffer, entry: OfficeZipEntry): Promise<void> {
     throw new OfficeArchiveError("INVALID_OFFICE_ARCHIVE");
   }
   if (content.length !== entry.size) throw new OfficeArchiveError("INVALID_OFFICE_ARCHIVE");
-  if (/\.(xml|rels)$/i.test(entry.name)) checkXml(content);
+  if (/\.(xml|rels)$/i.test(entry.name)) checkXml(content, downloadOnly);
 }
 /** Bound decompression and reject active/external Office relationships before invoking an OS renderer. */
-export async function validateOfficeArchive(bytes: Buffer, kind: "docx" | "xlsx"): Promise<void> {
+export async function validateOfficeArchive(
+  bytes: Buffer,
+  kind: "docx" | "xlsx" | "pptx",
+  options: { purpose?: "render" | "download" } = {},
+): Promise<void> {
+  const downloadOnly = options.purpose === "download";
   let end = -1;
   for (let at = bytes.length - 22; at >= Math.max(0, bytes.length - 65557); at--)
     if (bytes.readUInt32LE(at) === 0x06054b50) {
@@ -121,16 +131,21 @@ export async function validateOfficeArchive(bytes: Buffer, kind: "docx" | "xlsx"
   let expanded = 0,
     cursor = centralStart;
   for (let index = 0; index < count; index++) {
-    const entry = centralEntry(bytes, cursor, centralStart, centralEnd);
+    const entry = centralEntry(bytes, cursor, centralStart, centralEnd, downloadOnly);
     if (names.has(entry.name)) throw new OfficeArchiveError("INVALID_OFFICE_ARCHIVE");
     names.add(entry.name);
     expanded += entry.size;
     if (entry.size > MAX_ENTRY || expanded > MAX_EXPANDED)
       throw new OfficeArchiveError("OFFICE_LIMIT_EXCEEDED");
-    await checkEntry(bytes, entry);
+    await checkEntry(bytes, entry, downloadOnly);
     cursor = entry.next;
   }
-  const required = kind === "docx" ? "word/document.xml" : "xl/workbook.xml";
+  const parts = {
+    docx: "word/document.xml",
+    xlsx: "xl/workbook.xml",
+    pptx: "ppt/presentation.xml",
+  };
+  const required = parts[kind];
   if (!names.has("[Content_Types].xml") || !names.has(required))
     throw new OfficeArchiveError("INVALID_OFFICE_ARCHIVE");
 }
