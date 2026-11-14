@@ -1,5 +1,12 @@
 import { validateAssistantConversation } from "./conversation-model";
-import { createContext, useContext, useEffect, useLayoutEffect } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useSyncExternalStore,
+} from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { AssistantConversation } from "@getpaseo/protocol/messages";
 import { useFetchQuery } from "@/data/query";
@@ -9,6 +16,36 @@ import { useSessionStore } from "@/stores/session-store";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 
 export const ASSISTANT_CONVERSATION_QUERY_ROOT = "assistantLogicalConversation";
+
+/** Presentation reads must not replace the shared fetching query's options. */
+export function useCachedAssistantConversation(serverId: string, agentId: string) {
+  const queryClient = useQueryClient();
+  const subscribe = useCallback(
+    (onChange: () => void) =>
+      queryClient.getQueryCache().subscribe((event) => {
+        const key = event.query.queryKey;
+        if (
+          key.length === 3 &&
+          key[0] === ASSISTANT_CONVERSATION_QUERY_ROOT &&
+          key[1] === serverId &&
+          key[2] === agentId
+        )
+          onChange();
+      }),
+    [queryClient, serverId, agentId],
+  );
+  const getSnapshot = useCallback(
+    () =>
+      queryClient.getQueryData<AssistantConversation>([
+        ASSISTANT_CONVERSATION_QUERY_ROOT,
+        serverId,
+        agentId,
+      ]),
+    [queryClient, serverId, agentId],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
 export async function cacheAssistantConversation(
   queryClient: QueryClient,
   serverId: string,

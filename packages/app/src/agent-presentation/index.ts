@@ -1,6 +1,4 @@
-import type { AssistantConversation } from "@getpaseo/protocol/messages";
-import { useReplicaQuery } from "@/data/query";
-import { ASSISTANT_CONVERSATION_QUERY_ROOT } from "@/default-assistant/conversation";
+import { useCachedAssistantConversation } from "@/default-assistant/conversation";
 import { MessageCircle } from "lucide-react-native";
 import { useShallow } from "zustand/shallow";
 import { useTranslation } from "react-i18next";
@@ -67,11 +65,7 @@ export function useAgentDescriptor(
   context: { serverId: string },
 ): PanelDescriptor {
   useTranslation();
-  const { data: conversation } = useReplicaQuery<AssistantConversation>({
-    queryKey: [ASSISTANT_CONVERSATION_QUERY_ROOT, context.serverId, target.agentId],
-    pushEvent: "agent_update",
-    enabled: false,
-  });
+  const conversation = useCachedAssistantConversation(context.serverId, target.agentId);
   const descriptorState = useSessionStore(
     useShallow((state) => {
       const session = state.sessions[context.serverId];

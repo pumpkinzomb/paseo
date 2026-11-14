@@ -18,6 +18,13 @@ import type {
   SidebarWorkspacePlacement,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { SidebarSubSessionGroup } from "./sidebar-sub-session-group";
+import { useAgentDescriptor } from "@/agent-presentation";
+import {
+  ASSISTANT_CONVERSATION_QUERY_ROOT,
+  cacheAssistantConversation,
+  useAssistantConversation,
+} from "@/default-assistant/conversation";
+import { RetainedPanelActivity } from "@/components/retained-panel";
 
 const actions = vi.hoisted(() => ({
   remove: vi.fn(),
@@ -817,5 +824,182 @@ describe("logical lead task hierarchy", () => {
     await waitFor(() =>
       expect(testElement(container, "sidebar-lead-status-lead-a:loading")).toBeTruthy(),
     );
+  });
+});
+
+function DescriptorProbe({ serverId, agentId }: { serverId: string; agentId: string }) {
+  const descriptor = useAgentDescriptor({ kind: "agent", agentId }, { serverId });
+  return (
+    <output data-testid="descriptor-probe">{`${descriptor.label}|${descriptor.statusBucket}`}</output>
+  );
+}
+
+function ConversationProbe({ serverId, agentId }: { serverId: string; agentId: string }) {
+  const query = useAssistantConversation(serverId, agentId);
+  return (
+    <output data-testid="conversation-probe">
+      {`${query.status}|${query.data?.activeAgentId ?? ""}|${query.error?.message ?? ""}`}
+    </output>
+  );
+}
+
+function queryAgents(serverId: string) {
+  const store = useSessionStore.getState();
+  store.initializeSession(serverId, null);
+  store.setAgents(
+    serverId,
+    new Map(
+      ["lead-a", "a-continuation", "lead-b"].map((id) => [
+        id,
+        {
+          ...baseAgent,
+          id,
+          serverId,
+          workspaceId: "parent",
+          title: `${serverId} ${id}`,
+          labels: { "paseo.role": "assistant" },
+          status: "idle" as const,
+          requiresAttention: false,
+          attentionReason: null,
+          pendingPermissions: [],
+        },
+      ]),
+    ),
+  );
+}
+
+describe("logical conversation cache readers", () => {
+  it("keeps the live screen refetchable when a descriptor mounts after its fetch", async () => {
+    useSessionStore.setState({ sessions: {}, agentLastActivity: new Map() });
+    queryAgents("host");
+    actions.getConversation.mockReset().mockResolvedValue({ conversation: leadA, error: null });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const draw = (descriptor: boolean, active = true) => (
+      <QueryClientProvider client={client}>
+        <RetainedPanelActivity active={active}>
+          <ConversationProbe serverId="host" agentId="lead-a" />
+          {descriptor && <DescriptorProbe serverId="host" agentId="lead-a" />}
+        </RetainedPanelActivity>
+      </QueryClientProvider>
+    );
+    const view = render(draw(false));
+    await waitFor(() =>
+      expect(view.getByTestId("conversation-probe").textContent).toBe("success|a-continuation|"),
+    );
+    const key = [ASSISTANT_CONVERSATION_QUERY_ROOT, "host", "lead-a"];
+    view.rerender(draw(true));
+    const options = client.getQueryCache().find({ queryKey: key, exact: true })!.options;
+    expect(options.queryFn).toBeTypeOf("function");
+    expect(options.meta?.serverDataPolicy).toEqual({ class: "fetch", dataShape: "value" });
+    await act(async () => {
+      await expect(
+        client.invalidateQueries(
+          { queryKey: [ASSISTANT_CONVERSATION_QUERY_ROOT, "host", "lead-a"] },
+          { throwOnError: true },
+        ),
+      ).resolves.toBeUndefined();
+    });
+    expect(actions.getConversation).toHaveBeenCalledTimes(2);
+    expect(view.getByTestId("conversation-probe").textContent).toBe("success|a-continuation|");
+    view.rerender(draw(true, false));
+    await act(async () => client.invalidateQueries({ queryKey: key }));
+    expect(actions.getConversation).toHaveBeenCalledTimes(2);
+    view.rerender(draw(false));
+    await waitFor(() => expect(actions.getConversation).toHaveBeenCalledTimes(3));
+    view.rerender(draw(true));
+    await act(async () => client.invalidateQueries({ queryKey: key }, { throwOnError: true }));
+    expect(actions.getConversation).toHaveBeenCalledTimes(4);
+    expect(view.getByTestId("conversation-probe").textContent).toBe("success|a-continuation|");
+    view.unmount();
+    client.clear();
+  });
+
+  it("does not register a fetching query when descriptors mount before the screen", async () => {
+    useSessionStore.setState({ sessions: {}, agentLastActivity: new Map() });
+    queryAgents("host");
+    actions.getConversation.mockReset().mockResolvedValue({ conversation: leadA, error: null });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const draw = (screen: boolean) => (
+      <QueryClientProvider client={client}>
+        <DescriptorProbe serverId="host" agentId="lead-a" />
+        <DescriptorProbe serverId="host" agentId="a-continuation" />
+        {screen && <ConversationProbe serverId="host" agentId="lead-a" />}
+      </QueryClientProvider>
+    );
+    const view = render(draw(false));
+    expect(client.getQueryCache().getAll()).toHaveLength(0);
+    expect(actions.getConversation).not.toHaveBeenCalled();
+    view.rerender(draw(true));
+    await waitFor(() =>
+      expect(view.getByTestId("conversation-probe").textContent).toBe("success|a-continuation|"),
+    );
+    await act(async () => client.invalidateQueries({}, { throwOnError: true }));
+    expect(actions.getConversation).toHaveBeenCalledTimes(2);
+    expect(client.getQueryCache().getAll()).toHaveLength(1);
+    view.unmount();
+    client.clear();
+  });
+
+  it("follows exact host, segment and query client changes without stale status or query options", async () => {
+    useSessionStore.setState({ sessions: {}, agentLastActivity: new Map() });
+    queryAgents("host");
+    queryAgents("other-host");
+    actions.getConversation.mockReset();
+    patchLead("a-continuation", { status: "running" });
+    const client = new QueryClient();
+    const replacement = new QueryClient();
+    await cacheAssistantConversation(client, "host", leadA);
+    await cacheAssistantConversation(client, "other-host", leadB);
+    await cacheAssistantConversation(replacement, "host", leadB);
+    const cachedQuery = client.getQueryCache().find({
+      queryKey: [ASSISTANT_CONVERSATION_QUERY_ROOT, "host", "a-continuation"],
+      exact: true,
+    })!;
+    const cachedOptions = cachedQuery.options;
+    const draw = (current: QueryClient, serverId: string, agentId: string) => (
+      <QueryClientProvider client={current}>
+        <DescriptorProbe serverId={serverId} agentId={agentId} />
+      </QueryClientProvider>
+    );
+    const view = render(draw(client, "host", "a-continuation"));
+    expect(cachedQuery.options).toBe(cachedOptions);
+    expect(view.getByTestId("descriptor-probe").textContent).toBe("host lead-a|running");
+    patchLead("lead-a", { title: "Renamed canonical lead" });
+    expect(view.getByTestId("descriptor-probe").textContent).toBe("Renamed canonical lead|running");
+    patchLead("a-continuation", {
+      status: "idle",
+      requiresAttention: true,
+      attentionReason: "permission",
+    });
+    expect(view.getByTestId("descriptor-probe").textContent).toBe(
+      "Renamed canonical lead|needs_input",
+    );
+    view.rerender(draw(client, "other-host", "lead-b"));
+    expect(view.getByTestId("descriptor-probe").textContent).toBe("other-host lead-b|done");
+    await act(async () =>
+      cacheAssistantConversation(client, "host", conversation("next", ["lead-a", "lead-b"])),
+    );
+    expect(view.getByTestId("descriptor-probe").textContent).toBe("other-host lead-b|done");
+    view.rerender(draw(replacement, "host", "lead-b"));
+    expect(view.getByTestId("descriptor-probe").textContent).toBe("host lead-b|done");
+    act(() =>
+      replacement.removeQueries({
+        queryKey: [ASSISTANT_CONVERSATION_QUERY_ROOT, "host", "lead-b"],
+        exact: true,
+      }),
+    );
+    expect(view.getByTestId("descriptor-probe").textContent).toBe("host lead-b|null");
+    await act(async () =>
+      cacheAssistantConversation(
+        replacement,
+        "host",
+        conversation("continued", ["lead-a", "a-continuation", "lead-b"]),
+      ),
+    );
+    expect(view.getByTestId("descriptor-probe").textContent).toBe("Renamed canonical lead|done");
+    expect(actions.getConversation).not.toHaveBeenCalled();
+    view.unmount();
+    client.clear();
+    replacement.clear();
   });
 });
