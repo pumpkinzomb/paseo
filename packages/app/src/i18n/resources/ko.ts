@@ -1628,6 +1628,10 @@ export const ko: TranslationResources = {
         removing: "제거하는 중...",
       },
       confirmations: {
+        forgetOfflineTitle: "오프라인 프로젝트 캐시를 제거할까요?",
+        forgetOfflineMessage:
+          '이 기기에 남은 "{{projectName}}" 프로젝트와 그룹 캐시를 제거할까요? 이전 호스트는 연결되어 있지 않습니다. 원격 대화·Codex/Claude 원본·소스 파일은 삭제하지 않습니다. 해당 호스트가 다시 연결되고 프로젝트가 남아 있다면 다시 나타날 수 있습니다.',
+        forgetOfflineConfirm: "로컬 캐시 제거",
         removeTitle: "프로젝트를 제거할까요?",
         removeMessage:
           '"{{projectName}}"과 연결된 세션 그룹 {{workspaceCount}}개, 하위 세션을 포함한 에이전트 세션 {{sessionCount}}개를 제거할까요?\n\nPaseo의 대화 기록은 영구 삭제되며 복원할 수 없습니다. 프로젝트 파일과 각 에이전트 공급자가 보관한 원본 대화 기록은 삭제하지 않습니다.',

@@ -1350,6 +1350,7 @@ export const ru: TranslationResources = {
         removing: "Удаление...",
       },
       confirmations: {
+        ...en.sidebar.project.confirmations,
         removeTitle: "Удалить проект?",
         removeMessage:
           "Удалить «{{projectName}}», связанные группы сеансов ({{workspaceCount}}) и сеансы агентов ({{sessionCount}}), включая дочерние?\n\nИстория разговоров Paseo будет удалена навсегда без возможности восстановления. Файлы проекта и оригинальные записи у поставщиков агентов не будут удалены.",

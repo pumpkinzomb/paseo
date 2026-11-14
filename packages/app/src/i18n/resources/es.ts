@@ -1365,6 +1365,7 @@ export const es: TranslationResources = {
         removing: "Eliminando...",
       },
       confirmations: {
+        ...en.sidebar.project.confirmations,
         removeTitle: "¿Quitar proyecto?",
         removeMessage:
           '¿Eliminar "{{projectName}}", sus {{workspaceCount}} grupos de sesiones y {{sessionCount}} sesiones de agentes, incluidas las secundarias?\n\nLos registros de conversaciones de Paseo se borrarán permanentemente y no se podrán restaurar. No se borrarán los archivos del proyecto ni los registros originales almacenados por los proveedores de agentes.',

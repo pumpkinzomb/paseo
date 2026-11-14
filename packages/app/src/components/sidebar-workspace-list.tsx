@@ -1835,7 +1835,23 @@ function ProjectBlock({
         getHostRuntimeStore().getClient(serverId),
       );
       if (readiness.kind === "host_unavailable") {
-        toast.error(t("sidebar.project.toasts.hostDisconnected"));
+        // Never turn a partially connected multi-host deletion into a local purge.
+        if (project.hosts.some((host) => !readiness.serverIds.includes(host.serverId))) {
+          toast.error(t("sidebar.project.toasts.hostDisconnected"));
+          return;
+        }
+        const confirmed = await confirmDialog({
+          title: t("sidebar.project.confirmations.forgetOfflineTitle"),
+          message: t("sidebar.project.confirmations.forgetOfflineMessage", {
+            projectName: displayName,
+          }),
+          confirmLabel: t("sidebar.project.confirmations.forgetOfflineConfirm"),
+          cancelLabel: t("sidebar.project.confirmations.cancel"),
+          destructive: true,
+        });
+        if (!confirmed) return;
+        for (const host of project.hosts)
+          await getHostRuntimeStore().forgetOfflineProject(host.serverId, host.projectId);
         return;
       }
       if (readiness.kind === "needs_host_update") {

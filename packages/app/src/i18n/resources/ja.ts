@@ -1346,6 +1346,7 @@ export const ja: TranslationResources = {
         removing: "削除中...",
       },
       confirmations: {
+        ...en.sidebar.project.confirmations,
         removeTitle: "プロジェクトを削除しますか？",
         removeMessage:
           "「{{projectName}}」と関連するセッショングループ{{workspaceCount}}件、子セッションを含むエージェントセッション{{sessionCount}}件を削除しますか？\n\nPaseoの会話記録は完全に削除され、復元できません。プロジェクトファイルとエージェント提供元が保存した元の会話記録は削除しません。",

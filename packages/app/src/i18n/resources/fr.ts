@@ -1359,6 +1359,7 @@ export const fr: TranslationResources = {
         removing: "Retrait…",
       },
       confirmations: {
+        ...en.sidebar.project.confirmations,
         removeTitle: "Retirer le projet ?",
         removeMessage:
           "Supprimer « {{projectName}} », ses {{workspaceCount}} groupes de sessions et {{sessionCount}} sessions d’agents, y compris les sous-sessions ?\n\nLes conversations de Paseo seront définitivement supprimées et ne pourront pas être restaurées. Les fichiers du projet et les conversations originales conservées par les fournisseurs d’agents ne seront pas supprimés.",

@@ -2302,6 +2302,52 @@ export class HostRuntimeStore {
     this.setHostsAndSync(next);
   }
 
+  async forgetOfflineProject(serverId: string, projectId: string): Promise<void> {
+    const assertOffline = () => {
+      const status = this.getSnapshot(serverId)?.connectionStatus;
+      if (
+        status === "online" ||
+        status === "connecting" ||
+        this.getClient(serverId)?.getLastServerInfoMessage()
+      )
+        throw new Error("Host connection changed. Review the project again.");
+    };
+    assertOffline();
+    const removed = await this.replicaCache.forgetProject(serverId, projectId, assertOffline);
+    assertOffline();
+    useSessionStore.setState((state) => {
+      const session = state.sessions[serverId];
+      if (!session) return state;
+      const workspaces = new Map(
+        [...session.workspaces].filter(([, workspace]) => workspace.projectId !== projectId),
+      );
+      const workspaceIds = new Set([
+        ...removed.workspaceIds,
+        ...[...session.workspaces.values()]
+          .filter((w) => w.projectId === projectId)
+          .map((w) => w.id),
+      ]);
+      const agents = new Map(
+        [...session.agents].filter(
+          ([, agent]) => !agent.workspaceId || !workspaceIds.has(agent.workspaceId),
+        ),
+      );
+      const agentDetails = new Map(
+        [...session.agentDetails].filter(
+          ([, agent]) => !agent.workspaceId || !workspaceIds.has(agent.workspaceId),
+        ),
+      );
+      const projects = new Map(session.projects);
+      projects.delete(projectId);
+      return {
+        sessions: {
+          ...state.sessions,
+          [serverId]: { ...session, projects, workspaces, agents, agentDetails },
+        },
+      };
+    });
+  }
+
   async removeHost(serverId: string): Promise<void> {
     await this.revokePushNotifications({ client: this.getClient(serverId), serverId });
     const remaining = this.hosts.filter((daemon) => daemon.serverId !== serverId);

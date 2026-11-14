@@ -1629,6 +1629,10 @@ export const en = {
         removing: "Removing...",
       },
       confirmations: {
+        forgetOfflineTitle: "Remove offline project cache?",
+        forgetOfflineMessage:
+          'Remove the cached project "{{projectName}}" and its cached groups from this device? The old host is not connected. This does NOT delete remote conversations, Codex/Claude originals or source files. If the host reconnects and still has this project, it may appear again.',
+        forgetOfflineConfirm: "Remove local cache",
         removeTitle: "Remove project?",
         removeMessage:
           'Remove "{{projectName}}", its {{workspaceCount}} session groups and {{sessionCount}} agent sessions, including child sessions?\n\nPaseo conversation records will be permanently deleted and cannot be restored. Project files and original conversation records stored by the agent providers will not be deleted.',
