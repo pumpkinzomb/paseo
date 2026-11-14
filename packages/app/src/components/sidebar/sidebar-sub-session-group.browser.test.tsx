@@ -863,6 +863,41 @@ describe("logical lead task hierarchy", () => {
     expect(testElement(container, "sidebar-lead-work-status-lead-b:running")).toBeTruthy();
     expect(container.querySelector('[data-testid="row-room-source"]')).toBeNull();
   });
+  it.each([220, 280, 320])(
+    "centers standalone provider and child indicators at %ipx",
+    async (width) => {
+      const { container } = await mountLeads(width, true);
+      patchLead("a-continuation", {
+        status: "running",
+        turn: {
+          phase: "open",
+          turnId: "geometry",
+          startedAt: new Date(),
+          cancellationRequestId: null,
+        },
+      });
+      const title = testElement(container, "sidebar-lead-host:lead-a");
+      const center = title.getBoundingClientRect().top + title.getBoundingClientRect().height / 2;
+      const provider = testElement(container, "sidebar-lead-status-lead-a:running");
+      const work = testElement(container, "sidebar-lead-work-status-lead-a:running");
+      const providerRing = provider.querySelector('[role="progressbar"]');
+      const childRing = work.querySelector('[role="progressbar"]');
+      if (!providerRing || !childRing || !work.firstElementChild)
+        throw new Error("Missing row indicators");
+      for (const item of [providerRing, childRing, work.firstElementChild]) {
+        const bounds = item.getBoundingClientRect();
+        expect(Math.abs(bounds.top + bounds.height / 2 - center)).toBeLessThanOrEqual(1);
+      }
+      const count = work.firstElementChild.getBoundingClientRect();
+      const icon = childRing.getBoundingClientRect();
+      expect(icon.left - count.right).toBeGreaterThanOrEqual(2);
+      expect(icon.left - count.right).toBeLessThanOrEqual(10);
+      expect(work.getBoundingClientRect().right).toBeLessThanOrEqual(
+        container.getBoundingClientRect().right + 1,
+      );
+    },
+  );
+
   it("shows active provider state separately from delegated work, even when collapsed", async () => {
     const { container } = await mountLeads(300, true);
     expect(container.querySelector('[data-testid="sidebar-lead-status-lead-a:done"]')).toBeNull();

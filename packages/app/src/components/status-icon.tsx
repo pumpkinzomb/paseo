@@ -15,6 +15,7 @@ import type { Theme } from "@/styles/theme";
 
 interface StatusIconProps {
   children: ReactNode;
+  standalone?: boolean;
   statusBucket: SidebarStateBucket | null;
   size?: number;
   statusDotBorderColor?: string;
@@ -30,6 +31,7 @@ const needsInputAlertMapping = (theme: Theme) => ({
 
 export function StatusIcon({
   children,
+  standalone = false,
   statusBucket,
   size = 14,
   statusDotBorderColor,
@@ -48,12 +50,13 @@ export function StatusIcon({
   const statusDotStyle = useMemo(
     () => [
       styles.statusDot,
+      standalone && styles.standaloneIndicator,
       {
         backgroundColor: statusDotColor,
         borderColor: statusDotBorderColor ?? styles[backdrop].borderColor,
       },
     ],
-    [statusDotColor, statusDotBorderColor, backdrop],
+    [statusDotColor, statusDotBorderColor, backdrop, standalone],
   );
 
   return (
@@ -61,7 +64,7 @@ export function StatusIcon({
       {children}
       {isRunning ? (
         <View
-          style={styles.statusRing}
+          style={[styles.statusRing, standalone && styles.standaloneIndicator]}
           accessibilityRole="progressbar"
           accessibilityLabel="Agent running"
         >
@@ -70,7 +73,7 @@ export function StatusIcon({
       ) : null}
       {statusDotColor ? <View style={statusDotStyle} /> : null}
       {showNeedsInputAlert ? (
-        <View style={styles.statusAlertOverlay}>
+        <View style={[styles.statusAlertOverlay, standalone && styles.standaloneIndicator]}>
           <ThemedCircleAlert size={STATUS_INDICATOR_ALERT_SIZE} uniProps={needsInputAlertMapping} />
         </View>
       ) : null}
@@ -99,6 +102,7 @@ const styles = StyleSheet.create((theme) => ({
     right: getStatusRingOffset(DEFAULT_STATUS_DOT_OFFSET, STATUS_INDICATOR_DOT_SIZE),
     bottom: getStatusRingOffset(DEFAULT_STATUS_DOT_OFFSET, STATUS_INDICATOR_DOT_SIZE),
   },
+  standaloneIndicator: { position: "relative", right: 0, bottom: 0 },
   surface0: { borderColor: theme.colors.surface0 },
   surface1: { borderColor: theme.colors.surface1 },
   surface2: { borderColor: theme.colors.surface2 },

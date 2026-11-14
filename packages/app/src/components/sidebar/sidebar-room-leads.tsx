@@ -461,7 +461,11 @@ function LeadRow({
               {descriptor.statusBucket === null ? (
                 <StatusRing />
               ) : (
-                <StatusIcon statusBucket={descriptor.statusBucket} backdrop="surfaceSidebar">
+                <StatusIcon
+                  standalone
+                  statusBucket={descriptor.statusBucket}
+                  backdrop="surfaceSidebar"
+                >
                   {null}
                 </StatusIcon>
               )}
@@ -475,10 +479,14 @@ function LeadRow({
           <View
             accessibilityLabel={t("sidebar.workspace.subSessions.delegatedCount", { count })}
             testID={`sidebar-lead-work-status-${agentId}:${workBucket}`}
+            style={styles.workStatus}
           >
-            <StatusIcon statusBucket={workBucket} backdrop="surfaceSidebar" size={18}>
-              <Text style={styles.count}>{count}</Text>
-            </StatusIcon>
+            <Text style={styles.count}>{count}</Text>
+            {workBucket !== "done" ? (
+              <StatusIcon standalone statusBucket={workBucket} backdrop="surfaceSidebar">
+                {null}
+              </StatusIcon>
+            ) : null}
           </View>
         ) : null}
       </View>
@@ -546,6 +554,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
   },
+  workStatus: { flexDirection: "row", alignItems: "center", gap: theme.spacing[1], flexShrink: 0 },
   count: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
   commonLabel: {
     paddingLeft: theme.spacing[4],
