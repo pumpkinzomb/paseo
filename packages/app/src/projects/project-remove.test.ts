@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { en } from "@/i18n/resources/en";
 import { ko } from "@/i18n/resources/ko";
 import {
@@ -203,7 +203,10 @@ it("offers verified local updates only for the exact native host", () => {
 it("uses the live handshake even before the session replica has host information", () => {
   expect(
     getCurrentProjectRemoveReadiness(project, () => ({
-      getLastServerInfoMessage: () => ({ features: { projectRemoveSessions: true } }) as never,
+      getLastServerInfoMessage: () =>
+        ({
+          features: { projectRemoveSessions: true, projectNativeSessionDeletion: true },
+        }) as never,
     })),
   ).toEqual({ kind: "ready", targets: project.hosts });
 });
@@ -212,4 +215,30 @@ it("never substitutes stale replica capabilities for a missing live handshake", 
     kind: "host_unavailable",
     serverIds: ["host-a", "host-b"],
   });
+});
+
+it("inspects originals and preserves the explicit native deletion flag through the confirmation boundary", async () => {
+  const inspect = vi.fn(async () => ({ workspaceIds: ["w"], agentIds: ["a"] }));
+  const targets = await inspectProjectRemovalFromHosts({
+    targets: [{ serverId: "host", projectId: "project" }],
+    deleteNativeSessions: true,
+    getClient: () => ({ inspectProjectRemoval: inspect }),
+  });
+  expect(inspect).toHaveBeenCalledWith("project", true);
+  const remove = vi.fn(async () => ({ removedWorkspaceIds: ["w"] }));
+  await removeProjectFromHosts({ targets, getClient: () => ({ removeProject: remove }) });
+  expect(remove).toHaveBeenCalledWith(
+    "project",
+    undefined,
+    { workspaceIds: ["w"], agentIds: ["a"] },
+    true,
+  );
+});
+it("explicit original-removal confirmation promises protected sources and auth are preserved", () => {
+  expect(en.sidebar.project.confirmations.removeNativeMessage).toContain(
+    "protected/shared files are preserved",
+  );
+  expect(ko.sidebar.project.confirmations.removeNativeMessage).toContain(
+    "소스 폴더 삭제는 수행하지 않습니다",
+  );
 });

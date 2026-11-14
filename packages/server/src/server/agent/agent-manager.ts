@@ -4287,6 +4287,28 @@ export class AgentManager {
     }
   }
 
+  async validateNativeSessionDeletion(agentIds: string[]): Promise<void> {
+    const inventory = await this.requireRegistry().listAll();
+    const targets = planNativeSessionDeletion(agentIds, inventory);
+    for (const target of targets) {
+      if (
+        target.agentIds.some((id) => {
+          const receipt = inventory.find((record) => record.id === id)?.metadata
+            ?.nativeSessionDeletion;
+          return (
+            receipt &&
+            typeof receipt === "object" &&
+            !Array.isArray(receipt) &&
+            receipt.state === "pending"
+          );
+        })
+      )
+        throw new Error("Native deletion outcome requires recovery before project deletion.");
+      if (!this.clients.get(target.provider)?.deleteNativeSession)
+        throw new Error("Provider does not support permanent native deletion.");
+    }
+  }
+
   /** Native deletion requires a new explicit protocol opt-in after user confirmation. */
   async mutateAssistantConversationRecords(
     agentIds: string[],

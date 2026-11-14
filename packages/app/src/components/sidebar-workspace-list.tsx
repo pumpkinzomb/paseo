@@ -1879,11 +1879,12 @@ function ProjectBlock({
       }
       const targets = await inspectProjectRemovalFromHosts({
         targets: readiness.targets,
+        deleteNativeSessions: true,
         getClient: (serverId) => getHostRuntimeStore().getClient(serverId),
       });
       const confirmed = await confirmDialog({
         title: t("sidebar.project.confirmations.removeTitle"),
-        message: t("sidebar.project.confirmations.removeMessage", {
+        message: t("sidebar.project.confirmations.removeNativeMessage", {
           projectName: displayName,
           workspaceCount: targets.reduce(
             (sum, target) => sum + target.deleteSessions.workspaceIds.length,

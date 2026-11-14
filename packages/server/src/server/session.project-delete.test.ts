@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, readFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -41,6 +41,7 @@ async function fixture() {
     for (const id of ids) records.delete(id);
   });
   const validate = vi.fn(async () => {});
+  const validateNative = vi.fn(async (_ids: string[]) => {});
   const update = vi.fn(async (_id: string, _apply: (record: object) => object) => true);
   const session = Object.create(Session.prototype);
   Object.assign(session, {
@@ -50,6 +51,7 @@ async function fixture() {
     agentManager: {
       mutateAssistantConversationRecords: remove,
       validateAssistantConversationMutation: validate,
+      validateNativeSessionDeletion: validateNative,
       withWorkspaceSessionDeletion: async (_id: string, action: () => Promise<unknown>) => action(),
     },
   });
@@ -62,8 +64,26 @@ async function fixture() {
       workspaceIds: ["archived", "child", "root"],
       agentIds: ["archived", "child", "root"],
     },
-  ) => Reflect.get(session, "removeProjectSessionRecords").call(session, "project", confirmed);
-  return { workspaces, records, remove, validate, update, inspect, execute };
+    deleteNativeSessions = false,
+  ) =>
+    Reflect.get(session, "removeProjectSessionRecords").call(
+      session,
+      "project",
+      confirmed,
+      deleteNativeSessions,
+    );
+  return {
+    home,
+    session,
+    workspaces,
+    records,
+    remove,
+    validate,
+    validateNative,
+    update,
+    inspect,
+    execute,
+  };
 }
 it("explicit project removal includes archived records and linked descendants, preserving unrelated siblings", async () => {
   const f = await fixture();
@@ -135,4 +155,40 @@ it("confirmed empty project removes no unrelated sessions", async () => {
   await f.execute({ workspaceIds: [], agentIds: [] });
   expect(f.remove).not.toHaveBeenCalled();
   expect(f.update).not.toHaveBeenCalled();
+});
+
+it("project removal preflights original session ownership before requesting native deletion", async () => {
+  const f = await fixture();
+  await f.execute(undefined, true);
+  expect(f.validateNative).toHaveBeenCalledWith(["archived", "child", "root"]);
+  expect(f.remove).toHaveBeenCalledWith(
+    ["archived", "child", "root"],
+    "delete",
+    null,
+    ["archived", "child", "root"],
+    true,
+  );
+});
+it("unsupported/shared originals block project removal without changing records", async () => {
+  const f = await fixture();
+  f.validateNative.mockRejectedValue(Error("Original is shared with another conversation"));
+  await expect(f.execute(undefined, true)).rejects.toThrow("shared");
+  expect(f.remove).not.toHaveBeenCalled();
+  expect(f.update).not.toHaveBeenCalled();
+  expect(f.records.size).toBe(4);
+});
+it("project metadata removal never deletes protected source, installed-app, auth or symlink targets", async () => {
+  const f = await fixture();
+  const protectedRoot = join(f.home, "protected");
+  await mkdir(join(protectedRoot, "Paseo.app"), { recursive: true });
+  const paths = [
+    join(protectedRoot, "source.ts"),
+    join(protectedRoot, "auth.json"),
+    join(protectedRoot, "Paseo.app", "bundle"),
+  ];
+  for (const p of paths) await writeFile(p, "must survive");
+  await symlink(protectedRoot, join(f.home, "project-alias"));
+  await f.execute(undefined, true);
+  for (const p of paths) expect(await readFile(p, "utf8")).toBe("must survive");
+  expect(await readFile(join(f.home, "project-alias", "source.ts"), "utf8")).toBe("must survive");
 });

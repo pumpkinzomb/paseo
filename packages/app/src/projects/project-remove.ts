@@ -32,12 +32,14 @@ export interface ProjectRemovalScope {
 }
 export interface InspectedProjectRemoveTarget extends ProjectRemoveTarget {
   deleteSessions: ProjectRemovalScope;
+  deleteNativeSessions?: true;
 }
 type ProjectRemoveClient = Pick<DaemonClient, "removeProject">;
 
 /** Inspect every host before presenting a destructive confirmation. No mutations on failure. */
 export async function inspectProjectRemovalFromHosts(input: {
   targets: readonly ProjectRemoveTarget[];
+  deleteNativeSessions?: boolean;
   getClient: (serverId: string) => Pick<DaemonClient, "inspectProjectRemoval"> | null;
 }): Promise<InspectedProjectRemoveTarget[]> {
   const clients = input.targets.map((target) => {
@@ -46,11 +48,17 @@ export async function inspectProjectRemovalFromHosts(input: {
     return { target, client };
   });
   return Promise.all(
-    clients.map(async ({ target, client }) => ({
-      serverId: target.serverId,
-      projectId: target.projectId,
-      deleteSessions: await client.inspectProjectRemoval(target.projectId),
-    })),
+    clients.map(async ({ target, client }) => {
+      const inspected: InspectedProjectRemoveTarget = {
+        serverId: target.serverId,
+        projectId: target.projectId,
+        deleteSessions: input.deleteNativeSessions
+          ? await client.inspectProjectRemoval(target.projectId, true)
+          : await client.inspectProjectRemoval(target.projectId),
+      };
+      if (input.deleteNativeSessions) inspected.deleteNativeSessions = true;
+      return inspected;
+    }),
   );
 }
 
@@ -98,8 +106,8 @@ export function getCurrentProjectRemoveReadiness(
         : Boolean(sessionState.sessions[serverId]?.serverInfo),
     supportsProjectRemove: (serverId) =>
       getClient
-        ? liveInfo(serverId)?.features?.projectRemoveSessions === true
-        : selectHostFeature(sessionState, serverId, "projectRemoveSessions"),
+        ? liveInfo(serverId)?.features?.projectNativeSessionDeletion === true
+        : selectHostFeature(sessionState, serverId, "projectNativeSessionDeletion"),
   });
 }
 
@@ -124,8 +132,10 @@ export async function removeProjectFromHosts(input: {
   }
 
   const results = await Promise.allSettled(
-    clients.map(async ({ client, projectId, deleteSessions }) => {
-      await client.removeProject(projectId, undefined, deleteSessions);
+    clients.map(async ({ client, projectId, deleteSessions, deleteNativeSessions }) => {
+      if (deleteNativeSessions)
+        await client.removeProject(projectId, undefined, deleteSessions, true);
+      else await client.removeProject(projectId, undefined, deleteSessions);
     }),
   );
   const failedServerIds: string[] = [];

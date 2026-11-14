@@ -1080,17 +1080,21 @@ export const ProjectIconSetRequestSchema = z.object({
 export const ProjectRemoveInspectRequestSchema = z.object({
   type: z.literal("project.remove.inspect.request"),
   projectId: z.string(),
+  deleteNativeSessions: z.literal(true).optional(),
   requestId: z.string(),
 });
 
-export const ProjectRemoveRequestSchema = z.object({
-  type: z.literal("project.remove.request"),
-  deleteSessions: z
-    .object({ workspaceIds: z.array(z.string()), agentIds: z.array(z.string()) })
-    .optional(),
-  projectId: z.string(),
-  requestId: z.string(),
-});
+export const ProjectRemoveRequestSchema = z
+  .object({
+    type: z.literal("project.remove.request"),
+    deleteSessions: z
+      .object({ workspaceIds: z.array(z.string()), agentIds: z.array(z.string()) })
+      .optional(),
+    projectId: z.string(),
+    deleteNativeSessions: z.literal(true).optional(),
+    requestId: z.string(),
+  })
+  .strict();
 
 export const WorkspaceTitleSetRequestSchema = z.object({
   type: z.literal("workspace.title.set.request"),
@@ -4222,6 +4226,7 @@ export const ServerInfoStatusPayloadSchema = z
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: z.boolean().optional(),
         projectRemoveSessions: z.boolean().optional(),
+        projectNativeSessionDeletion: z.boolean().optional(),
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectAdd: z.boolean().optional(),
         // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97

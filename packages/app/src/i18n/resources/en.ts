@@ -1633,6 +1633,8 @@ export const en = {
         removing: "Removing...",
       },
       confirmations: {
+        removeNativeMessage:
+          'Permanently remove "{{projectName}}", its {{workspaceCount}} groups, {{sessionCount}} Paseo records and their linked original provider conversations? Close those sessions in other apps first. This cannot be undone. Running/shared sessions block deletion. Source folders, installed apps, worktrees, auth, settings and protected/shared files are preserved; no source-directory deletion is performed. Offline cache removal cannot delete remote originals.',
         forgetOfflineTitle: "Remove offline project cache?",
         forgetOfflineMessage:
           'Remove the cached project "{{projectName}}" and its cached groups from this device? The old host is not connected. This does NOT delete remote conversations, Codex/Claude originals or source files. If the host reconnects and still has this project, it may appear again.',

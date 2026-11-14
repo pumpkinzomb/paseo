@@ -1633,6 +1633,8 @@ export const ko: TranslationResources = {
         removing: "제거하는 중...",
       },
       confirmations: {
+        removeNativeMessage:
+          '"{{projectName}}" 프로젝트와 그룹 {{workspaceCount}}개, Paseo 기록 {{sessionCount}}개 및 연결된 공급자 원본 대화를 영구 삭제할까요? 확인하기 전에 다른 앱의 해당 세션을 종료해 주세요. 복구할 수 없으며 실행 중이거나 공유된 세션은 삭제를 막습니다. 소스 폴더·설치 앱·worktree·인증·설정·보호/공유 파일은 보존하며 소스 폴더 삭제는 수행하지 않습니다. 오프라인 캐시 제거만으로는 원격 원본을 지울 수 없습니다.',
         forgetOfflineTitle: "오프라인 프로젝트 캐시를 제거할까요?",
         forgetOfflineMessage:
           '이 기기에 남은 "{{projectName}}" 프로젝트와 그룹 캐시를 제거할까요? 이전 호스트는 연결되어 있지 않습니다. 원격 대화·Codex/Claude 원본·소스 파일은 삭제하지 않습니다. 해당 호스트가 다시 연결되고 프로젝트가 남아 있다면 다시 나타날 수 있습니다.',

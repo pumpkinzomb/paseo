@@ -4338,6 +4338,8 @@ export class Session {
         throw new Error("Project no longer exists.");
       const workspaceIds = await this.resolveProjectRemovalScope(request.projectId);
       const agentIds = await this.inspectProjectRemovalRecords(workspaceIds);
+      if (request.deleteNativeSessions)
+        await this.agentManager.validateNativeSessionDeletion(agentIds);
       this.emit({
         type: "project.remove.inspect.response",
         payload: {
@@ -4365,6 +4367,7 @@ export class Session {
   private async removeProjectSessionRecords(
     projectId: string,
     confirmed: { workspaceIds: string[]; agentIds: string[] },
+    deleteNativeSessions = false,
   ): Promise<string[]> {
     const workspaceIds = await this.resolveProjectRemovalScope(projectId);
     const verifyScope = async () => {
@@ -4375,18 +4378,30 @@ export class Session {
         throw new Error("Project session groups changed. Review removal again.");
     };
     await verifyScope();
+    if (deleteNativeSessions)
+      await this.agentManager.validateNativeSessionDeletion(confirmed.agentIds);
     let mutationAttempted = false;
     const execute = async () => {
       await verifyScope();
       await this.inspectProjectRemovalRecords(workspaceIds, confirmed.agentIds, async (ids) => {
         await verifyScope();
         mutationAttempted = ids.length > 0;
-        await this.agentManager.mutateAssistantConversationRecords(
-          ids,
-          "delete",
-          null,
-          workspaceIds,
-        );
+        if (deleteNativeSessions) {
+          await this.agentManager.mutateAssistantConversationRecords(
+            ids,
+            "delete",
+            null,
+            workspaceIds,
+            true,
+          );
+        } else {
+          await this.agentManager.mutateAssistantConversationRecords(
+            ids,
+            "delete",
+            null,
+            workspaceIds,
+          );
+        }
       });
       await verifyScope();
       if (
@@ -4433,11 +4448,14 @@ export class Session {
     try {
       const project = await this.projectRegistry.get(projectId);
       const resolvedProjectId = project?.projectId ?? projectId;
+      if (request.deleteNativeSessions && !request.deleteSessions)
+        throw new Error("Native project deletion requires a confirmed session scope.");
       if (request.deleteSessions) {
         if (!project) throw new Error("Project no longer exists.");
         const removedWorkspaceIds = await this.removeProjectSessionRecords(
           resolvedProjectId,
           request.deleteSessions,
+          request.deleteNativeSessions === true,
         );
         if (
           JSON.stringify(await this.resolveProjectRemovalScope(resolvedProjectId)) !==

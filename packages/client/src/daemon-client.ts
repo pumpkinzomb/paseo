@@ -3774,10 +3774,17 @@ export class DaemonClient {
 
   async inspectProjectRemoval(
     projectId: string,
+    deleteNativeSessions = false,
   ): Promise<{ workspaceIds: string[]; agentIds: string[] }> {
+    if (deleteNativeSessions && !this.lastServerInfoMessage?.features?.projectNativeSessionDeletion)
+      throw new Error("Update this host to delete project original sessions.");
     const payload =
       await this.sendNamespacedCorrelatedSessionRequest<"project.remove.inspect.response">({
-        message: { type: "project.remove.inspect.request", projectId },
+        message: {
+          type: "project.remove.inspect.request",
+          projectId,
+          ...(deleteNativeSessions ? { deleteNativeSessions: true as const } : {}),
+        },
       });
     if (payload.error) throw new Error(payload.error);
     return { workspaceIds: payload.workspaceIds, agentIds: payload.agentIds };
@@ -3787,13 +3794,22 @@ export class DaemonClient {
     projectId: string,
     requestId?: string,
     deleteSessions?: { workspaceIds: string[]; agentIds: string[] },
+    deleteNativeSessions = false,
   ): Promise<{ removedWorkspaceIds: string[] }> {
+    if (
+      deleteNativeSessions &&
+      (!deleteSessions || !this.lastServerInfoMessage?.features?.projectNativeSessionDeletion)
+    )
+      throw new Error(
+        "Native project deletion requires a supported host and confirmed session scope.",
+      );
     const payload = await this.sendNamespacedCorrelatedSessionRequest<"project.remove.response">({
       requestId,
       message: {
         type: "project.remove.request",
         projectId,
         deleteSessions,
+        ...(deleteNativeSessions ? { deleteNativeSessions: true as const } : {}),
       },
     });
     if (!payload.accepted) {
