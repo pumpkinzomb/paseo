@@ -1390,7 +1390,7 @@ export const ptBR: TranslationResources = {
         pending: "Pendentes: {{count}}",
       },
       subSessions: {
-        unassigned: "Espaços da sala · não atribuídos",
+        unassigned: "Espaços da sala",
         workspaceHistory: "Histórico de espaços ({{count}})",
         delegatedCount: "Trabalho delegado: {{count}}",
         group: "Subsessões de {{name}}",

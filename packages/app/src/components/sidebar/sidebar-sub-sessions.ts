@@ -24,6 +24,15 @@ export interface SidebarSubSessionGroups {
 
 const EMPTY_CHILDREN = new Map<string, readonly SidebarWorkspacePlacement[]>();
 
+/** Only a resolved assistant room uses conversation-only navigation. Unknown inventory stays visible. */
+export function isRoomSessionWorkspaceVisible(input: {
+  hasLeads: boolean;
+  sessionCount: number | undefined;
+  hasAgentEvidence: boolean;
+}): boolean {
+  return !input.hasLeads || input.sessionCount !== 0 || input.hasAgentEvidence;
+}
+
 /**
  * Maps each visible sub-session to the visible root session it nests under. Nesting is one
  * level deep: a sub-session of a sub-session joins the same root. A parent that is hidden,

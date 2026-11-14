@@ -1385,7 +1385,7 @@ export const ru: TranslationResources = {
         pending: "Ожидают: {{count}}",
       },
       subSessions: {
-        unassigned: "Рабочие области комнаты · не назначены",
+        unassigned: "Рабочие области комнаты",
         workspaceHistory: "История рабочих областей ({{count}})",
         delegatedCount: "Делегированные задачи: {{count}}",
         group: "Подсессии {{name}}",

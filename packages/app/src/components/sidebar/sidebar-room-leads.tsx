@@ -15,7 +15,6 @@ import { useRoomLeads } from "@/default-assistant/use-room-leads";
 import { navigateAssistantConversation } from "@/default-assistant/conversation-navigation";
 import { useAgentDescriptor } from "@/agent-presentation";
 import { PressHighlight } from "@/components/ui/press-highlight";
-import { DensityIcon } from "@/components/ui/density-icon";
 import { StatusIcon } from "@/components/status-icon";
 import { StatusRing } from "@/components/status-ring";
 import { TreeChevron } from "@/components/tree-primitives";
@@ -34,7 +33,11 @@ import {
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { SidebarSubSessionGroup } from "./sidebar-sub-session-group";
 import { useSidebarRoomWork } from "./sidebar-room-work-context";
-import { partitionRoomWork, leadCollapseKey } from "./sidebar-sub-sessions";
+import {
+  partitionRoomWork,
+  leadCollapseKey,
+  isRoomSessionWorkspaceVisible,
+} from "./sidebar-sub-sessions";
 import type {
   SidebarWorkspaceEntry,
   SidebarWorkspacePlacement,
@@ -77,12 +80,59 @@ export function SidebarRoomLeads({
       bi = order.indexOf(b.segments[0]!.agentId);
     return (ai < 0 ? Infinity : ai) - (bi < 0 ? Infinity : bi);
   });
-  const workspaceWork = placements.map((placement) => ({
-    placement,
-    creatorAgent: entries.get(placement.workspaceKey)?.creatorAgent,
-  }));
+  const zeroSessionIds = useMemo(
+    () =>
+      new Set([
+        ...placements
+          .filter((item) => entries.get(item.workspaceKey)?.sessionCount === 0)
+          .map((item) => item.workspaceId),
+        ...archivedSubSessions
+          .filter((item) => item.sessionCount === 0)
+          .map((item) => item.workspaceId),
+      ]),
+    [placements, entries, archivedSubSessions],
+  );
+  const agentWorkspaceIds = useSessionStore(
+    useShallow((state) => {
+      const session = state.sessions[serverId];
+      const evidence = new Set<string>();
+      // Exact-host cached records can contradict an older zero-count projection. Never infer
+      // absence from this partial inventory, or scan other hosts to establish room membership.
+      for (const records of [session?.agents, session?.agentDetails]) {
+        for (const agent of records?.values() ?? []) {
+          if (!agent.background && agent.workspaceId && zeroSessionIds.has(agent.workspaceId)) {
+            evidence.add(agent.workspaceId);
+          }
+        }
+      }
+      return [...evidence];
+    }),
+  );
+  const hasLeads = leads.length > 0;
+  const workspaceWork = placements
+    .filter((placement) =>
+      isRoomSessionWorkspaceVisible({
+        hasLeads,
+        sessionCount: entries.get(placement.workspaceKey)?.sessionCount,
+        hasAgentEvidence: agentWorkspaceIds.includes(placement.workspaceId),
+      }),
+    )
+    .map((placement) => ({
+      placement,
+      creatorAgent: entries.get(placement.workspaceKey)?.creatorAgent,
+    }));
   const partition = partitionRoomWork(serverId, leads, workspaceWork);
-  const archivePartition = partitionRoomWork(serverId, leads, archivedSubSessions);
+  const archivePartition = partitionRoomWork(
+    serverId,
+    leads,
+    archivedSubSessions.filter((item) =>
+      isRoomSessionWorkspaceVisible({
+        hasLeads,
+        sessionCount: item.sessionCount,
+        hasAgentEvidence: item.agentId !== null || agentWorkspaceIds.includes(item.workspaceId),
+      }),
+    ),
+  );
   const { refetch } = query;
   const retry = useCallback(() => {
     void refetch();
@@ -261,15 +311,17 @@ function LeadRow({
           testID={`sidebar-lead-${serverId}:${agentId}`}
           style={styles.title}
         >
-          <View testID={`sidebar-lead-status-${agentId}:${descriptor.statusBucket ?? "loading"}`}>
-            {descriptor.statusBucket === null ? (
-              <StatusRing />
-            ) : (
-              <StatusIcon statusBucket={descriptor.statusBucket} backdrop="surfaceSidebar">
-                <DensityIcon icon={descriptor.icon} size="sm" color="foregroundMuted" />
-              </StatusIcon>
-            )}
-          </View>
+          {descriptor.statusBucket !== "done" ? (
+            <View testID={`sidebar-lead-status-${agentId}:${descriptor.statusBucket ?? "loading"}`}>
+              {descriptor.statusBucket === null ? (
+                <StatusRing />
+              ) : (
+                <StatusIcon statusBucket={descriptor.statusBucket} backdrop="surfaceSidebar">
+                  {null}
+                </StatusIcon>
+              )}
+            </View>
+          ) : null}
           <Text style={styles.name} numberOfLines={1}>
             {descriptor.label}
           </Text>

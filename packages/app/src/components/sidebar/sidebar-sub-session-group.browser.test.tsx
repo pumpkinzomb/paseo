@@ -384,7 +384,12 @@ function conversation(logicalId: string, ids: string[]): AssistantConversation {
 }
 const leadA = conversation("logical-a", ["lead-a", "a-continuation"]);
 const leadB = conversation("logical-b", ["lead-b"]);
-async function mountLeads(width = 320, runningChild = false, secondWork = false) {
+async function mountLeads(
+  width = 320,
+  runningChild = false,
+  secondWork = false,
+  assistantRoom = true,
+) {
   await testI18n.changeLanguage("en");
   useSessionStore.setState({ sessions: {}, agentLastActivity: new Map() });
   const store = useSessionStore.getState();
@@ -403,7 +408,7 @@ async function mountLeads(width = 320, runningChild = false, secondWork = false)
       turn: { phase: "idle" as const, cancellationRequestId: null },
     }),
   );
-  store.setAgents("host", new Map(agents.map((agent) => [agent.id, agent])));
+  store.setAgents("host", new Map((assistantRoom ? agents : []).map((agent) => [agent.id, agent])));
   if (runningChild)
     store.setAgents(
       "host",
@@ -436,17 +441,21 @@ async function mountLeads(width = 320, runningChild = false, secondWork = false)
   const records = [
     entry("owned-1", runningChild ? "running" : "done"),
     entry("owned-2", "done"),
-    { ...entry("room-source", "done"), sessionCount: runningChild ? undefined : 0 },
+    { ...entry("room-source", "done"), sessionCount: 0 },
+    { ...entry("lab-source", "done"), sessionCount: 0 },
+    { ...entry("avatar-source", "done"), sessionCount: 0 },
   ].map((record, index) =>
     index < 2
       ? Object.assign(record, { creatorAgent: { serverId: "host", agentId: "a-continuation" } })
       : record,
   );
-  if (secondWork)
+  if (secondWork) {
+    records.push({ ...entry("unknown-workspace", "done"), sessionCount: undefined });
     records.push({
       ...entry("owned-b", "done"),
       creatorAgent: { serverId: "host", agentId: "lead-b" },
     });
+  }
   const container = document.createElement("div");
   container.style.width = `${width}px`;
   document.body.appendChild(container);
@@ -460,6 +469,13 @@ async function mountLeads(width = 320, runningChild = false, secondWork = false)
       sessionCount: 0,
     },
   ];
+  archive.push({
+    workspaceId: "second-empty-preparation",
+    name: "Second empty preparation",
+    archivedAt: "2026-11-14T00:00:00Z",
+    agentId: null,
+    sessionCount: 0,
+  });
   if (secondWork)
     archive.push({
       workspaceId: "unknown-history",
@@ -468,6 +484,22 @@ async function mountLeads(width = 320, runningChild = false, secondWork = false)
       agentId: "unknown-agent",
       sessionCount: 1,
     });
+  if (secondWork)
+    archive.push(
+      {
+        workspaceId: "known-agent-zero",
+        name: "Known conversation",
+        archivedAt: "2026-11-14T00:00:00Z",
+        agentId: "stored-agent",
+        sessionCount: 0,
+      },
+      {
+        workspaceId: "unknown-count",
+        name: "Unknown inventory",
+        archivedAt: "2026-11-14T00:00:00Z",
+        agentId: null,
+      },
+    );
   const draw = () => (
     <QueryClientProvider client={queryClient}>
       <SidebarRoomWorkProvider
@@ -487,9 +519,15 @@ async function mountLeads(width = 320, runningChild = false, secondWork = false)
   );
   render(draw(), { container });
   await waitFor(() =>
-    expect(container.querySelector('[data-testid="sidebar-lead-host:lead-a"]')).not.toBeNull(),
+    expect(
+      container.querySelector(
+        assistantRoom
+          ? '[data-testid="sidebar-lead-host:lead-a"]'
+          : '[data-testid="row-room-source"]',
+      ),
+    ).not.toBeNull(),
   );
-  return { container, queryClient };
+  return { container, queryClient, records, archive };
 }
 function testElement(container: HTMLElement, id: string) {
   const element = container.querySelector<HTMLElement>(`[data-testid="${id}"]`);
@@ -508,7 +546,7 @@ function removeActiveSegment() {
 }
 describe("logical lead task hierarchy", () => {
   it.each([220, 300, 320])(
-    "keeps owned Done2 under one lead at %ipx; source and empty workspace history stay room-scoped",
+    "keeps owned Done2 under one lead at %ipx without empty conversation rows",
     async (width) => {
       const { container } = await mountLeads(width);
       expect(actions.getConversation).toHaveBeenCalledTimes(2);
@@ -519,10 +557,16 @@ describe("logical lead task hierarchy", () => {
           '[data-testid="sidebar-sub-sessions-done-toggle-host:parent:lead:logical-b"]',
         ),
       ).toBeNull();
-      expect(testElement(container, "row-room-source")).toBeTruthy();
+      for (const id of ["room-source", "lab-source", "avatar-source"]) {
+        expect(container.querySelector(`[data-testid="row-${id}"]`)).toBeNull();
+      }
       expect(
-        testElement(container, "sidebar-workspace-history-toggle-host:parent").textContent,
-      ).toContain("1");
+        container.querySelector('[data-testid="sidebar-workspace-history-toggle-host:parent"]'),
+      ).toBeNull();
+      expect(
+        container.querySelector('[data-testid="sidebar-room-unassigned-host:parent"]'),
+      ).toBeNull();
+      expect(container.querySelector('[data-testid^="sidebar-lead-status-"]')).toBeNull();
       if (width === 320) await page.screenshot({ element: container });
       act(() => testElement(container, doneId).click());
       expect(testElement(container, "row-owned-1")).toBeTruthy();
@@ -587,23 +631,87 @@ describe("logical lead task hierarchy", () => {
     expect(
       container.querySelector('[data-testid="sidebar-sub-sessions-delete-done-host:parent"]'),
     ).toBeNull();
+    expect(testElement(container, "sidebar-workspace-history-toggle-host:parent").textContent).toBe(
+      "Workspace history (2)",
+    );
+    act(() => testElement(container, "sidebar-workspace-history-toggle-host:parent").click());
+    expect(
+      testElement(container, "sidebar-archived-sub-session-host:known-agent-zero"),
+    ).toBeTruthy();
+    expect(testElement(container, "sidebar-archived-sub-session-host:unknown-count")).toBeTruthy();
+    expect(
+      container.querySelector(
+        '[data-testid="sidebar-archived-sub-session-host:empty-preparation"]',
+      ),
+    ).toBeNull();
+    expect(
+      container.querySelector(
+        '[data-testid="sidebar-archived-sub-session-host:second-empty-preparation"]',
+      ),
+    ).toBeNull();
+    expect(testElement(container, "row-unknown-workspace")).toBeTruthy();
+    expect(testElement(container, "sidebar-room-unassigned-host:parent").textContent).toContain(
+      "Room workspaces",
+    );
+    expect(testElement(container, "sidebar-room-unassigned-host:parent").textContent).not.toContain(
+      "unassigned",
+    );
+  });
+  it("keeps ordinary empty project workspaces and preparation history visible", async () => {
+    const { container } = await mountLeads(320, false, false, false);
+    for (const id of ["room-source", "lab-source", "avatar-source"])
+      expect(testElement(container, `row-${id}`)).toBeTruthy();
+    expect(testElement(container, "sidebar-workspace-history-toggle-host:parent").textContent).toBe(
+      "Workspace history (2)",
+    );
+    expect(container.querySelector('[data-testid="sidebar-room-leads-host:parent"]')).toBeNull();
+  });
+  it("uses only exact-host workspace agent evidence to override stale zero counts", async () => {
+    const { container, records, archive } = await mountLeads();
+    const before = structuredClone({ records, archive });
+    const store = useSessionStore.getState();
+    store.initializeSession("foreign", null);
+    const evidence = {
+      ...baseAgent,
+      id: "evidence",
+      workspaceId: "lab-source",
+      serverId: "foreign",
+      background: false,
+    };
+    act(() => store.setAgentDetails("foreign", new Map([[evidence.id, evidence]])));
+    expect(container.querySelector('[data-testid="row-lab-source"]')).toBeNull();
+    act(() =>
+      store.setAgentDetails(
+        "host",
+        new Map([
+          [evidence.id, { ...evidence, serverId: "host", workspaceId: "another-room-workspace" }],
+        ]),
+      ),
+    );
+    expect(container.querySelector('[data-testid="row-lab-source"]')).toBeNull();
+    act(() =>
+      store.setAgentDetails("host", new Map([[evidence.id, { ...evidence, serverId: "host" }]])),
+    );
+    expect(testElement(container, "row-lab-source")).toBeTruthy();
+    expect(container.querySelector('[data-testid="row-avatar-source"]')).toBeNull();
+    expect({ records, archive }).toEqual(before);
   });
   it("shows active provider state separately from delegated work, even when collapsed", async () => {
     const { container } = await mountLeads(300, true);
-    expect(testElement(container, "sidebar-lead-status-lead-a:done")).toBeTruthy();
+    expect(container.querySelector('[data-testid="sidebar-lead-status-lead-a:done"]')).toBeNull();
     expect(testElement(container, "sidebar-lead-work-status-lead-a:running")).toBeTruthy();
     expect(testElement(container, "sidebar-lead-work-host:shared-child").textContent).toBe(
       baseAgent.title,
     );
     expect(testElement(container, "row-room-source")).not.toBeNull();
-    expect(testElement(container, "sidebar-lead-status-lead-b:done")).toBeTruthy();
+    expect(container.querySelector('[data-testid="sidebar-lead-status-lead-b:done"]')).toBeNull();
     act(() => testElement(container, "sidebar-lead-toggle-host:lead-a").click());
     patchLead("a-continuation", {
       status: "running",
       turn: { phase: "open", turnId: "turn", startedAt: new Date(), cancellationRequestId: null },
     });
     expect(testElement(container, "sidebar-lead-status-lead-a:running")).toBeTruthy();
-    expect(testElement(container, "sidebar-lead-status-lead-b:done")).toBeTruthy();
+    expect(container.querySelector('[data-testid="sidebar-lead-status-lead-b:done"]')).toBeNull();
     await page.screenshot({ element: container });
     patchLead("a-continuation", {
       status: "idle",
@@ -612,6 +720,11 @@ describe("logical lead task hierarchy", () => {
       attentionReason: "finished",
     });
     expect(testElement(container, "sidebar-lead-status-lead-a:attention")).toBeTruthy();
+    patchLead("a-continuation", { requiresAttention: true, attentionReason: "permission" });
+    expect(testElement(container, "sidebar-lead-status-lead-a:needs_input")).toBeTruthy();
+    patchLead("a-continuation", { requiresAttention: true, attentionReason: "error" });
+    expect(testElement(container, "sidebar-lead-status-lead-a:failed")).toBeTruthy();
+    patchLead("a-continuation", { requiresAttention: true, attentionReason: "finished" });
     patchLead("lead-a", { status: "running" });
     expect(testElement(container, "sidebar-lead-status-lead-a:attention")).toBeTruthy();
     removeActiveSegment();

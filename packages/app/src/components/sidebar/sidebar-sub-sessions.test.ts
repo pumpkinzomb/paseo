@@ -5,6 +5,7 @@ import type {
   SidebarWorkspacePlacement,
 } from "@/hooks/use-sidebar-workspaces-list";
 import {
+  isRoomSessionWorkspaceVisible,
   areSubSessionRootKeysEqual,
   groupSubSessionsByActivity,
   partitionRoomWork,
@@ -252,5 +253,36 @@ describe("room logical-lead ownership", () => {
     });
     expect(groups.active.map((item) => item.workspaceId)).toEqual(["source", "unknown"]);
     expect(groups.done.map((item) => item.workspaceId)).toEqual(["task"]);
+  });
+});
+
+describe("assistant-room conversation visibility", () => {
+  test("hides only confirmed zero-session entries inside a resolved lead room", () => {
+    const source = Object.freeze({ ...entry("source"), sessionCount: 0 });
+    const before = structuredClone(source);
+    expect(
+      isRoomSessionWorkspaceVisible({
+        hasLeads: true,
+        sessionCount: source.sessionCount,
+        hasAgentEvidence: false,
+      }),
+    ).toBe(false);
+    expect(
+      isRoomSessionWorkspaceVisible({ hasLeads: false, sessionCount: 0, hasAgentEvidence: false }),
+    ).toBe(true);
+    expect(
+      isRoomSessionWorkspaceVisible({
+        hasLeads: true,
+        sessionCount: undefined,
+        hasAgentEvidence: false,
+      }),
+    ).toBe(true);
+    expect(
+      isRoomSessionWorkspaceVisible({ hasLeads: true, sessionCount: 1, hasAgentEvidence: false }),
+    ).toBe(true);
+    expect(
+      isRoomSessionWorkspaceVisible({ hasLeads: true, sessionCount: 0, hasAgentEvidence: true }),
+    ).toBe(true);
+    expect(source).toEqual(before);
   });
 });

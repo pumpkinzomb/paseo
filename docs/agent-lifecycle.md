@@ -507,10 +507,13 @@ stored agents, matching any provider segment of the lead. Conflicting evidence s
 it never changes a stored creator. Paths, names and the selected tab cannot establish ownership.
 
 Room workspaces without proven ownership remain room-scoped. Complete server inventory distinguishes
-an empty workspace or retained source from a completed session; missing inventory means unknown.
-Empty archived preparation workspaces remain workspace history and do not enter Done counts or
-session bulk deletion. A lead's completed-work action refuses previews that reach another lead or
-an unassigned workspace. Source links in Files remain independent of these presentation groups.
+zero registered Paseo sessions from a completed session; missing inventory means unknown. This count
+does not establish whether external provider history exists. In a room with logical leads, confirmed
+zero-session workspaces and empty archived
+preparations are omitted from the session tree. Ordinary project workspace navigation keeps them.
+This display filter does not change workspace records, source associations or files. A lead's
+completed-work action refuses previews that reach another lead or an unassigned workspace.
+Source links in Files remain independent of these presentation groups.
 
 Navigation consolidates native segment tabs in client layout only. It does not archive or delete agents. Legacy segments in other workspaces are not moved or hidden automatically. A second client can refresh the logical record after assistant events/focus; there is no cross-application native-session ownership lock.
 

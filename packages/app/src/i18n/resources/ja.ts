@@ -1381,7 +1381,7 @@ export const ja: TranslationResources = {
         pending: "保留中: {{count}}",
       },
       subSessions: {
-        unassigned: "ルームのワークスペース · 未割り当て",
+        unassigned: "ルームのワークスペース",
         workspaceHistory: "ワークスペース履歴 ({{count}})",
         delegatedCount: "委任された作業: {{count}}",
         group: "{{name}} のサブセッション",

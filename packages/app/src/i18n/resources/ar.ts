@@ -1364,7 +1364,7 @@ export const ar: TranslationResources = {
         pending: "قيد الانتظار: {{count}}",
       },
       subSessions: {
-        unassigned: "مساحات عمل الغرفة · غير مسندة",
+        unassigned: "مساحات عمل الغرفة",
         workspaceHistory: "سجل مساحات العمل ({{count}})",
         delegatedCount: "المهام المفوضة: {{count}}",
         group: "الجلسات الفرعية لـ {{name}}",
