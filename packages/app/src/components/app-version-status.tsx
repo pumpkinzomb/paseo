@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useLocalAppUpdate } from "@/hooks/use-local-app-update";
 import type { Theme } from "@/styles/theme";
 import { Text, View } from "react-native";
-import { Download, GitBranch } from "lucide-react-native";
+import { CircleArrowUp, GitBranch } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
@@ -113,7 +113,7 @@ function UpdateAction({
           <Button
             size="sm"
             variant="ghost"
-            leftIcon={Download}
+            leftIcon={CircleArrowUp}
             loading={update.pending}
             disabled={update.pending}
             onPress={update.onUpdateAndRestart}

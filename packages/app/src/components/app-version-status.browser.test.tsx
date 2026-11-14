@@ -363,7 +363,7 @@ it.each([220, 300, 320])(
     expect(request).toHaveBeenCalledTimes(1);
   },
 );
-it("uses a labelled download action with restart accessibility and a disabled pending state", async () => {
+it("uses a labelled upgrade action with restart accessibility and a disabled pending state", async () => {
   await i18n.changeLanguage("ko");
   const request = vi.fn();
   const view = mountUpdate({

@@ -30,6 +30,7 @@ export const ChevronLeft = StubIcon;
 export const ChevronRight = StubIcon;
 export const ChevronUp = StubIcon;
 export const CircleAlert = StubIcon;
+export const CircleArrowUp = StubIcon;
 export const CircleCheck = StubIcon;
 export const CircleDot = StubIcon;
 export const CircleSlash = StubIcon;
