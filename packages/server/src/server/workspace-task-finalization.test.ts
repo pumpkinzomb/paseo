@@ -92,6 +92,7 @@ async function fixture() {
     busy: false,
     consumers: false,
     applied: head,
+    segmentIds: ["lead", "continuation"],
     failArchive: false,
     closes: 0,
     archives: 0,
@@ -134,9 +135,9 @@ async function fixture() {
         leadForAgent: async () => lead,
         canonical: async () => ({
           logicalId: "logical",
-          activeAgentId: "continuation",
+          activeAgentId: state.segmentIds.at(-1)!,
           activeWorkspaceId: "room",
-          segments: ["lead", "continuation"].map((agentId) => ({
+          segments: state.segmentIds.map((agentId) => ({
             agentId,
             workspaceId: "room",
             provider: "codex",
@@ -533,4 +534,47 @@ it("composes the real deletion fence, archive queue, stored-agent archive and wo
   expect((await storage.get("worker"))?.archivedAt).toBeTruthy();
   expect(f.git("branch", "--list", "task-reviewed")).toBe("");
   await manager.withWorkspaceSessionDeletion("task", async () => {});
+});
+
+it("requires fresh review after a newer applied release and same-lead provider continuation for partial retirement", async () => {
+  const f = await fixture(),
+    principal = {};
+  f.state.failArchive = true;
+  const old = await f.service.inspect(principal, "task");
+  expect((await f.service.apply(principal, old.previewToken!, () => true)).phase).toBe("blocked");
+  const newer = f.git(
+    "commit-tree",
+    `${f.head}^{tree}`,
+    "-p",
+    f.head,
+    "-m",
+    "new verified release",
+  );
+  f.git("update-ref", "refs/heads/main", newer);
+  f.state.applied = newer;
+  f.parents.set("next-provider", {
+    id: "next-provider",
+    workspaceId: "room",
+    labels: { "paseo.role": "assistant" },
+  });
+  f.state.segmentIds.push("next-provider");
+  await expect(f.service.apply(principal, old.previewToken!, () => true)).rejects.toThrow(
+    "expired",
+  );
+  const reviewed = await f.service.inspect(principal, "task");
+  expect(reviewed.blockers).toEqual([]);
+  expect(reviewed.task?.appliedRevision).toBe(newer);
+  expect(reviewed.task?.ownershipRevision).not.toBe(old.task?.ownershipRevision);
+  expect(reviewed.task).toMatchObject({
+    root: old.task!.root,
+    headSha: f.head,
+    branch: "task-reviewed",
+    evidenceId: old.task!.evidenceId,
+    lead: old.task!.lead,
+  });
+  expect((await f.service.apply(principal, reviewed.previewToken!, () => true)).phase).toBe(
+    "retired",
+  );
+  expect(f.git("branch", "--list", "task-reviewed")).toBe("");
+  expect(f.state.archives).toBe(1);
 });

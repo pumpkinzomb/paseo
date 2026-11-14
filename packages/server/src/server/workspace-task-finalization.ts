@@ -141,6 +141,34 @@ async function labIdentity(record: EligibleTask) {
   return stat;
 }
 
+function assertRetryScope(
+  record: EligibleTask,
+  previous: WorkspaceTaskFinalization,
+  ownership: TaskOwnership,
+) {
+  const evidence = record.developmentEvidence;
+  const current = {
+    root: record.worktreeRoot,
+    branch: record.branch,
+    headSha: evidence?.headSha,
+    sourceWorkspaceId: evidence?.sourceWorkspaceId,
+    repository: evidence?.repository,
+    evidenceId: evidence?.id,
+    lead: ownership.lead,
+  };
+  const frozen = {
+    root: previous.root,
+    branch: previous.branch,
+    headSha: previous.headSha,
+    sourceWorkspaceId: previous.sourceWorkspaceId,
+    repository: previous.repository,
+    evidenceId: previous.evidenceId,
+    lead: previous.lead,
+  };
+  if (digest(current) !== digest(frozen))
+    throw new Error("Original task scope changed; retry cannot adopt a different task");
+}
+
 /** Explicit completion of one reviewed self-development task. Never called by turn-finished. */
 export class WorkspaceTaskFinalizer {
   private readonly previews = new Map<string, Preview>();
@@ -256,7 +284,15 @@ export class WorkspaceTaskFinalizer {
           !record.archivedAt
         )
           throw new Error("Missing task checkout has no recoverable finalization receipt");
-        task = { ...previous, phase: "pending", updatedAt: new Date().toISOString() };
+        assertRetryScope(record, previous, ownership);
+        task = {
+          ...previous,
+          phase: "pending",
+          updatedAt: new Date().toISOString(),
+          appliedRevision: await this.deps.appliedRevision(),
+          ownershipRevision: ownership.revision,
+          ownershipProof: ownership.proof,
+        };
       } else {
         if (record.archivedAt)
           throw new Error("Task is archived; inspect the pending finalization before restoring");
