@@ -131,14 +131,104 @@ export class DevelopmentReview {
       developmentSourceIds: [...new Set([...(record.developmentSourceIds ?? []), sourceId])],
     }));
   }
+  private async relatedSource(
+    parentId: string,
+    source: PersistedWorkspaceRecord,
+  ): Promise<boolean> {
+    if (source.untrustedSource) return false;
+    if (source.workspaceId === parentId) return true;
+    if (await this.descendant(parentId, source)) return true;
+    for (const child of await this.workspaces.listAll()) {
+      if (
+        !child.isPaseoOwnedWorktree ||
+        child.untrustedSource ||
+        child.mainRepoRoot !== source.cwd ||
+        !(await this.descendant(parentId, child))
+      )
+        continue;
+      try {
+        if ((await repository(child)) === (await repository(source))) return true;
+      } catch {
+        /* Missing placement cannot establish a new association. */
+      }
+    }
+    return false;
+  }
   private async linked(parentId: string, sourceId: string): Promise<PersistedWorkspaceRecord> {
     const parent = await this.get(parentId);
-    if (!parent.developmentSourceIds?.includes(sourceId))
-      throw new Error("Source is not linked to this conversation");
     const source = await this.get(sourceId);
-    if (parent.developmentSourceIdentities?.[sourceId] !== (await repository(source)))
-      throw new Error("Linked repository identity changed; review and link the source again");
+    if (parent.developmentSourceIds?.includes(sourceId)) {
+      if (parent.developmentSourceIdentities?.[sourceId] !== (await repository(source)))
+        throw new Error("Linked repository identity changed; review and link the source again");
+    } else if (!(await this.relatedSource(parentId, source)))
+      throw new Error("Source is not linked to this conversation");
     return source;
+  }
+  /** Called only inside admitted workspace creation; list/read discovery never writes. */
+  async recordDelegation(taskId: string, sourceCwd?: string): Promise<void> {
+    const task = await this.get(taskId);
+    if (!task.parentWorkspaceId || !task.isPaseoOwnedWorktree || task.untrustedSource) return;
+    let identity: string;
+    try {
+      identity = await repository(task);
+    } catch {
+      return;
+    }
+    const ancestors: string[] = [];
+    let parentId: string | undefined = task.parentWorkspaceId;
+    while (parentId && !ancestors.includes(parentId)) {
+      ancestors.push(parentId);
+      parentId = (await this.get(parentId)).parentWorkspaceId;
+    }
+    for (const source of await this.workspaces.listActive()) {
+      if (
+        source.untrustedSource ||
+        source.workspaceId === taskId ||
+        ![sourceCwd, task.mainRepoRoot].includes(source.cwd)
+      )
+        continue;
+      try {
+        if ((await repository(source)) !== identity) continue;
+      } catch {
+        continue;
+      }
+      for (const ancestor of ancestors) {
+        if (ancestor === source.workspaceId) continue;
+        await this.workspaces.update(ancestor, (parent) => {
+          if (parent.developmentSourceIds?.includes(source.workspaceId)) return parent;
+          return {
+            ...parent,
+            developmentSourceIds: [...(parent.developmentSourceIds ?? []), source.workspaceId],
+            developmentSourceIdentities: {
+              ...parent.developmentSourceIdentities,
+              [source.workspaceId]: identity,
+            },
+          };
+        });
+      }
+    }
+  }
+  private async liveSource(parentId: string, workspace: PersistedWorkspaceRecord): Promise<string> {
+    const parent = await this.get(parentId);
+    if (parent.developmentSourceIds?.includes(workspace.workspaceId)) return workspace.workspaceId;
+    if (!(await this.descendant(parentId, workspace)) || workspace.untrustedSource)
+      throw new Error("Selected development scope unavailable");
+    const identity = await repository(workspace);
+    const records = await this.workspaces.listAll();
+    const candidates = [
+      ...(parent.developmentSourceIds ?? []),
+      ...records
+        .filter((record) => record.cwd === workspace.mainRepoRoot)
+        .map((record) => record.workspaceId),
+    ];
+    for (const id of candidates) {
+      try {
+        if ((await repository(await this.linked(parentId, id))) === identity) return id;
+      } catch {
+        /* Do not use an unrelated or replaced source. */
+      }
+    }
+    return workspace.workspaceId;
   }
   async capture(
     parentId: string,
@@ -163,6 +253,9 @@ export class DevelopmentReview {
       await gitControl(task.cwd, ["rev-parse", "--verify", "HEAD^{commit}"]),
     );
     await git(task.cwd, ["merge-base", "--is-ancestor", baseSha, headSha]);
+    const parent = await this.get(parentId);
+    if (sourceId !== parentId && !parent.developmentSourceIds?.includes(sourceId))
+      await this.link(parentId, sourceId);
     const existing = task.developmentEvidence;
     if (
       existing?.headSha === headSha &&
@@ -197,17 +290,13 @@ export class DevelopmentReview {
   ): Promise<DevelopmentReviewScope> {
     const evidence = pinned ? workspace.developmentEvidence : undefined;
     const parent = await this.get(parentId);
-    const scopeToken = createHash("sha256")
-      .update(
-        JSON.stringify([
-          sourceId,
-          parent.developmentSourceIdentities?.[sourceId],
-          workspace.workspaceId,
-          workspace.cwd,
-          evidence?.id,
-        ]),
-      )
-      .digest("hex");
+    const token = (identity: string | undefined) =>
+      createHash("sha256")
+        .update(
+          JSON.stringify([sourceId, identity, workspace.workspaceId, workspace.cwd, evidence?.id]),
+        )
+        .digest("hex");
+    const scopeToken = token(parent.developmentSourceIdentities?.[sourceId]);
     const scope: DevelopmentReviewScope = {
       scopeToken,
       workspaceId: workspace.workspaceId,
@@ -223,6 +312,7 @@ export class DevelopmentReview {
     try {
       const source = await this.linked(parentId, sourceId);
       const identity = await repository(source);
+      scope.scopeToken = token(parent.developmentSourceIdentities?.[sourceId] ?? identity);
       if (evidence) {
         if (evidence.sourceWorkspaceId !== sourceId || evidence.repository !== identity)
           throw new Error("Repository identity changed");
@@ -248,30 +338,66 @@ export class DevelopmentReview {
     }
     return scope;
   }
+  private async retainedSources(
+    parentId: string,
+    record: PersistedWorkspaceRecord,
+    records: PersistedWorkspaceRecord[],
+  ): Promise<string[]> {
+    if (!record.isPaseoOwnedWorktree || !record.mainRepoRoot) return [];
+    const result = [];
+    for (const source of records) {
+      if (
+        source.workspaceId !== parentId &&
+        source.cwd === record.mainRepoRoot &&
+        (await this.relatedSource(parentId, source))
+      )
+        result.push(source.workspaceId);
+    }
+    return result;
+  }
   async list(parentId: string): Promise<DevelopmentReviewScope[]> {
     const parent = await this.get(parentId);
+    const records = await this.workspaces.listAll();
+    const ids = new Set(parent.developmentSourceIds ?? []);
+    const related: PersistedWorkspaceRecord[] = [];
+    for (const record of records) {
+      if (record.untrustedSource || !(await this.descendant(parentId, record))) continue;
+      try {
+        await repository(record);
+        related.push(record);
+        ids.add(record.workspaceId);
+        for (const id of await this.retainedSources(parentId, record, records)) ids.add(id);
+      } catch {
+        /* Missing tasks can still contribute captured evidence below. */
+      }
+    }
     const result: DevelopmentReviewScope[] = [];
-    for (const sourceId of parent.developmentSourceIds ?? []) {
-      const source = await this.workspaces.get(sourceId);
-      if (source) result.push(await this.scope(parentId, source, sourceId));
-      else
+    for (const id of ids) {
+      const workspace = await this.workspaces.get(id);
+      if (!workspace) {
         result.push({
-          workspaceId: sourceId,
-          sourceWorkspaceId: sourceId,
-          label: sourceId,
+          workspaceId: id,
+          sourceWorkspaceId: id,
+          label: id,
           path: "",
           branch: null,
           status: "unavailable",
           error: "Registered source removed",
         });
+        continue;
+      }
+      const sourceId = related.some((item) => item.workspaceId === id)
+        ? await this.liveSource(parentId, workspace)
+        : id;
+      result.push(await this.scope(parentId, workspace, sourceId, false));
     }
-    for (const task of await this.workspaces.listAll()) {
+    for (const task of records) {
       if (!task.isPaseoOwnedWorktree || !(await this.descendant(parentId, task))) continue;
       for (const evidence of [
         ...(task.developmentEvidenceHistory ?? []),
         task.developmentEvidence,
       ]) {
-        if (evidence && parent.developmentSourceIds?.includes(evidence.sourceWorkspaceId)) {
+        if (evidence)
           result.push(
             await this.scope(
               parentId,
@@ -279,37 +405,9 @@ export class DevelopmentReview {
               evidence.sourceWorkspaceId,
             ),
           );
-        }
-      }
-      for (const sourceId of parent.developmentSourceIds ?? []) {
-        try {
-          if ((await repository(task)) === (await repository(await this.get(sourceId)))) {
-            result.push(await this.scope(parentId, task, sourceId, false));
-            break;
-          }
-        } catch {
-          /* Removed tasks retain only their captured evidence. */
-        }
       }
     }
     return result;
-  }
-  private async candidates(parentId: string) {
-    const candidates = [];
-    for (const workspace of await this.workspaces.listActive()) {
-      if (workspace.workspaceId === parentId || workspace.untrustedSource) continue;
-      try {
-        await repository(workspace);
-        candidates.push({
-          workspaceId: workspace.workspaceId,
-          label: workspace.title ?? workspace.displayName,
-          path: workspace.cwd,
-        });
-      } catch {
-        /* A removed/non-repository workspace is not an eligible source. */
-      }
-    }
-    return candidates;
   }
   private async selected(request: DevelopmentReviewReadRequest) {
     const parent = await this.get(request.workspaceId);
@@ -322,27 +420,14 @@ export class DevelopmentReview {
       : undefined;
     if (request.evidenceId && !evidence)
       throw new Error("Selected development evidence unavailable");
-    let sourceId: string | undefined;
-    if (parent.developmentSourceIds?.includes(workspace.workspaceId) && !evidence)
-      sourceId = workspace.workspaceId;
-    else {
-      if (
-        !workspace.isPaseoOwnedWorktree ||
-        !(await this.descendant(parent.workspaceId, workspace))
-      )
-        throw new Error("Selected development scope unavailable");
-      if (evidence) sourceId = evidence.sourceWorkspaceId;
-      else {
-        const identity = await repository(workspace);
-        for (const id of parent.developmentSourceIds ?? []) {
-          if (identity === (await repository(await this.get(id)))) {
-            sourceId = id;
-            break;
-          }
-        }
-      }
-    }
-    if (!sourceId) throw new Error("Selected development scope unavailable");
+    const sourceId = evidence
+      ? evidence.sourceWorkspaceId
+      : await this.liveSource(parent.workspaceId, workspace);
+    if (
+      evidence &&
+      (!workspace.isPaseoOwnedWorktree || !(await this.descendant(parent.workspaceId, workspace)))
+    )
+      throw new Error("Selected development scope unavailable");
     const scope = await this.scope(
       parent.workspaceId,
       { ...workspace, developmentEvidence: evidence },
@@ -359,7 +444,6 @@ export class DevelopmentReview {
     if (request.operation === "list")
       return {
         scopes: await this.list(request.workspaceId),
-        candidates: await this.candidates(request.workspaceId),
       };
     const { workspace, evidence, scope } = await this.selected(request);
     const scopes = [scope];

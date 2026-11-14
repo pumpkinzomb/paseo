@@ -172,3 +172,5 @@ export const SquarePlus = StubIcon;
 export const SquareSlash = StubIcon;
 export const Summary = StubIcon;
 export const TestTube = StubIcon;
+
+export const Files = StubIcon;

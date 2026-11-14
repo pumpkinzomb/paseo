@@ -1,13 +1,10 @@
-import { developmentReviewIdentityKey } from "@/workspace/file-open";
-import {
-  DevelopmentSourceSelector,
-  DevelopmentReviewPane,
-  useDevelopmentSelection,
-} from "@/development-review/pane";
+import { ConversationTreeGroup, DevelopmentTreeGroups } from "@/development-review/tree";
+import { useDevelopmentReviewSelection } from "@/development-review/selection";
+import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { Text, View } from "react-native";
 import { Files } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { useCallback } from "react";
+import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import invariant from "tiny-invariant";
 import { FileExplorerPane } from "@/components/file-explorer-pane";
@@ -26,23 +23,47 @@ const filesPanelPresentation = {
 
 function FilesPanel() {
   const { serverId, workspaceId } = usePaneContext();
-  const selected = useDevelopmentSelection(serverId, workspaceId);
+  const client = useHostRuntimeClient(serverId);
+  if (client?.getLastServerInfoMessage()?.features?.developmentReview !== true)
+    return <ConversationFilesPanel />;
+  return <UnifiedFilesPanel key={`${serverId}:${workspaceId}`} />;
+}
+function UnifiedFilesPanel() {
+  const { serverId, workspaceId } = usePaneContext();
+  const path = useWorkspaceDirectory(serverId, workspaceId) ?? "";
+  const [expanded, setExpanded] = useState(true);
+  const select = useDevelopmentReviewSelection((state) => state.select);
+  const focus = useCallback(
+    () => select(JSON.stringify([serverId, workspaceId]), undefined),
+    [select, serverId, workspaceId],
+  );
+  const toggle = useCallback(() => {
+    focus();
+    setExpanded((value) => !value);
+  }, [focus]);
+  const header = useMemo(
+    () => (
+      <ConversationTreeGroup path={path} expanded={expanded} onPress={toggle} onFocus={focus} />
+    ),
+    [path, expanded, toggle, focus],
+  );
+  const footer = useMemo(() => <DevelopmentTreeGroups />, []);
   return (
-    <View style={styles.container}>
-      <DevelopmentSourceSelector />
-      {selected ? (
-        <DevelopmentReviewPane
-          key={developmentReviewIdentityKey(selected)}
-          selected={selected}
-          mode="files"
-        />
-      ) : (
-        <ConversationFilesPanel />
-      )}
-    </View>
+    <ConversationFilesPanel
+      treeHeader={header}
+      treeFooter={footer}
+      treeExpanded={expanded}
+      onScopeFocus={focus}
+    />
   );
 }
-function ConversationFilesPanel() {
+interface ConversationTreeProps {
+  treeHeader?: ReactElement;
+  treeFooter?: ReactElement;
+  treeExpanded?: boolean;
+  onScopeFocus?: () => void;
+}
+function ConversationFilesPanel(props: ConversationTreeProps) {
   const { t } = useTranslation();
   const { serverId, workspaceId, target, openPreferredTarget, openTargetToSide } = usePaneContext();
   const workspaceRoot = useWorkspaceDirectory(serverId, workspaceId);
@@ -65,6 +86,7 @@ function ConversationFilesPanel() {
   }
   return (
     <FileExplorerPane
+      {...props}
       serverId={serverId}
       workspaceId={workspaceId}
       workspaceRoot={workspaceRoot}

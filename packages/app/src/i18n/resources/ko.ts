@@ -3,14 +3,11 @@ import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
   developmentReview: {
-    conversation: "대화 파일",
-    sources: "개발 소스",
+    conversation: "대화 출력",
     readonly: "읽기 전용 검토",
     refresh: "새로고침",
     back: "상위 폴더",
-    link: "등록된 소스 연결",
-    workspaceId: "등록된 워크스페이스 ID",
-    unavailable: "선택한 소스를 사용할 수 없습니다. 소스를 다시 선택하세요.",
+    unavailable: "선택한 작업을 사용할 수 없습니다. 파일 트리에서 다시 선택하세요.",
     update: "개발 검토를 사용하려면 호스트를 업데이트하세요.",
     capture: "커밋 검토 고정",
     legacy: "기존 작업은 API에서 검토된 base SHA로 캡처해야 합니다.",

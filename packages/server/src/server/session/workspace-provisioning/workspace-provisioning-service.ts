@@ -1,3 +1,4 @@
+import { DevelopmentReview } from "../../development-review.js";
 import type { JsonValue } from "@getpaseo/protocol/agent-types";
 import type { PluginLifecycle } from "../../plugins/lifecycle/index.js";
 import { describeHookWorkspace } from "../../plugins/lifecycle/index.js";
@@ -325,6 +326,8 @@ export function createWorkspaceProvisioningService(deps: {
       await workspaceRegistry.upsert(workspace, {
         expectsInitialAgent: context?.expectsInitialAgent,
       });
+      if (workspace.isPaseoOwnedWorktree)
+        await new DevelopmentReview(workspaceRegistry).recordDelegation(workspace.workspaceId);
       emitWorkspaceCreated(workspace);
       return workspace;
     };
@@ -367,6 +370,10 @@ export function createWorkspaceProvisioningService(deps: {
     await workspaceRegistry.upsert(workspace, {
       expectsInitialAgent: input.expectsInitialAgent,
     });
+    await new DevelopmentReview(workspaceRegistry).recordDelegation(
+      workspace.workspaceId,
+      sourceCwd,
+    );
     emitWorkspaceCreated(workspace);
     return workspace;
   }

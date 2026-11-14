@@ -1,46 +1,82 @@
-import React, { act, useState } from "react";
+import React, { act, useCallback, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { within, waitFor, fireEvent } from "@testing-library/dom";
 import { i18n } from "@/i18n/i18next";
 import type { DevelopmentReviewIdentity } from "@/workspace/file-open";
-import { DevelopmentSourceSelector, DevelopmentReviewPane, useDevelopmentSelection } from "./pane";
+import { FollowingDevelopmentChanges, DevelopmentReviewPane } from "./pane";
+import { filesPanelRegistration } from "@/panels/files-panel";
 const host = vi.hoisted(() => ({
   parent: "parent",
+  originalParent: "parent",
+  server: "server",
   supported: true,
   missing: false,
+  extra: false,
   open: vi.fn(),
   read: vi.fn(),
-  link: vi.fn(),
-  extra: false,
 }));
 vi.mock("@/runtime/host-runtime", () => ({
   useHostRuntimeIsConnected: () => true,
   useHostRuntimeClient: () => ({
     getLastServerInfoMessage: () => ({ features: { developmentReview: host.supported } }),
     readDevelopmentReview: host.read,
-    linkDevelopmentSource: host.link,
   }),
 }));
+vi.mock("@/stores/session-store-hooks", () => ({
+  useWorkspaceDirectory: () => `/scratch/${host.parent}`,
+}));
+vi.mock("@/panels/use-add-file-to-chat", () => ({
+  useAddFileToChat: () => ({ canAddToChat: false, addFile: host.open }),
+}));
+vi.mock("@/components/file-explorer-pane", () => ({ FileExplorerPane: ConversationExplorer }));
+function ConversationExplorer({
+  treeHeader,
+  treeFooter,
+  treeExpanded = true,
+  onScopeFocus,
+  onOpenFile,
+}: {
+  treeHeader?: React.ReactNode;
+  treeFooter?: React.ReactNode;
+  treeExpanded?: boolean;
+  onScopeFocus?: () => void;
+  onOpenFile?: (path: string) => void;
+}) {
+  const open = useCallback(() => {
+    onScopeFocus?.();
+    onOpenFile?.("output.txt");
+  }, [onScopeFocus, onOpenFile]);
+  return (
+    <div data-testid="file-explorer-tree-scroll">
+      {treeHeader}
+      {treeExpanded && (
+        <button type="button" onClick={open}>
+          output.txt
+        </button>
+      )}
+      {treeFooter}
+    </div>
+  );
+}
 vi.mock("@/panels/pane-context", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/panels/pane-context")>()),
-  usePaneFocus: () => ({
-    isWorkspaceFocused: true,
-    isPaneFocused: true,
-    isInteractive: true,
-    focusPane: host.open,
-  }),
   usePaneContext: () => ({
-    serverId: "server",
+    serverId: host.server,
     workspaceId: host.parent,
+    target: { kind: "files" },
     openPreferredTarget: host.open,
   }),
 }));
 vi.mock("@/hooks/use-settings", () => ({
   useAppSettings: () => ({ settings: { codeFontSize: 13, monoFontFamily: "monospace" } }),
 }));
-vi.mock("@/git/diff-document", () => ({ DiffDocument: () => null }));
+vi.mock("@/git/diff-document", () => ({
+  DiffDocument: ({ files }: { files: { path: string }[] }) => (
+    <div data-testid="active-changes">{files.map((file) => file.path).join(",")}</div>
+  ),
+}));
 vi.mock("@/file-panels/source/find/index.web", async () => ({
   FileFind: () => null,
   FileFindModel: (await import("@/file-panels/source/find/model.web")).FileFindModel,
@@ -63,6 +99,7 @@ vi.mock("react-native-unistyles", async (importOriginal) => {
     },
   };
 });
+
 const scopes = ["Alpha", "Beta"].map((label) => ({
   workspaceId: label,
   sourceWorkspaceId: label,
@@ -71,24 +108,23 @@ const scopes = ["Alpha", "Beta"].map((label) => ({
   branch: "main",
   status: "live" as const,
 }));
+const Files = filesPanelRegistration.component;
+const conversationChanges = <div data-testid="conversation-changes">Conversation changes</div>;
 let root: Root;
 let container: HTMLDivElement;
 let cache: QueryClient;
 let parentCounter = 0;
 function Shell() {
-  const selected = useDevelopmentSelection("server", host.parent);
   const [pinned, setPinned] = useState<{
     path: string;
-    developmentReview: DevelopmentReviewIdentity;
+    developmentReview?: DevelopmentReviewIdentity;
   }>();
   host.open.mockImplementation(setPinned);
   return (
     <>
-      <DevelopmentSourceSelector />
-      {selected && (
-        <DevelopmentReviewPane key={JSON.stringify(selected)} selected={selected} mode="files" />
-      )}
-      {pinned && (
+      <Files />
+      <FollowingDevelopmentChanges conversation={conversationChanges} />
+      {pinned?.developmentReview && (
         <div data-testid="pinned-file">
           <DevelopmentReviewPane
             key={JSON.stringify(pinned)}
@@ -101,44 +137,7 @@ function Shell() {
     </>
   );
 }
-beforeEach(async ({ task }) => {
-  vi.stubGlobal("React", React);
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  await i18n.changeLanguage("en");
-  host.parent = `parent-${parentCounter++}`;
-  host.supported = !task.name.startsWith("old hosts");
-  host.missing = false;
-  host.extra = false;
-  host.open.mockReset();
-  host.read.mockReset();
-  host.link.mockReset();
-  host.read.mockImplementation(async (request) => {
-    if (request.operation === "list") return { requestId: "list", scopes, candidates: [] };
-    if (host.missing) throw new Error("Selected development scope unavailable");
-    if (request.operation === "file")
-      return { requestId: "file", scopes, content: `${request.scopeWorkspaceId} pinned source\n` };
-    return {
-      requestId: "files",
-      scopes,
-      entries: [
-        ...(host.extra
-          ? [{ name: "new.txt", path: "new.txt", kind: "file", size: 1, modifiedAt: "now" }]
-          : []),
-        {
-          name: `${request.scopeWorkspaceId}.txt`,
-          path: `${request.scopeWorkspaceId}.txt`,
-          kind: "file",
-          size: 1,
-          modifiedAt: "now",
-        },
-      ],
-    };
-  });
-  cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  container = document.createElement("div");
-  container.style.cssText = "width:900px;height:800px";
-  document.body.append(container);
-  root = createRoot(container);
+function render() {
   act(() =>
     root.render(
       <QueryClientProvider client={cache}>
@@ -146,6 +145,75 @@ beforeEach(async ({ task }) => {
       </QueryClientProvider>,
     ),
   );
+}
+beforeEach(async ({ task }) => {
+  vi.stubGlobal("React", React);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  await i18n.changeLanguage("en");
+  host.parent = `parent-${parentCounter++}`;
+  host.originalParent = host.parent;
+  host.server = "server";
+  host.supported = !task.name.startsWith("old hosts");
+  host.missing = false;
+  host.extra = false;
+  host.open.mockReset();
+  host.read.mockReset();
+  host.read.mockImplementation(async (request) => {
+    if (request.operation === "list")
+      return {
+        requestId: "list",
+        scopes:
+          request.workspaceId === host.originalParent && host.server === "server" ? scopes : [],
+      };
+    if (host.missing) throw new Error("Selected development scope unavailable");
+    if (request.operation === "file")
+      return { requestId: "file", scopes, content: `${request.scopeWorkspaceId} pinned source\n` };
+    if (request.operation === "diff")
+      return {
+        requestId: "diff",
+        scopes,
+        files: [
+          {
+            path: `${request.scopeWorkspaceId}.changed.ts`,
+            isNew: true,
+            isDeleted: false,
+            additions: 1,
+            deletions: 0,
+            hunks: [],
+          },
+        ],
+      };
+    const entries =
+      request.path === "src"
+        ? [{ name: "index.ts", path: "src/index.ts", kind: "file" }]
+        : [
+            { name: "src", path: "src", kind: "directory" },
+            {
+              name: `${request.scopeWorkspaceId}.txt`,
+              path: `${request.scopeWorkspaceId}.txt`,
+              kind: "file",
+            },
+          ];
+    if (host.extra && !request.path)
+      entries.push({ name: "new.txt", path: "new.txt", kind: "file" });
+    return {
+      requestId: "files",
+      scopes,
+      entries: entries.map((entry) => ({
+        name: entry.name,
+        path: entry.path,
+        kind: entry.kind,
+        size: 1,
+        modifiedAt: "now",
+      })),
+    };
+  });
+  cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  container = document.createElement("div");
+  container.style.cssText = "width:900px;height:1000px";
+  document.body.append(container);
+  root = createRoot(container);
+  render();
 });
 afterEach(() => {
   act(() => root.unmount());
@@ -153,74 +221,83 @@ afterEach(() => {
   cache.clear();
   vi.unstubAllGlobals();
 });
-async function choose(name: string) {
+async function expand(name: string) {
   const ui = within(container);
-  fireEvent.click(ui.getByRole("button", { name: /^Development source:/ }));
   await waitFor(() =>
-    expect(ui.getByRole("button", { name: new RegExp(`^${name} ·`) })).toBeTruthy(),
+    expect(ui.getByRole("button", { name: new RegExp(`^${name}(?:,|$)`) })).toBeTruthy(),
   );
-  fireEvent.click(ui.getByRole("button", { name: new RegExp(`^${name} ·`) }));
+  act(() => fireEvent.click(ui.getByRole("button", { name: new RegExp(`^${name}(?:,|$)`) })));
 }
-it("selects a named source and pins an opened readonly file while source choice changes", async () => {
-  await choose("Alpha");
+it("expands inline groups and folders while primary Changes follows tree A to B and opened files stay pinned", async () => {
   const ui = within(container);
-  await waitFor(() => expect(ui.getByRole("button", { name: "Alpha.txt" })).toBeTruthy());
-  fireEvent.click(ui.getByRole("button", { name: "Alpha.txt" }));
-  expect(host.open).toHaveBeenCalledWith(
-    expect.objectContaining({
-      developmentReview: {
-        serverId: "server",
-        parentWorkspaceId: host.parent,
-        workspaceId: "Alpha",
-      },
-    }),
-    "explorerFiles",
-  );
+  await expand("Alpha");
+  await waitFor(() => expect(ui.getByText("Alpha.changed.ts")).toBeTruthy());
+  await expand("src");
+  await waitFor(() => expect(ui.getByRole("button", { name: "index.ts" })).toBeTruthy());
+  act(() => fireEvent.click(ui.getByRole("button", { name: "index.ts" })));
   await waitFor(() =>
-    expect(within(ui.getByTestId("pinned-file")).getByText(/Alpha pinned source/)).toBeTruthy(),
+    expect(
+      within(ui.getByTestId("pinned-file")).getByLabelText("Source for src/index.ts").textContent,
+    ).toContain("Alpha pinned source"),
   );
-  await choose("Beta");
-  await waitFor(() => expect(ui.getByRole("button", { name: "Beta.txt" })).toBeTruthy());
-  expect(within(ui.getByTestId("pinned-file")).getByText(/Alpha pinned source/)).toBeTruthy();
+  await expand("Beta");
+  await waitFor(() => expect(ui.getByText("Beta.changed.ts")).toBeTruthy());
+  expect(
+    within(ui.getByTestId("pinned-file")).getByLabelText("Source for src/index.ts").textContent,
+  ).toContain("Alpha pinned source");
+  expect(ui.getByRole("button", { name: "index.ts" })).toBeTruthy();
+  expect(container.querySelectorAll('[data-testid="file-explorer-tree-scroll"]').length).toBe(1);
+  expect(ui.queryByText(/Development source:/)).toBeNull();
+  expect(ui.queryByText(/Link registered source/)).toBeNull();
   expect(container.querySelector('[contenteditable="true"]')).toBeNull();
-  expect(
-    host.read.mock.calls
-      .filter(([request]) => request.operation === "file")
-      .every(([request]) => request.scopeWorkspaceId === "Alpha"),
-  ).toBe(true);
+  act(() => fireEvent.click(ui.getByRole("button", { name: "output.txt" })));
+  await waitFor(() => expect(ui.getByTestId("conversation-changes")).toBeTruthy());
+  expect(ui.queryByTestId("active-changes")).toBeNull();
 });
-it("shows unavailable without falling back to conversation files", async () => {
+it("collapses the conversation group without replacing the other tree groups", async () => {
+  const ui = within(container);
+  await expand("Conversation outputs");
+  expect(ui.queryByRole("button", { name: "output.txt" })).toBeNull();
+  await expand("Alpha");
+  await waitFor(() => expect(ui.getByRole("button", { name: "Alpha.txt" })).toBeTruthy());
+  await expand("Conversation outputs");
+  expect(ui.getByRole("button", { name: "output.txt" })).toBeTruthy();
+});
+it("keeps unavailable selected work unavailable instead of falling back to conversation Changes", async () => {
   host.missing = true;
-  await choose("Alpha");
+  await expand("Alpha");
   await waitFor(() =>
-    expect(within(container).getByText(/Selected development scope unavailable/)).toBeTruthy(),
+    expect(
+      within(container).getAllByText(/Selected development scope unavailable/).length,
+    ).toBeGreaterThan(0),
   );
-  expect(within(container).queryByRole("button", { name: "Alpha.txt" })).toBeNull();
-  expect(
-    host.read.mock.calls.every(
-      ([request]) => request.operation === "list" || request.scopeWorkspaceId === "Alpha",
-    ),
-  ).toBe(true);
+  expect(within(container).queryByTestId("conversation-changes")).toBeNull();
 });
-it("old hosts show update guidance and send no development requests", async () => {
-  host.supported = false;
-  host.read.mockClear();
-  act(() =>
-    root.render(
-      <QueryClientProvider client={cache}>
-        <Shell />
-      </QueryClientProvider>,
-    ),
-  );
-  fireEvent.click(within(container).getByRole("button", { name: /^Development source:/ }));
+it("scopes groups and active Changes when the parent or host changes", async () => {
+  await expand("Alpha");
+  await waitFor(() => expect(within(container).getByText("Alpha.changed.ts")).toBeTruthy());
+  host.parent = "other-parent";
+  render();
   await waitFor(() =>
-    expect(within(container).getByText("Update the host to use development review.")).toBeTruthy(),
+    expect(within(container).queryByRole("button", { name: /^Alpha(?:,|$)/ })).toBeNull(),
   );
+  expect(within(container).getByTestId("conversation-changes")).toBeTruthy();
+  host.parent = host.originalParent;
+  host.server = "other-host";
+  render();
+  await waitFor(() =>
+    expect(within(container).queryByRole("button", { name: /^Alpha(?:,|$)/ })).toBeNull(),
+  );
+  expect(within(container).getByTestId("conversation-changes")).toBeTruthy();
+  expect(within(container).queryByTestId("active-changes")).toBeNull();
+});
+it("old hosts keep ordinary conversation Files and Changes without development requests", () => {
+  expect(within(container).getByRole("button", { name: "output.txt" })).toBeTruthy();
+  expect(within(container).getByTestId("conversation-changes")).toBeTruthy();
   expect(host.read).not.toHaveBeenCalled();
 });
-
-it("refreshes new files in the selected live scope without selecting it again", async () => {
-  await choose("Alpha");
+it("refreshes an expanded live folder without selecting work again", async () => {
+  await expand("Alpha");
   await waitFor(() =>
     expect(within(container).getByRole("button", { name: "Alpha.txt" })).toBeTruthy(),
   );

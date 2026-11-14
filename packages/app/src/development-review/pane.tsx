@@ -19,7 +19,7 @@ import type { DevelopmentReviewIdentity } from "@/workspace/file-open";
 import type { DevelopmentReviewScope, DevelopmentReviewData } from "@getpaseo/protocol/messages";
 
 const SourceView = withUnistyles(FileSourceView, sourceAppearance);
-const identity = (
+export const developmentScopeIdentity = (
   serverId: string,
   parentWorkspaceId: string,
   scope: DevelopmentReviewScope,
@@ -55,105 +55,22 @@ function Action<T>({
     </Button>
   );
 }
-export function DevelopmentSourceSelector() {
+export function FollowingDevelopmentChanges({
+  conversation,
+}: {
+  conversation: import("react").ReactNode;
+}) {
   const { serverId, workspaceId } = usePaneContext();
-  const { t } = useTranslation();
-  const client = useHostRuntimeClient(serverId);
-  const supported = client?.getLastServerInfoMessage()?.features?.developmentReview === true;
   const selected = useDevelopmentSelection(serverId, workspaceId);
-  const select = useSelection((state) => state.select);
-  const [expanded, setExpanded] = useState(false);
-  const [error, setError] = useState("");
-  const query = useFetchQuery({
-    queryKey: ["development-scopes", serverId, workspaceId],
-    dataShape: "value",
-    staleTimeMs: 0,
-    queryFn: () => client!.readDevelopmentReview({ workspaceId, operation: "list" }),
-    enabled: supported,
-  });
-  const active = query.data?.scopes.find(
-    (scope) => scopeKey(identity(serverId, workspaceId, scope)) === scopeKey(selected),
-  );
-  const choose = useCallback(
-    (value?: DevelopmentReviewIdentity) => {
-      select(JSON.stringify([serverId, workspaceId]), value);
-      setExpanded(false);
-    },
-    [select, serverId, workspaceId],
-  );
-  const chooseScope = useCallback(
-    (scope: DevelopmentReviewScope) => choose(identity(serverId, workspaceId, scope)),
-    [choose, serverId, workspaceId],
-  );
-  const toggle = useCallback(() => setExpanded((value) => !value), []);
-  const refresh = useCallback(() => {
-    void query.refetch();
-  }, [query]);
-  const link = useCallback(
-    async (sourceId: string) => {
-      try {
-        await client!.linkDevelopmentSource(workspaceId, sourceId);
-        setError("");
-        await query.refetch();
-      } catch (failure) {
-        setError(String(failure));
-      }
-    },
-    [client, workspaceId, query],
-  );
+  const client = useHostRuntimeClient(serverId);
+  if (!selected || client?.getLastServerInfoMessage()?.features?.developmentReview !== true)
+    return conversation;
   return (
-    <View style={styles.selector}>
-      <Button
-        variant="ghost"
-        onPress={toggle}
-      >{`${t("developmentReview.sources")}: ${selected ? (active?.label ?? t("developmentReview.unavailable")) : t("developmentReview.conversation")}`}</Button>
-      {active && (
-        <Text style={styles.detail}>
-          {active.path} {active.branch ?? ""} · {t(`developmentReview.${active.status}`)}
-        </Text>
-      )}
-      {expanded && (
-        <ScrollView style={styles.options}>
-          <Action label={t("developmentReview.conversation")} value={undefined} onPress={choose} />
-          {!supported ? (
-            <Text style={styles.detail}>{t("developmentReview.update")}</Text>
-          ) : (
-            <>
-              {query.data?.scopes.map((scope) => (
-                <Action
-                  key={scopeKey(identity(serverId, workspaceId, scope))}
-                  value={scope}
-                  label={`${scope.label} · ${scope.headSha?.slice(0, 8) ?? t("developmentReview.live")} · ${scope.path}`}
-                  onPress={chooseScope}
-                />
-              ))}
-              <Text style={styles.detail}>{t("developmentReview.link")}</Text>
-              {query.data?.candidates
-                ?.filter(
-                  (candidate) =>
-                    !query.data.scopes.some(
-                      (scope) => scope.sourceWorkspaceId === candidate.workspaceId,
-                    ),
-                )
-                .map((candidate) => (
-                  <Action
-                    key={candidate.workspaceId}
-                    value={candidate.workspaceId}
-                    label={`${candidate.label} · ${candidate.path}`}
-                    onPress={link}
-                  />
-                ))}
-              <Button variant="ghost" onPress={refresh}>
-                {t("developmentReview.refresh")}
-              </Button>
-            </>
-          )}
-          {(error || query.error) && (
-            <Text style={styles.detail}>{error || String(query.error)}</Text>
-          )}
-        </ScrollView>
-      )}
-    </View>
+    <DevelopmentReviewPane
+      key={developmentReviewIdentityKey(selected)}
+      selected={selected}
+      mode="diff"
+    />
   );
 }
 export function DevelopmentReviewPane({
@@ -215,7 +132,8 @@ export function DevelopmentReviewPane({
     [openFile],
   );
   const scope = query.data?.scopes.find(
-    (entry) => scopeKey(identity(serverId, workspaceId, entry)) === scopeKey(selected),
+    (entry) =>
+      scopeKey(developmentScopeIdentity(serverId, workspaceId, entry)) === scopeKey(selected),
   );
   const capture = useCallback(async () => {
     if (!scope) return;
@@ -369,12 +287,6 @@ function ReviewContent({
 }
 const styles = StyleSheet.create((theme) => ({
   container: { flex: 1 },
-  selector: {
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    padding: theme.spacing[2],
-  },
-  options: { maxHeight: 360 },
   detail: { color: theme.colors.foregroundMuted, padding: theme.spacing[2] },
   toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
 }));

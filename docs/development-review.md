@@ -1,17 +1,26 @@
 # Conversation-linked development review
 
-Files and Changes can select the conversation directory or a linked development
-workspace on the same host. Link a registered source by its displayed name and
-path. The daemon accepts workspace IDs, resolves the directory itself, and stores
-the association outside plugin metadata. Linking requires `workspace.manage`;
-reading requires `workspace.read`. Links never change an agent's cwd or grant
-file writes, execution, or permission to another host.
+Files shows one expandable tree for the viewed conversation. Its output directory,
+connected source roots, delegated tasks and captured reviews are groups in the
+same list. Expand folders inline; select a group, folder or file to make Changes
+follow that work. Selecting conversation outputs returns Changes to that directory;
+a non-Git conversation never borrows a task's diff.
 
-Only managed descendants of the conversation can appear as task scopes. A task
-must share the linked source's canonical Git common directory. An unrelated
-sibling is not admitted because it happens to use the same repository. Sources
-must be registered canonical repository roots; symlink aliases and untrusted
-change-request sources cannot be linked. Ordinary host permissions still apply.
+Delegated managed-worktree creation records associations to registered source
+workspaces under the existing creation admission fence. The host verifies the
+source directory and managed main-repository placement against the task's canonical
+Git repository. Source roots are not selected by renderer paths or arbitrary
+workspace browsing. Existing approved links retain their pinned repository identity;
+a replacement repository does not silently overwrite it.
+
+Legacy groups can be derived from registered parent chains and verified managed
+main-repository placement. List/read discovery does not write registry data, so it
+remains safe while update admission is sealed. An unrelated sibling is excluded
+even when it shares a repository. Untrusted sources and symlink aliases cannot
+establish an association. Reads require `workspace.read`; creation, explicit
+reviewed association and capture keep their existing mutation permissions. No
+association changes an agent's cwd or grants file writes, execution or another
+host's authority.
 
 ## Review evidence
 
@@ -39,18 +48,23 @@ object pruning or preserve a deleted workspace record.
 
 ## Client scope and limits
 
-Links and evidence are durable. The shared Files/Changes selection lasts for the
-current app session and is keyed by host and conversation. Opened review files
-persist their own host/conversation/source/evidence identity. Switching the
-selector cannot reinterpret them. A missing scope fails explicitly; it never
-falls back to the conversation directory. Review source files use the existing
-read-only source renderer and structured diff renderer, with no save/revert actions.
+Associations and evidence are durable. Active tree work lasts for the app session
+and is scoped by host and conversation. The primary Changes view follows that
+active work rather than pinning the selection at the time it opened. File tabs
+and explicitly focused/historical diff tabs retain their own immutable source
+identity. Switching the tree cannot reinterpret them. Missing work stays unavailable
+instead of falling back to another directory.
 
-Visible active review panels on a connected host refresh their selected live
-scope every five seconds. Hidden, backgrounded or disconnected panels stop this
-demand. The source inventory refreshes on opening/remount or explicit Refresh;
-it does not recursively watch every linked repository. File reads validate only
-the selected scope. There is no new daemon watcher or subscription to leak.
+Conversation output browsing keeps the ordinary explorer's toolbar, sorting,
+menus and file actions. Connected development roots use the same tree row pattern
+and read-only source/diff renderers; they do not expose save or revert actions.
+
+Visible active panels on a connected host refresh expanded live directories and
+selected live content every five seconds. The related-group inventory refreshes
+every ten seconds under the same activity gates. Collapsed development directories
+unmount their demand; hidden, backgrounded and disconnected panels stop refresh.
+Only related roots are inspected, with no host-wide repository candidate scan or
+new daemon watcher. Individual reads validate the requested scope.
 
 Text reads and total diff output are limited to 4 MiB, with at most 100 untracked
 files per diff. Binary files retain their inventory/status alongside text diffs;
@@ -61,5 +75,6 @@ editable development source tabs, and automatic final capture at task retirement
 are not provided by this surface.
 
 The optional `developmentReview` capability gates the new RPCs. Older hosts keep
-ordinary conversation Files/Changes and show update guidance for development
-review; no alternate path-based request is attempted.
+ordinary conversation Files/Changes without a selector or development requests.
+An already opened development tab on an older host shows update guidance; no
+alternate path-based request is attempted.

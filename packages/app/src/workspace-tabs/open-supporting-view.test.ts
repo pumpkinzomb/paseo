@@ -338,7 +338,7 @@ describe("automatic PR placement", () => {
   });
 });
 
-it("pins the selected development scope when opening a diff and keeps prior tabs distinct", () => {
+it("keeps primary Changes unpinned so it follows current tree work", () => {
   const first = {
     serverId: "server-1",
     parentWorkspaceId: "workspace-1",
@@ -356,12 +356,9 @@ it("pins the selected development scope when opening a diff and keeps prior tabs
   const firstId = openWorkspaceChanges(input);
   selection.select("first", { ...first, workspaceId: "source-b", scopeToken: "token-b" });
   const secondId = openWorkspaceChanges(input);
-  expect(firstId).not.toBe(secondId);
+  expect(firstId).toBe(secondId);
   const tabs = collectAllTabs(
     useWorkspaceLayoutStore.getState().layoutByWorkspace[WORKSPACE_KEY].root,
   );
-  expect(tabs.find((tab) => tab.tabId === firstId)?.target).toEqual({
-    kind: "working_diff",
-    developmentReview: first,
-  });
+  expect(tabs.find((tab) => tab.tabId === firstId)?.target).toEqual({ kind: "working_diff" });
 });

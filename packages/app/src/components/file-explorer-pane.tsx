@@ -350,6 +350,7 @@ function TreeRowItem({
       <ContextMenuTrigger
         onPress={handlePress}
         onLongPress={handleSelect}
+        onFocus={handleSelect}
         onContextMenu={handleSelect}
         style={pressableStyle}
         onHoverIn={showNameHover}
@@ -406,6 +407,10 @@ interface FileExplorerPaneProps {
   serverId: string;
   workspaceId?: string | null;
   workspaceRoot: string;
+  treeHeader?: ReactElement;
+  treeFooter?: ReactElement;
+  treeExpanded?: boolean;
+  onScopeFocus?: () => void;
   onOpenFile?: (filePath: string) => void;
   onOpenFileToSide?: (filePath: string) => void;
   onAddToChat?: (path: string) => void;
@@ -418,6 +423,10 @@ export function FileExplorerPane({
   onOpenFile,
   onOpenFileToSide,
   onAddToChat,
+  treeHeader,
+  treeFooter,
+  treeExpanded = true,
+  onScopeFocus,
 }: FileExplorerPaneProps) {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
@@ -556,11 +565,12 @@ export function FileExplorerPane({
   // (for example, pressing R to rename) have one stable file-or-folder target.
   const handleSelectEntry = useCallback(
     (entry: ExplorerEntry) => {
+      onScopeFocus?.();
       if (hasWorkspaceScope) {
         selectExplorerEntry(entry.path);
       }
     },
-    [hasWorkspaceScope, selectExplorerEntry],
+    [hasWorkspaceScope, selectExplorerEntry, onScopeFocus],
   );
 
   const handleOpenFile = useCallback(
@@ -958,12 +968,13 @@ export function FileExplorerPane({
   const showBackFromError = Boolean(error && selectedEntryPath);
   const errorRecoveryPath = useMemo(() => getErrorRecoveryPath(explorerState), [explorerState]);
 
+  const treeDepthOffset = treeHeader ? 1 : 0;
   const renderTreeRow = useCallback(
     (info: ListRenderItemInfo<ExplorerListRow>) => {
       if (info.item.type === "draft") {
         return (
           <EntryNameInputRow
-            depth={info.item.depth}
+            depth={info.item.depth + treeDepthOffset}
             kind={info.item.kind}
             onCommit={handleDraftCommit}
             onCancel={handleEditCancel}
@@ -973,7 +984,7 @@ export function FileExplorerPane({
       if (info.item.type === "rename") {
         return (
           <EntryNameInputRow
-            depth={info.item.depth}
+            depth={info.item.depth + treeDepthOffset}
             kind={info.item.entry.kind}
             initialName={info.item.entry.name}
             onCommit={handleRenameCommit}
@@ -986,6 +997,7 @@ export function FileExplorerPane({
           serverId={serverId}
           workspaceId={workspaceId}
           row={info.item.row}
+          depthOffset={treeDepthOffset}
           index={info.index}
           expandedPaths={expandedPaths}
           selectedEntryPath={selectedEntryPath}
@@ -1010,6 +1022,7 @@ export function FileExplorerPane({
       );
     },
     [
+      treeDepthOffset,
       expandedPaths,
       fsEntryDuplicateEnabled,
       fsEntryOpsEnabled,
@@ -1073,6 +1086,9 @@ export function FileExplorerPane({
       style={styles.container}
     >
       <FileExplorerPaneContent
+        treeHeader={treeHeader}
+        treeFooter={treeFooter}
+        treeExpanded={treeExpanded}
         error={error}
         isCompact={isCompact}
         showInitialLoading={showInitialLoading}
@@ -1147,6 +1163,9 @@ function RootCreationContextTarget({
 }
 
 interface FileExplorerPaneContentProps {
+  treeHeader?: ReactElement;
+  treeFooter?: ReactElement;
+  treeExpanded: boolean;
   error: string | null;
   isCompact: boolean;
   showInitialLoading: boolean;
@@ -1170,6 +1189,9 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const {
+    treeHeader,
+    treeFooter,
+    treeExpanded,
     error,
     isCompact,
     showInitialLoading,
@@ -1330,7 +1352,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
       </PaneContentToolbar>
       <ContextMenu>
         <RootCreationContextTarget enabled={Boolean(onNewEntryAtRoot)}>
-          {listRows.length === 0 ? (
+          {listRows.length === 0 && !treeHeader && !treeFooter ? (
             <View style={styles.centerState}>
               <Text style={styles.emptyText}>{emptyLabel}</Text>
             </View>
@@ -1338,7 +1360,9 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
             <FlatList
               ref={treeListRef}
               style={styles.treeList}
-              data={listRows}
+              data={treeExpanded ? listRows : []}
+              ListHeaderComponent={treeHeader}
+              ListFooterComponent={treeFooter}
               renderItem={renderTreeRow}
               keyExtractor={listRowKeyExtractor}
               testID="file-explorer-tree-scroll"
@@ -1458,6 +1482,7 @@ function TreeRowDispatcher({
   serverId,
   workspaceId,
   row,
+  depthOffset,
   index,
   expandedPaths,
   selectedEntryPath,
@@ -1482,6 +1507,7 @@ function TreeRowDispatcher({
   serverId: string;
   workspaceId?: string | null;
   row: ExplorerTreeRow;
+  depthOffset: number;
   index: number;
   expandedPaths: Set<string>;
   selectedEntryPath: string | null;
@@ -1504,7 +1530,7 @@ function TreeRowDispatcher({
   onDeleteEntry?: (entry: ExplorerEntry) => void;
 }) {
   const entry = row.entry;
-  const depth = row.depth;
+  const depth = row.depth + depthOffset;
   const isDirectory = entry.kind === "directory";
   const isExpanded = isDirectory && expandedPaths.has(entry.path);
   const isSelected = selectedEntryPath === entry.path;

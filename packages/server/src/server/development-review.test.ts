@@ -1,5 +1,14 @@
 import { afterEach, expect, it } from "vitest";
-import { mkdtemp, realpath, rm, mkdir, writeFile, copyFile, rename } from "node:fs/promises";
+import {
+  mkdtemp,
+  realpath,
+  rm,
+  mkdir,
+  writeFile,
+  copyFile,
+  rename,
+  readFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -8,6 +17,7 @@ import { DevelopmentReview } from "./development-review.js";
 import {
   FileBackedWorkspaceRegistry,
   createPersistedWorkspaceRecord,
+  createPersistedProjectRecord,
 } from "./workspace-registry.js";
 import { requiredPermissionForInbound } from "./authorization/operation-permissions.js";
 const roots: string[] = [];
@@ -185,6 +195,19 @@ it("serves validated development scope RPCs through an isolated fake-provider da
   const projects = path.join(homeRoot, ".paseo/projects");
   await mkdir(projects, { recursive: true });
   await copyFile(f.registryPath, path.join(projects, "workspaces.json"));
+  await writeFile(
+    path.join(projects, "projects.json"),
+    JSON.stringify([
+      createPersistedProjectRecord({
+        projectId: "project",
+        rootPath: f.root,
+        kind: "non_git",
+        displayName: "Fixture",
+        createdAt: "now",
+        updatedAt: "now",
+      }),
+    ]),
+  );
   const { createDaemonTestContext } = await import("./test-utils/daemon-test-context.js");
   const ctx = await createDaemonTestContext({
     paseoHomeRoot: homeRoot,
@@ -194,7 +217,26 @@ it("serves validated development scope RPCs through an isolated fake-provider da
   });
   try {
     expect(ctx.client.getLastServerInfoMessage()?.features?.developmentReview).toBe(true);
-    await ctx.client.linkDevelopmentSource("parent", "source");
+    const caller = await ctx.client.createAgent({
+      workspaceId: "parent",
+      config: { provider: "codex", cwd: f.root },
+    });
+    const child = await ctx.client.createWorkspace({
+      source: {
+        kind: "worktree",
+        cwd: f.source,
+        action: "branch-off",
+        branchName: "delegated-review",
+        baseBranch: "main",
+      },
+      callerAgentId: caller.id,
+    });
+    expect(child.error).toBeNull();
+    const persisted = JSON.parse(await readFile(path.join(projects, "workspaces.json"), "utf8"));
+    expect(
+      persisted.find((record: { workspaceId: string }) => record.workspaceId === "parent")
+        .developmentSourceIds,
+    ).toContain("source");
     await writeFile(path.join(f.source, "rpc-new.txt"), "rpc new\n");
     const result = await ctx.client.readDevelopmentReview({
       workspaceId: "parent",
@@ -283,4 +325,31 @@ it("capture idempotency includes the retained source identity, base and head", a
     "source-alias",
   );
   expect((await f.registry.get("task"))?.developmentEvidenceHistory?.[0].id).toBe(first);
+});
+
+it("derives only related legacy roots read-only without overwriting explicit source identities", async () => {
+  const f = await fixture();
+  await f.registry.update("task", (record) => ({ ...record, mainRepoRoot: f.source }));
+  const before = await readFile(f.registryPath, "utf8");
+  const result = await f.service.read({
+    type: "workspace.development.read.request",
+    workspaceId: "parent",
+    operation: "list",
+    requestId: "legacy",
+  });
+  expect(result.scopes.map((scope) => scope.workspaceId).sort()).toEqual(["source", "task"]);
+  expect("candidates" in result).toBe(false);
+  expect(await readFile(f.registryPath, "utf8")).toBe(before);
+  await f.service.link("parent", "source");
+  await f.registry.update("parent", (record) => ({
+    ...record,
+    developmentSourceIdentities: { source: "old-repository-identity" },
+  }));
+  await f.service.recordDelegation("task", f.source);
+  expect((await f.registry.get("parent"))?.developmentSourceIdentities?.source).toBe(
+    "old-repository-identity",
+  );
+  expect(
+    (await f.service.list("parent")).find((scope) => scope.workspaceId === "source")?.status,
+  ).toBe("unavailable");
 });
