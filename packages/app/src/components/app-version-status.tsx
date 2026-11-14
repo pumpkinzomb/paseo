@@ -117,6 +117,7 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 32,
     flexDirection: "row",
     flexWrap: "wrap",
+    alignContent: "center",
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[1],

@@ -23,6 +23,7 @@ let root: Root | undefined;
 let container: HTMLDivElement;
 beforeEach(async () => {
   vi.stubGlobal("React", React);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   await i18n.changeLanguage("en");
 });
 afterEach(() => {
@@ -39,6 +40,11 @@ function mount(element: React.ReactNode) {
 }
 function mountUpdate(update: LocalAppUpdate) {
   return mount(<AppVersionStatus version="1" update={update} productionReady />);
+}
+function mountFailure(update: LocalAppUpdate) {
+  return mount(
+    <AppVersionStatus version="0.15.4" update={update} productionReady failure="failed" />,
+  );
 }
 it("shows the current version without an update action by default", () => {
   const view = mount(<AppVersionStatus version="0.15.4" />);
@@ -245,4 +251,69 @@ it("announces unknown failure without restoring the consumed button", async () =
     "failed",
   );
   expect(view.querySelector('[data-testid="local-app-update-restart"]')).toBeNull();
+});
+
+function bounds(view: HTMLElement, testID: string) {
+  const element = view.querySelector<HTMLElement>(`[data-testid="${testID}"]`)!;
+  return { element, rect: element.getBoundingClientRect() };
+}
+function innerVerticalBounds(element: HTMLElement) {
+  const rect = element.getBoundingClientRect();
+  const style = getComputedStyle(element);
+  return {
+    top: rect.top + parseFloat(style.borderTopWidth),
+    bottom: rect.bottom - parseFloat(style.borderBottomWidth),
+  };
+}
+it("centers the version-only label in the actual bordered status row", () => {
+  const view = mount(<AppVersionStatus version="0.15.4" />);
+  view.style.width = "280px";
+  const row = bounds(view, "sidebar-build-status");
+  const label = bounds(view, "app-version-label");
+  const inner = innerVerticalBounds(row.element);
+
+  expect(row.rect.height).toBe(32);
+  expect(
+    Math.abs((label.rect.top + label.rect.bottom - inner.top - inner.bottom) / 2),
+  ).toBeLessThanOrEqual(0.5);
+});
+it("centers the label and update action without changing the update behavior", () => {
+  const onUpdateAndRestart = vi.fn();
+  const view = mountUpdate({ status: "verified", releaseId: "ready", onUpdateAndRestart });
+  view.style.width = "280px";
+  const row = bounds(view, "sidebar-build-status");
+  const inner = innerVerticalBounds(row.element);
+  for (const testID of ["app-version-label", "local-app-update-restart"]) {
+    const { rect } = bounds(view, testID);
+    expect(Math.abs((rect.top + rect.bottom - inner.top - inner.bottom) / 2)).toBeLessThanOrEqual(
+      0.5,
+    );
+  }
+  act(() => bounds(view, "local-app-update-restart").element.click());
+  expect(onUpdateAndRestart).toHaveBeenCalledTimes(1);
+});
+it("grows for wrapped update and failure rows without clipping their contents", () => {
+  const update: LocalAppUpdate = {
+    status: "verified",
+    releaseId: "ready",
+    onUpdateAndRestart: vi.fn(),
+  };
+  const view = mountFailure(update);
+  for (const width of [280, 140]) {
+    view.style.width = `${width}px`;
+    const row = bounds(view, "sidebar-build-status");
+    const inner = innerVerticalBounds(row.element);
+    expect(row.rect.height).toBeGreaterThan(32);
+    for (const testID of [
+      "app-version-label",
+      "local-app-update-error",
+      "local-app-update-restart",
+    ]) {
+      const { element, rect } = bounds(view, testID);
+      expect(rect.top).toBeGreaterThanOrEqual(inner.top);
+      expect(rect.bottom).toBeLessThanOrEqual(inner.bottom);
+      expect(element.scrollHeight).toBeLessThanOrEqual(element.clientHeight + 1);
+    }
+    expect(bounds(view, "local-app-update-error").element.textContent).toContain("failed");
+  }
 });
