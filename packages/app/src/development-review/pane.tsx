@@ -3,12 +3,22 @@ import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppActivelyVisible } from "@/hooks/use-app-visible";
 import { useCallback, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
-import { useQueryClient } from "@tanstack/react-query";
 import { useFetchQuery } from "@/data/query";
 import { useDevelopmentReviewSelection as useSelection } from "./selection";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
+import { Eye, RotateCw } from "lucide-react-native";
+import { StatusBadge } from "@/components/ui/status-badge";
+import {
+  PaneContentToolbar,
+  ToolbarButton,
+  ToolbarControls,
+  paneContentToolbarIconSize,
+  paneContentToolbarTrailingPadding,
+} from "@/components/ui/pane-content-toolbar";
+import { useIsCompactFormFactor, WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
+import { mutedIconColorMapping } from "@/components/ui/icon-color";
 import { useHostRuntimeIsConnected, useHostRuntimeClient } from "@/runtime/host-runtime";
 import { usePaneContext } from "@/panels/pane-context";
 import { FileSourceView } from "@/file-panels/source/readonly/view";
@@ -18,6 +28,8 @@ import { useAppSettings } from "@/hooks/use-settings";
 import type { DevelopmentReviewIdentity } from "@/workspace/file-open";
 import type { DevelopmentReviewScope, DevelopmentReviewData } from "@getpaseo/protocol/messages";
 
+const ThemedEye = withUnistyles(Eye);
+const ThemedRotateCw = withUnistyles(RotateCw);
 const SourceView = withUnistyles(FileSourceView, sourceAppearance);
 export const developmentScopeIdentity = (
   serverId: string,
@@ -85,10 +97,8 @@ export function DevelopmentReviewPane({
   const { serverId, workspaceId, openPreferredTarget } = usePaneContext();
   const { t } = useTranslation();
   const client = useHostRuntimeClient(serverId);
-  const queryClient = useQueryClient();
   const { settings } = useAppSettings();
   const [directory, setDirectory] = useState("");
-  const [error, setError] = useState("");
   const active = useRetainedPanelActive();
   const visible = useAppActivelyVisible();
   const connected = useHostRuntimeIsConnected(serverId);
@@ -135,22 +145,6 @@ export function DevelopmentReviewPane({
     (entry) =>
       scopeKey(developmentScopeIdentity(serverId, workspaceId, entry)) === scopeKey(selected),
   );
-  const capture = useCallback(async () => {
-    if (!scope) return;
-    try {
-      await client!.captureDevelopmentReview(
-        workspaceId,
-        scope.workspaceId,
-        scope.sourceWorkspaceId,
-      );
-      await queryClient.invalidateQueries({
-        queryKey: ["development-scopes", serverId, workspaceId],
-      });
-      setError("");
-    } catch (failure) {
-      setError(String(failure));
-    }
-  }, [scope, client, workspaceId, queryClient, serverId]);
   const displayPreferences = useMemo(
     () => ({
       layout: "unified" as const,
@@ -168,22 +162,12 @@ export function DevelopmentReviewPane({
   if (!supported) return <Text style={styles.detail}>{t("developmentReview.update")}</Text>;
   return (
     <View style={styles.container}>
-      <View style={styles.toolbar}>
-        <Text style={styles.detail}>{t("developmentReview.readonly")}</Text>
-        <Button variant="ghost" onPress={refresh}>
-          {t("developmentReview.refresh")}
-        </Button>
-      </View>
-      <ReviewScopeCaption scope={scope} />
-      {mode === "diff" &&
-        !selected.evidenceId &&
-        scope &&
-        scope.workspaceId !== scope.sourceWorkspaceId && (
-          <Button variant="outline" onPress={capture}>
-            {t("developmentReview.capture")}
-          </Button>
-        )}
-      {error && <Text style={styles.detail}>{error}</Text>}
+      <ReviewHeader
+        scope={scope}
+        onRefresh={refresh}
+        refreshing={query.isFetching}
+        unavailable={query.isError}
+      />
       <ReviewContent
         error={query.error}
         data={query.data}
@@ -201,14 +185,78 @@ export function DevelopmentReviewPane({
     </View>
   );
 }
-function ReviewScopeCaption({ scope }: { scope?: DevelopmentReviewScope }) {
+function ReviewHeader({
+  scope,
+  onRefresh,
+  refreshing,
+  unavailable,
+}: {
+  scope?: DevelopmentReviewScope;
+  onRefresh: () => void;
+  refreshing: boolean;
+  unavailable: boolean;
+}) {
   const { t } = useTranslation();
-  if (!scope) return null;
+  const compact = useIsCompactFormFactor();
+  const headerStyle = useMemo(
+    () => [styles.header, { paddingRight: paneContentToolbarTrailingPadding(compact, "glyph") }],
+    [compact],
+  );
+  const title =
+    scope?.label ?? t(unavailable ? "developmentReview.unavailable" : "workspace.tabs.loading");
+  const status = scope ? t(`developmentReview.${scope.status}`) : t("workspace.tabs.loading");
   return (
-    <Text style={styles.detail}>
-      {scope.label} · {scope.path} · {scope.branch} · {t(`developmentReview.${scope.status}`)}{" "}
-      {scope.headSha?.slice(0, 8)}
-    </Text>
+    <PaneContentToolbar style={headerStyle} testID="development-review-header">
+      <View style={styles.sourceInfo}>
+        <Text
+          numberOfLines={1}
+          accessibilityLabel={title}
+          style={styles.sourceName}
+          testID="development-review-title"
+        >
+          {title}
+        </Text>
+        {scope && (
+          <View style={styles.sourceMeta} testID="development-review-meta">
+            <StatusBadge
+              label={status}
+              size="xs"
+              variant={scope.status === "integrated" ? "success" : "muted"}
+            />
+            <Text
+              numberOfLines={1}
+              accessibilityLabel={scope.path}
+              style={styles.sourcePath}
+              testID="development-review-path"
+            >
+              {scope.path}
+            </Text>
+          </View>
+        )}
+      </View>
+      <ToolbarControls>
+        <View
+          accessible
+          accessibilityLabel={t("developmentReview.readonly")}
+          style={styles.readonly}
+          testID="development-review-readonly"
+        >
+          <ThemedEye size={paneContentToolbarIconSize(compact)} uniProps={mutedIconColorMapping} />
+        </View>
+        <ToolbarButton
+          label={t("developmentReview.refresh")}
+          onPress={onRefresh}
+          disabled={refreshing}
+          compact={compact}
+          testID="development-review-refresh"
+        >
+          <ThemedRotateCw
+            size={paneContentToolbarIconSize(compact)}
+            uniProps={mutedIconColorMapping}
+          />
+        </ToolbarButton>
+      </ToolbarControls>
+    </PaneContentToolbar>
   );
 }
 function ReviewContent({
@@ -283,10 +331,36 @@ function ReviewContent({
         displayPreferences={displayPreferences}
       />
     );
-  return <Text style={styles.detail}>{t("developmentReview.empty")}</Text>;
+  return (
+    <Text style={styles.detail} testID="development-review-empty">
+      {t(data?.scopes[0]?.evidenceId ? "developmentReview.emptyReview" : "developmentReview.empty")}
+    </Text>
+  );
 }
 const styles = StyleSheet.create((theme) => ({
   container: { flex: 1 },
   detail: { color: theme.colors.foregroundMuted, padding: theme.spacing[2] },
-  toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  header: {
+    height: "auto",
+    minHeight: WORKSPACE_SECONDARY_HEADER_HEIGHT,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingLeft: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+  },
+  sourceInfo: { flex: 1, minWidth: 0, gap: theme.spacing[1] },
+  sourceName: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  },
+  sourceMeta: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2], minWidth: 0 },
+  sourcePath: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  readonly: { alignItems: "center", justifyContent: "center", paddingHorizontal: theme.spacing[1] },
 }));

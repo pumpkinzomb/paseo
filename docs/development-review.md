@@ -25,16 +25,16 @@ host's authority.
 ## Review evidence
 
 New managed worktrees pin their starting commit in Git administration metadata.
-Use **Pin committed review** while the task directory still exists to retain its
-base/head commit IDs, source workspace ID and repository identity in the workspace
-registry. Capture before removing the task directory. Repeated captures retain
+The guarded SDK/lead workflow captures already committed content before the task
+directory is removed; it does not create Git commits. It retains base/head commit
+IDs, source workspace ID and repository identity in the workspace registry. Repeated captures retain
 previous evidence; they do not rewrite an open file's pinned revision.
 
 Legacy worktrees have a moving comparison ref rather than a pinned base. The
 capture RPC/SDK accepts an explicitly reviewed full `baseSha` for those tasks;
 it verifies that the commit exists and is an ancestor of the task head. It does
-not guess a historical base from today's main. The normal button reports the
-missing evidence instead of inventing it.
+not guess a historical base from today's main. Missing evidence is reported rather
+than invented. Ordinary Files/Changes has no capture action.
 
 **Committed** means the captured objects are available. **Integrated** additionally
 means the captured head is an ancestor of the selected retained source's current

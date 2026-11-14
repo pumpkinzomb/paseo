@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { within, waitFor, fireEvent } from "@testing-library/dom";
 import { i18n } from "@/i18n/i18next";
+import type { DevelopmentReviewScope } from "@getpaseo/protocol/messages";
 import type { DevelopmentReviewIdentity } from "@/workspace/file-open";
 import { FollowingDevelopmentChanges, DevelopmentReviewPane } from "./pane";
 import { filesPanelRegistration } from "@/panels/files-panel";
@@ -16,12 +17,45 @@ const host = vi.hoisted(() => ({
   extra: false,
   open: vi.fn(),
   read: vi.fn(),
+  capture: vi.fn(),
+}));
+vi.mock("lucide-react-native", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("lucide-react-native")>()),
+  Eye: ({ size, color }: { size: number; color: string }) => (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ),
+  RotateCw: ({ size, color }: { size: number; color: string }) => (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+    </svg>
+  ),
 }));
 vi.mock("@/runtime/host-runtime", () => ({
   useHostRuntimeIsConnected: () => true,
   useHostRuntimeClient: () => ({
     getLastServerInfoMessage: () => ({ features: { developmentReview: host.supported } }),
     readDevelopmentReview: host.read,
+    captureDevelopmentReview: host.capture,
   }),
 }));
 vi.mock("@/stores/session-store-hooks", () => ({
@@ -93,7 +127,9 @@ vi.mock("react-native-unistyles", async (importOriginal) => {
       mapping?: (theme: typeof lightTheme) => Record<string, unknown>,
     ) => {
       function Themed(props: Record<string, unknown>) {
-        return react.createElement(Component, { ...mapping?.(lightTheme), ...props });
+        const { uniProps, ...rest } = props;
+        const mapped = typeof uniProps === "function" ? uniProps(lightTheme) : undefined;
+        return react.createElement(Component, { ...mapping?.(lightTheme), ...mapped, ...rest });
       }
       return Themed;
     },
@@ -158,6 +194,7 @@ beforeEach(async ({ task }) => {
   host.extra = false;
   host.open.mockReset();
   host.read.mockReset();
+  host.capture.mockReset();
   host.read.mockImplementation(async (request) => {
     if (request.operation === "list")
       return {
@@ -307,3 +344,119 @@ it("refreshes an expanded live folder without selecting work again", async () =>
     { timeout: 6500 },
   );
 }, 10000);
+
+function renderReview(scope: DevelopmentReviewScope, changed = false) {
+  host.read.mockImplementation(async () => ({
+    requestId: "header",
+    scopes: [scope],
+    files: changed
+      ? [
+          {
+            path: "legitimate-image.png",
+            status: "binary",
+            isNew: true,
+            isDeleted: false,
+            additions: 0,
+            deletions: 0,
+            hunks: [],
+          },
+        ]
+      : [],
+  }));
+  const selected = {
+    serverId: host.server,
+    parentWorkspaceId: host.parent,
+    workspaceId: scope.workspaceId,
+    ...(scope.evidenceId ? { evidenceId: scope.evidenceId } : {}),
+  };
+  renderSelectedReview(selected);
+}
+function renderSelectedReview(selected: DevelopmentReviewIdentity) {
+  act(() =>
+    root.render(
+      <QueryClientProvider client={cache}>
+        <DevelopmentReviewPane selected={selected} mode="diff" />
+      </QueryClientProvider>,
+    ),
+  );
+}
+it("keeps the real header balanced with single-line accessible paths at normal and narrow widths", async () => {
+  const path =
+    "/fixture/a-very-long-project-path/with/nested/development/workspaces/and/a-managed-task-folder";
+  const label = "A long readable development task name that should truncate";
+  renderReview({ ...scopes[0], label, path });
+  const ui = within(container);
+  await waitFor(() => expect(ui.getByText("Working folder")).toBeTruthy());
+  for (const width of [480, 320, 220]) {
+    container.style.width = `${width}px`;
+    const header = ui.getByTestId("development-review-header");
+    const title = ui.getByTestId("development-review-title");
+    const pathElement = ui.getByTestId("development-review-path");
+    const refresh = ui.getByRole("button", { name: "Refresh" });
+    const headerBounds = header.getBoundingClientRect();
+    const refreshBounds = refresh.getBoundingClientRect();
+    expect(headerBounds.width).toBe(width);
+    expect(headerBounds.height).toBeLessThanOrEqual(64);
+    expect(title.getBoundingClientRect().height).toBeLessThanOrEqual(24);
+    expect(pathElement.getBoundingClientRect().height).toBeLessThanOrEqual(24);
+    expect(getComputedStyle(pathElement).whiteSpace).toBe("nowrap");
+    expect(getComputedStyle(pathElement).textOverflow).toBe("ellipsis");
+    expect(pathElement.scrollWidth).toBeGreaterThan(pathElement.clientWidth);
+    expect(pathElement.getAttribute("aria-label")).toBe(path);
+    expect(title.getAttribute("aria-label")).toBe(label);
+    expect(refreshBounds.width).toBeLessThanOrEqual(48);
+    expect(refreshBounds.width).toBeGreaterThan(0);
+    expect(refreshBounds.right).toBeLessThanOrEqual(headerBounds.right);
+    expect(header.scrollWidth).toBeLessThanOrEqual(header.clientWidth + 1);
+    expect(pathElement.getBoundingClientRect().width).toBeGreaterThan(0);
+    expect(ui.getByLabelText("Read-only review")).toBeTruthy();
+    expect(ui.queryByText("Read-only review")).toBeNull();
+    expect(ui.queryByText("Live / uncommitted")).toBeNull();
+    expect(ui.queryByText("Pin committed review")).toBeNull();
+  }
+  const count = host.read.mock.calls.length;
+  await act(async () => fireEvent.click(ui.getByRole("button", { name: "Refresh" })));
+  await waitFor(() => expect(host.read.mock.calls.length).toBeGreaterThan(count));
+});
+it("never exposes capture controls for main, lab, empty, dirty-only or committed task views", async () => {
+  const variants: DevelopmentReviewScope[] = [
+    { ...scopes[0], label: "Main source" },
+    { ...scopes[0], label: "Lab source" },
+    { ...scopes[0], label: "Empty task", sourceWorkspaceId: "retained" },
+    { ...scopes[0], label: "Dirty-only task", sourceWorkspaceId: "retained" },
+    {
+      ...scopes[0],
+      label: "Saved task",
+      sourceWorkspaceId: "retained",
+      evidenceId: "saved",
+      headSha: "a".repeat(40),
+      baseSha: "b".repeat(40),
+      status: "committed",
+    },
+  ];
+  for (const scope of variants) {
+    cache.clear();
+    renderReview(scope, scope.label === "Dirty-only task");
+    await waitFor(() =>
+      expect(within(container).getByTestId("development-review-title").textContent).toBe(
+        scope.label,
+      ),
+    );
+    const ui = within(container);
+    expect(ui.getAllByRole("button").length).toBe(1);
+    expect(ui.getByRole("button", { name: "Refresh" })).toBeTruthy();
+    expect(
+      ui.queryByRole("button", { name: /Pin committed review|Save.*review|커밋 검토 고정/ }),
+    ).toBeNull();
+    if (scope.evidenceId) {
+      expect(ui.getByText("Saved review")).toBeTruthy();
+      expect(ui.getByTestId("development-review-empty").textContent).toBe(
+        "No changes in this saved review",
+      );
+    } else if (scope.label === "Dirty-only task")
+      expect(ui.getByText("legitimate-image.png")).toBeTruthy();
+    else
+      expect(ui.getByTestId("development-review-empty").textContent).toBe("No uncommitted changes");
+  }
+  expect(host.capture).not.toHaveBeenCalled();
+});
