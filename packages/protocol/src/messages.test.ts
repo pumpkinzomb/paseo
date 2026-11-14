@@ -697,3 +697,22 @@ test("task finalization is optional and requires an explicit completion declarat
     true,
   );
 });
+
+test("whole-task completion requires an exact reviewed tip and explicit declaration", () => {
+  const request = {
+    type: "workspace.taskCompletion.declare.request",
+    requestId: "r",
+    workspaceId: "task",
+  };
+  expect(SessionInboundMessageSchema.safeParse(request).success).toBe(false);
+  expect(SessionInboundMessageSchema.safeParse({ ...request, headSha: "reviewed" }).success).toBe(
+    false,
+  );
+  expect(
+    SessionInboundMessageSchema.safeParse({
+      ...request,
+      headSha: "reviewed",
+      declareComplete: true,
+    }).success,
+  ).toBe(true);
+});

@@ -1019,6 +1019,40 @@ export class Session {
       },
     }));
   }
+  public async reconcileTaskCompletions(relevantWorkspaces: ReadonlySet<string>) {
+    await this.finalizer().reconcileCompletions(Date.now(), relevantWorkspaces);
+  }
+
+  public async declareTaskCompletion(workspaceId: string, headSha: string, callerAgentId?: string) {
+    if (!this.serverId) throw new Error("Host identity unavailable");
+    if (callerAgentId) {
+      const record = await this.workspaceRegistry.get(workspaceId);
+      if (!record) throw new Error("Task unavailable");
+      const caller = await this.agentStorage.get(callerAgentId);
+      const lead = caller?.workspaceId
+        ? await this.leadAssociations().forCaller(callerAgentId, caller.workspaceId)
+        : undefined;
+      if (!lead || caller?.workspaceId === workspaceId)
+        throw new Error("Only the owning lead can declare a whole task complete");
+      const ownership = await resolveTaskOwnership(
+        record,
+        await this.agentStorage.listByWorkspaces([workspaceId], { includeArchived: true }),
+        {
+          serverId: this.serverId,
+          getAgent: (id) => this.agentStorage.get(id),
+          leadForAgent: (agent) =>
+            agent.workspaceId
+              ? this.leadAssociations().forCaller(agent.id, agent.workspaceId)
+              : Promise.resolve(undefined),
+          canonical: async (owner) => (await this.leadAssociations().canonical(owner)).conversation,
+        },
+      );
+      if (JSON.stringify(ownership.lead) !== JSON.stringify(lead))
+        throw new Error("Task belongs to another lead");
+    }
+    return this.finalizer().declareComplete(workspaceId, headSha);
+  }
+
   private workspaceLeadAssociations?: WorkspaceLeadAssociations;
   private leadAssociations() {
     if (!this.serverId) throw new Error("Host identity unavailable");
@@ -3511,6 +3545,8 @@ export class Session {
         return this.handleCreationSubscription(msg, source);
       case "workspace.create.request":
         return this.handleWorkspaceCreation(msg, source);
+      case "workspace.taskCompletion.declare.request":
+        return this.handleTaskCompletionDeclaration(msg, source);
       case "workspace.taskFinalization.inspect.request":
       case "workspace.taskFinalization.apply.request":
       case "workspace.taskFinalization.status.request":
@@ -5289,6 +5325,20 @@ export class Session {
     return agent?.labels["paseo.role"] === "assistant" ? { agent } : null;
   }
 
+  private async handleTaskCompletionDeclaration(
+    request: Extract<SessionInboundMessage, { type: "workspace.taskCompletion.declare.request" }>,
+    source?: object,
+  ) {
+    const completion = await this.declareTaskCompletion(request.workspaceId, request.headSha);
+    this.emitForSource(
+      {
+        type: "workspace.taskCompletion.declare.response",
+        payload: { requestId: request.requestId, completion },
+      },
+      source,
+    );
+  }
+
   private async handleTaskFinalization(
     request: Extract<
       SessionInboundMessage,
@@ -5320,6 +5370,7 @@ export class Session {
           payload: {
             requestId: request.requestId,
             task: await this.finalizer().status(request.workspaceId),
+            completion: (await this.workspaceRegistry.get(request.workspaceId))?.taskCompletion,
           },
         },
         source,

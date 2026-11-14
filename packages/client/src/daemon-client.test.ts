@@ -10242,6 +10242,7 @@ test("task finalization gates all operations before sending to an old host", asy
   const connected = client.connect();
   mock.triggerOpen({ features: {} });
   await connected;
+  await expect(client.declareWorkspaceTaskComplete("task", "reviewed")).rejects.toThrow(/Update/);
   await expect(client.inspectWorkspaceTaskFinalization("task")).rejects.toThrow(/Update/);
   await expect(client.applyWorkspaceTaskFinalization("token")).rejects.toThrow(/Update/);
   await expect(client.getWorkspaceTaskFinalization("task")).rejects.toThrow(/Update/);

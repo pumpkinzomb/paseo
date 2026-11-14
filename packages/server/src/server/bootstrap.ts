@@ -1,3 +1,5 @@
+import { recoverTaskCompletion } from "./workspace-task-finalization.js";
+import { prepareTaskCompletionCancellations } from "./private-files.js";
 import { WorkspaceLeadAssociations } from "./workspace-lead-association.js";
 import { defaultAssistantSelection } from "./default-assistant/index.js";
 import {
@@ -661,6 +663,7 @@ export async function createPaseoDaemon(
 }
 
 async function configureTaskFinalization(
+  paseoHome: string,
   agentManager: AgentManager,
   workspaceRegistry: FileBackedWorkspaceRegistry,
   agentStorage: AgentStorage,
@@ -671,9 +674,45 @@ async function configureTaskFinalization(
   terminalManager.setWorkspaceAdmission?.((id) => agentManager.taskFinalizationGate.admit(id));
   workspaceSetupRuntime.beforeStart = (id) =>
     agentManager.taskFinalizationGate.workspaceActivity(id);
+  let cancellations: Awaited<ReturnType<typeof prepareTaskCompletionCancellations>> | undefined;
+  try {
+    cancellations = await prepareTaskCompletionCancellations(
+      path.join(paseoHome, "task-completion-cancellations"),
+    );
+  } catch (error) {
+    logger.warn(
+      { err: error },
+      "Durable task completion is unavailable; declarations will be refused",
+    );
+  }
+  agentManager.taskFinalizationGate.assertCompletionSupport = () => {
+    if (!cancellations)
+      throw new Error("Durable task completion is unsupported or unavailable on this host");
+  };
+  agentManager.taskFinalizationGate.completionCanceled = async (id) => {
+    if (!cancellations) throw new Error("Durable cancellation storage unavailable");
+    return cancellations.has(id);
+  };
   agentManager.taskFinalizationGate.onInvalidated = (workspaceId) => {
+    const id = agentManager.taskFinalizationGate.completionId(workspaceId);
+    if (id) {
+      if (!cancellations)
+        throw new Error("Durable task cancellation unavailable; work was not admitted");
+      cancellations.cancel(id);
+    }
     void workspaceRegistry
       .update(workspaceId, (record) => {
+        const completion = record.taskCompletion;
+        if (completion && completion.state !== "retired" && completion.state !== "invalidated") {
+          record = {
+            ...record,
+            taskCompletion: {
+              ...completion,
+              state: "invalidated",
+              reason: "New task activity invalidated completion declaration",
+            },
+          };
+        }
         const task = record.taskFinalization;
         if (!task || task.phase === "retired" || task.phase === "invalidated") return record;
         return {
@@ -691,7 +730,13 @@ async function configureTaskFinalization(
       );
   };
   for (const record of await workspaceRegistry.listAll()) {
-    if (record.taskFinalization) {
+    await recoverTaskCompletion(
+      record,
+      workspaceRegistry,
+      agentManager.taskFinalizationGate,
+      cancellations,
+    );
+    if (record.taskFinalization || record.taskCompletion) {
       const agents = await agentStorage.listByWorkspaces([record.workspaceId], {
         includeArchived: true,
       });
@@ -1634,6 +1679,7 @@ async function createPaseoDaemonInternal(
   });
 
   await configureTaskFinalization(
+    config.paseoHome,
     agentManager,
     workspaceRegistry,
     agentStorage,
@@ -1725,6 +1771,10 @@ async function createPaseoDaemonInternal(
       (runtime.callerAgentId ? agentManager.getPaseoToolPolicy(runtime.callerAgentId) : undefined),
     paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
+    declareTaskCompletion: async (workspaceId, headSha, callerAgentId) => {
+      if (!wsServer) throw new Error("Task completion service unavailable");
+      return wsServer.declareTaskCompletion(workspaceId, headSha, callerAgentId);
+    },
     callerAgentId: runtime.callerAgentId,
     enableVoiceTools: runtime.enableVoiceTools,
     voiceOnly: runtime.voiceOnly,

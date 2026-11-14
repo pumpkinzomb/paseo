@@ -1,10 +1,26 @@
+import {
+  prepareTaskCompletionCancellations,
+  loadTaskCompletionCancellations,
+} from "./private-files.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage, parseStoredAgentRecord } from "./agent/agent-storage.js";
 import { WorkspaceArchiveOperations } from "./workspace-archive-operations.js";
 import { archiveByScope, type ArchiveDependencies } from "./workspace-archive-service.js";
 import { afterEach, expect, it, vi } from "vitest";
-import { mkdtemp, realpath, mkdir, writeFile, readFile, rm, access } from "node:fs/promises";
+import {
+  mkdtemp,
+  realpath,
+  mkdir,
+  writeFile,
+  readFile,
+  rm,
+  access,
+  symlink,
+  chmod,
+} from "node:fs/promises";
 import os from "node:os";
+import syncFs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import pino from "pino";
@@ -13,7 +29,7 @@ import {
   createPersistedWorkspaceRecord,
 } from "./workspace-registry.js";
 import { DevelopmentReview } from "./development-review.js";
-import { WorkspaceTaskFinalizer } from "./workspace-task-finalization.js";
+import { recoverTaskCompletion, WorkspaceTaskFinalizer } from "./workspace-task-finalization.js";
 import { WorkspaceTaskFinalizationGate } from "./workspace-task-finalization-gate.js";
 import { resolveTaskOwnership, type TaskParentRecord } from "./workspace-task-owner.js";
 import { requiredPermissionForInbound } from "./authorization/operation-permissions.js";
@@ -90,6 +106,7 @@ async function fixture() {
   const gate = new WorkspaceTaskFinalizationGate();
   const state = {
     busy: false,
+    pendingDelivery: false,
     consumers: false,
     applied: head,
     segmentIds: ["lead", "continuation"],
@@ -152,6 +169,7 @@ async function fixture() {
     }),
     assertIdle: async () => {
       if (state.busy) throw new Error("Task has running work or pending delivery");
+      if (state.pendingDelivery) throw new Error("Task completion delivery is pending");
     },
     closeIdle: async (_ids: readonly string[], current: () => boolean) => {
       state.onClose();
@@ -577,4 +595,254 @@ it("requires fresh review after a newer applied release and same-lead provider c
   );
   expect(f.git("branch", "--list", "task-reviewed")).toBe("");
   expect(f.state.archives).toBe(1);
+});
+
+it("persists whole-task completion before apply and recovers it after restart", async () => {
+  const f = await fixture();
+  f.state.applied = f.base;
+  const intent = await f.service.declareComplete("task", f.head);
+  expect(intent.state).toBe("pending");
+  await f.service.reconcileCompletions();
+  expect(f.state.archives).toBe(0);
+  expect((await f.registry.get("task"))?.taskCompletion?.state).toBe("blocked");
+  const registry = new FileBackedWorkspaceRegistry(f.registryPath, f.logger);
+  const recovered = new WorkspaceTaskFinalizer({
+    ...f.deps,
+    registry,
+    archive: async (id) => {
+      await f.deps.archive(id);
+      await registry.archive(id, new Date().toISOString());
+    },
+  });
+  f.state.applied = f.head; // Fake installed-release port; actual finalizer/Git/registry are used.
+  await recovered.reconcileCompletions(Date.now() + 600_000);
+  expect((await registry.get("task"))?.taskCompletion?.state).toBe("retired");
+  await recovered.reconcileCompletions(Date.now() + 1_200_000);
+  expect(f.state.archives).toBe(1);
+  await expect(access(f.task)).rejects.toThrow();
+});
+
+it("defers busy completed tasks and retires only after idle", async () => {
+  const f = await fixture();
+  f.state.busy = true;
+  await f.service.declareComplete("task", f.head);
+  await f.service.reconcileCompletions();
+  expect(f.state.archives).toBe(0);
+  expect((await f.registry.get("task"))?.taskCompletion?.reason).toMatch(/running|pending/);
+  f.state.busy = false;
+  await f.service.reconcileCompletions(Date.now() + 600_000);
+  expect(f.state.archives).toBe(1);
+});
+
+it("does not silently adopt an advanced task tip", async () => {
+  const f = await fixture();
+  await f.service.declareComplete("task", f.head);
+  await writeFile(path.join(f.task, "later.txt"), "new work");
+  f.run(f.task, "add", "later.txt");
+  f.run(f.task, "commit", "--quiet", "-m", "later work");
+  await f.service.reconcileCompletions();
+  expect((await f.registry.get("task"))?.taskCompletion?.state).toBe("invalidated");
+  expect(f.state.archives).toBe(0);
+});
+
+it("keeps duplicate whole-task declarations idempotent and binds the reviewed SHA", async () => {
+  const f = await fixture();
+  await expect(f.service.declareComplete("task", f.base)).rejects.toThrow(/exact reviewed tip/);
+  const intent = await f.service.declareComplete("task", f.head);
+  expect((await f.service.declareComplete("task", f.head)).task.id).toBe(intent.task.id);
+});
+
+it("preserves unknown files and records a visible retry reason", async () => {
+  const f = await fixture();
+  await f.service.declareComplete("task", f.head);
+  await writeFile(path.join(f.task, "unknown.txt"), "retain");
+  await f.service.reconcileCompletions();
+  expect((await f.registry.get("task"))?.taskCompletion?.reason).toMatch(/unpublished/);
+  expect(f.state.archives).toBe(0);
+  expect(await readFile(path.join(f.task, "unknown.txt"), "utf8")).toBe("retain");
+});
+
+it("new queued work cancels the declaration before finalizer admission", async () => {
+  const f = await fixture();
+  await f.service.declareComplete("task", f.head);
+  f.gate.agentActivity("worker");
+  await f.service.reconcileCompletions();
+  expect((await f.registry.get("task"))?.taskCompletion?.state).toBe("invalidated");
+  expect(f.state.archives).toBe(0);
+});
+
+it("whole-task declaration retains source and planned-work rejection", async () => {
+  const f = await fixture();
+  await expect(f.service.declareComplete("source", f.head)).rejects.toThrow(/Only verified/);
+  await f.registry.update("task", (r) => ({ ...r, workspacePurpose: "planned" }));
+  await expect(f.service.declareComplete("task", f.head)).rejects.toThrow(/Only verified/);
+});
+
+it("durably cancels approval before admission even if registry persistence is interrupted", async () => {
+  const f = await fixture();
+  const intent = await f.service.declareComplete("task", f.head);
+  const markers = path.join(f.root, "task-completion-cancellations");
+  const cancellations = await prepareTaskCompletionCancellations(markers);
+  f.gate.onInvalidated = () => cancellations.cancel(intent.task.id);
+  f.gate.agentActivity("worker");
+  expect(await (await loadTaskCompletionCancellations(markers)).has(intent.task.id)).toBe(true);
+  await f.service.reconcileCompletions();
+  expect((await f.registry.get("task"))?.taskCompletion?.state).toBe("invalidated");
+  expect(f.state.archives).toBe(0);
+});
+
+it("marker writer refuses symlinks, partial targets and private-root changes", async () => {
+  const f = await fixture();
+  const root = path.join(f.root, "task-completion-cancellations");
+  const markers = await prepareTaskCompletionCancellations(root);
+  const id = "11111111-1111-1111-1111-111111111111";
+  const outside = path.join(f.root, "retain.txt");
+  await writeFile(outside, "retain");
+  await symlink(outside, path.join(root, id));
+  expect(() => markers.cancel(id)).toThrow(/Unsafe/);
+  expect(await readFile(outside, "utf8")).toBe("retain");
+  await rm(path.join(root, id));
+  await writeFile(path.join(root, id), "partial", { mode: 0o600 });
+  await expect(markers.has(id)).rejects.toThrow(/Unknown/);
+  expect(() => markers.cancel(id)).toThrow(/Unknown/);
+  await rm(path.join(root, id));
+  await chmod(root, 0o755);
+  expect(() => markers.cancel(id)).toThrow(/identity/);
+  await chmod(root, 0o700);
+});
+
+it("failed directory fsync rejects new admission and retries the existing marker flush", async () => {
+  const f = await fixture();
+  const markers = await prepareTaskCompletionCancellations(
+    path.join(f.root, "task-completion-cancellations"),
+  );
+  const intent = await f.service.declareComplete("task", f.head);
+  f.gate.onInvalidated = () => markers.cancel(intent.task.id);
+  const flush = vi.spyOn(syncFs, "fsyncSync").mockImplementationOnce(() => {
+    throw new Error("injected fsync failure");
+  });
+  syncBuiltinESMExports();
+  try {
+    expect(() => f.gate.agentActivity("worker")).toThrow(/injected fsync failure/);
+  } finally {
+    flush.mockRestore();
+    syncBuiltinESMExports();
+  }
+  f.gate.agentActivity("worker");
+  expect(await markers.has(intent.task.id)).toBe(true);
+  await f.service.reconcileCompletions();
+  expect(f.state.archives).toBe(0);
+});
+
+it("restart invalidates the exact intent canceled before registry persistence", async () => {
+  const f = await fixture();
+  const intent = await f.service.declareComplete("task", f.head);
+  const markers = await prepareTaskCompletionCancellations(
+    path.join(f.root, "task-completion-cancellations"),
+  );
+  markers.cancel(intent.task.id);
+  const registry = new FileBackedWorkspaceRegistry(f.registryPath, f.logger);
+  const record = await registry.get("task");
+  if (!record) throw new Error("Missing fixture task");
+  await recoverTaskCompletion(record, registry, new WorkspaceTaskFinalizationGate(), markers);
+  await new WorkspaceTaskFinalizer({ ...f.deps, registry }).reconcileCompletions();
+  expect((await registry.get("task"))?.taskCompletion?.state).toBe("invalidated");
+  expect(f.state.archives).toBe(0);
+});
+
+it("a cancellation inserted during idle close blocks the destructive checkpoint", async () => {
+  const f = await fixture();
+  const intent = await f.service.declareComplete("task", f.head);
+  const markers = await prepareTaskCompletionCancellations(
+    path.join(f.root, "task-completion-cancellations"),
+  );
+  f.gate.completionCanceled = (id) => markers.has(id);
+  f.state.onClose = () => markers.cancel(intent.task.id);
+  await f.service.reconcileCompletions();
+  expect(f.state.archives).toBe(0);
+  await access(f.task);
+  expect((await f.registry.get("task"))?.taskCompletion?.reason).toMatch(/durably canceled/);
+});
+
+it("file flush failure rejects admission without authorizing cleanup", async () => {
+  const f = await fixture();
+  const intent = await f.service.declareComplete("task", f.head);
+  const markers = await prepareTaskCompletionCancellations(
+    path.join(f.root, "task-completion-cancellations"),
+  );
+  f.gate.onInvalidated = () => markers.cancel(intent.task.id);
+  const write = vi.spyOn(syncFs, "writeFileSync").mockImplementationOnce(() => {
+    throw new Error("injected file flush failure");
+  });
+  syncBuiltinESMExports();
+  try {
+    expect(() => f.gate.agentActivity("worker")).toThrow(/file flush failure/);
+  } finally {
+    write.mockRestore();
+    syncBuiltinESMExports();
+  }
+  await f.service.reconcileCompletions();
+  expect(f.state.archives).toBe(0);
+});
+
+it("marker preparation rejects symlink components and never follows an aliased root", async () => {
+  const f = await fixture();
+  const root = path.join(f.root, "task-completion-cancellations");
+  const outside = path.join(f.root, "private-target");
+  await mkdir(outside, { mode: 0o700 });
+  await symlink(outside, root);
+  await expect(prepareTaskCompletionCancellations(root)).rejects.toThrow(/Unsafe/);
+  await rm(root);
+  const alias = path.join(f.root, "alias");
+  await symlink(f.root, alias);
+  await expect(
+    prepareTaskCompletionCancellations(path.join(alias, "task-completion-cancellations")),
+  ).rejects.toThrow(/canonical/);
+  expect(await readFile(path.join(f.source, "source.txt"), "utf8")).toBe("retained source\n");
+});
+
+it("refuses completion when the host cannot provide durable cancellation storage", async () => {
+  const f = await fixture();
+  f.gate.assertCompletionSupport = () => {
+    throw new Error("unsupported durable cancellation");
+  };
+  await expect(f.service.declareComplete("task", f.head)).rejects.toThrow(/unsupported/);
+  expect((await f.registry.get("task"))?.taskCompletion).toBeUndefined();
+  expect(f.state.archives).toBe(0);
+});
+
+it("declares once while finishing before apply, then waits for lead delivery without self-invalidation", async () => {
+  const f = await fixture();
+  f.state.applied = f.base;
+  f.state.busy = true;
+  f.state.pendingDelivery = true;
+  const intent = await f.service.declareComplete("task", f.head);
+  await f.service.reconcileCompletions();
+  expect(f.state.archives).toBe(0);
+  f.state.applied = f.head; // Fake applied-release port.
+  f.state.busy = false;
+  // The completion message is delivered to the owning lead, outside the task's admission scope.
+  f.gate.agentActivity("lead");
+  await f.service.reconcileCompletions(Date.now() + 600_000);
+  expect((await f.registry.get("task"))?.taskCompletion?.state).toBe("blocked");
+  expect((await f.registry.get("task"))?.taskCompletion?.reason).toMatch(/delivery/);
+  f.state.pendingDelivery = false;
+  await f.service.reconcileCompletions(Date.now() + 1_200_000);
+  const result = (await f.registry.get("task"))?.taskCompletion;
+  expect(result?.task.id).toBe(intent.task.id);
+  expect(result?.state).toBe("retired");
+  expect(f.state.archives).toBe(1);
+});
+
+it("unsupported startup cancels recovered intent while leaving unrelated workspace admission available", async () => {
+  const f = await fixture();
+  await f.service.declareComplete("task", f.head);
+  const record = await f.registry.get("task");
+  if (!record) throw new Error("Missing fixture task");
+  const gate = new WorkspaceTaskFinalizationGate();
+  await recoverTaskCompletion(record, f.registry, gate, undefined);
+  expect((await f.registry.get("task"))?.taskCompletion?.state).toBe("invalidated");
+  expect(gate.completionId("task")).toBeUndefined();
+  expect(() => gate.workspaceActivity("unrelated-room")).not.toThrow();
+  expect((await f.registry.get("source"))?.archivedAt).toBeNull();
 });

@@ -573,20 +573,28 @@ explicit development was requested, which requires a Git project. Top-level and
 resumed sessions are not moved. A cwd-locked caller cannot create an out-of-scope
 worktree through this path.
 
-Children report committed changes and test evidence. The lead reviews and locally
-integrates approved changes, captures the exact task tip, and verifies that an
-applied signed self-development release contains it. Before declaring the whole
-task complete, the lead must inspect, review and apply task finalization, then
-verify a `retired` result. A turn finishing or an earlier merge does not complete
-a continuing task. The child cannot retire its own active checkout.
+Children report committed changes and test evidence. The lead reviews the exact
+committed tip and captures development review evidence, then declares the whole
+task complete once with the SDK's `finalization.complete(headSha)` or the owning
+lead's `complete_task` tool (`declareComplete: true`). This declaration is durable
+before integration or release application. It does not complete a continuing task
+merely because a turn finished. The child cannot declare its own task complete.
+
+Daemon maintenance rechecks pending declarations every five seconds, with per-task
+retry backoff capped at five minutes. Restart resumes pending and blocked intents.
+Cleanup uses the existing finalizer only after main and the verified applied
+release contain the captured tip and all runtime/delivery/terminal/consumer gates
+pass. Status exposes the declaration, attempt count, next retry and blocker reason.
+A new prompt or queued work cancels approval; changed tip, ownership or reviewed
+scope requires a fresh declaration. Maintenance never adopts an advanced tip.
+Unknown files remain blocked for review; do not substitute shell deletion.
 
 Use `paseo workspace finalize <workspace-id> --inspect` for a read-only preview,
 `--status` for the persisted result, or the interactive command without either
-flag to review and confirm the full tip. Interactive inspection and application
-share one SDK connection; preview tokens cannot be carried to a new invocation.
-The SDK workspace handle exposes `finalization.inspect()`, `apply(token)` and
-`status()`. Pending, invalidated or blocked results require review and retry;
-never substitute shell deletion for a blocked result.
+flag to review and confirm the full tip immediately. The SDK retains
+`finalization.inspect()`, `apply(token)` and `status()` for this manual path.
+Interactive inspection and application share one connection; preview tokens
+cannot be carried to a new invocation. `retired` is the cleanup completion proof.
 
 Finalization supports verified self-development tasks with an exact applied
 installed-release receipt. Standalone projects without that authority remain

@@ -1161,18 +1161,76 @@ export class VoiceAssistantWebSocketServer {
     }
   }
 
+  private readonly completionRechecks = new Set<string>();
+  private unsubscribeCompletionEvents?: () => void;
+  private completionSession?: Session;
+  private completionTimer?: ReturnType<typeof setTimeout>;
+  private completionRun?: Promise<void>;
+
+  private taskCompletionSession() {
+    return (this.completionSession ??= this.createSocketSession({
+      clientId: "task-completion-maintenance",
+      sourceId: "task-completion-maintenance",
+      appVersion: null,
+      clientCapabilities: null,
+      permissions: OWNER_PERMISSIONS,
+      connectionLogger: this.logger,
+      onMessage: () => {},
+    }));
+  }
+
+  public async declareTaskCompletion(workspaceId: string, headSha: string, callerAgentId: string) {
+    return this.taskCompletionSession().declareTaskCompletion(workspaceId, headSha, callerAgentId);
+  }
+
+  private scheduleTaskCompletionCheck() {
+    if (this.connectionLifecycle !== "accepting" || this.completionTimer) return;
+    this.completionTimer = setTimeout(() => {
+      this.completionTimer = undefined;
+      const relevant = new Set(this.completionRechecks);
+      this.completionRechecks.clear();
+      this.completionRun = this.taskCompletionSession()
+        .reconcileTaskCompletions(relevant)
+        .catch((err) => this.logger.error({ err }, "Task completion retry failed"))
+        .finally(() => {
+          this.completionRun = undefined;
+          this.scheduleTaskCompletionCheck();
+        });
+    }, 5_000);
+    this.completionTimer.unref();
+  }
+
   public prepareForShutdown(): void {
     this.connectionLifecycle = "stopping";
+    if (this.completionTimer) clearTimeout(this.completionTimer);
+    this.completionTimer = undefined;
+    this.unsubscribeCompletionEvents?.();
+    this.unsubscribeCompletionEvents = undefined;
   }
 
   public beginAcceptingConnections(): void {
     if (this.connectionLifecycle === "starting") {
       this.connectionLifecycle = "accepting";
+      this.unsubscribeCompletionEvents = this.agentManager.subscribe(
+        (event) => {
+          if (
+            event.type === "agent_state" &&
+            event.agent.workspaceId &&
+            event.agent.lifecycle !== "running"
+          ) {
+            this.completionRechecks.add(event.agent.workspaceId);
+          }
+        },
+        { replayState: false },
+      );
+      this.scheduleTaskCompletionCheck();
     }
   }
 
   public async close(): Promise<void> {
     this.prepareForShutdown();
+    await this.completionRun;
+    await this.completionSession?.cleanup();
     await this.agentMessages.close();
     await this.connectedHosts.close();
     this.unsubscribeSpeechReadiness?.();
@@ -2082,6 +2140,7 @@ export class VoiceAssistantWebSocketServer {
         assistantConversationLifecycle: true,
         workspaceLeadAssociation: true,
         workspaceTaskFinalization: true,
+        workspaceTaskCompletion: true,
         agentRecordDeletion: true,
         workspaceSessionDeletion: true,
         nativeSessionDeletion: true,

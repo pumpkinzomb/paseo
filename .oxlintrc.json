@@ -165,8 +165,13 @@
               "server/plugins/compiler-imports.ts": ["readFileSync", "realpathSync"],
               // TODO: plugin install/update/remove commits sources.json synchronously; preserve record/write ordering with an async mutation queue.
               "server/plugins/managed-source.ts": ["existsSync", "readFileSync"],
-              // TODO: shared synchronous persistence supports startup identity plus Hub/plugin/push runtime writers; migrate those owners before removing these exports.
+              // Shared private persistence; task cancellation flushes a tiny revocation marker before synchronous admission returns. Other owners still need async migration.
               "server/private-files.ts": [
+                "lstatSync",
+                "readFileSync",
+                "openSync",
+                "fsyncSync",
+                "closeSync",
                 "chmodSync",
                 "mkdirSync",
                 "realpathSync",

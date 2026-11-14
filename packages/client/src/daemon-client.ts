@@ -3854,6 +3854,20 @@ export class DaemonClient {
     if (!this.lastServerInfoMessage?.features?.workspaceTaskFinalization)
       throw new Error("Update this host to finalize reviewed development tasks");
   }
+  async declareWorkspaceTaskComplete(workspaceId: string, headSha: string) {
+    if (!this.lastServerInfoMessage?.features?.workspaceTaskCompletion)
+      throw new Error("Update the host to declare task completion");
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.taskCompletion.declare.response">(
+      {
+        message: {
+          type: "workspace.taskCompletion.declare.request",
+          workspaceId,
+          headSha,
+          declareComplete: true,
+        },
+      },
+    );
+  }
   async inspectWorkspaceTaskFinalization(workspaceId: string) {
     this.requireTaskFinalization();
     return this.sendNamespacedCorrelatedSessionRequest<"workspace.taskFinalization.inspect.response">(

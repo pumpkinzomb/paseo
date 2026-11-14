@@ -65,5 +65,5 @@ export function developmentTaskPrompt(workspace: TaskWorkspace, prompt: string):
 
 export function developmentTaskResultGuidance(workspace: TaskWorkspace | null): string {
   if (!workspace) return "";
-  return ` Isolated development branch ${workspace.branchName} at ${workspace.cwd}. Parent uncommitted edits were not copied. Review the child's diff and test evidence before integrating its commits. Do not treat turn completion as merge approval; use the existing Git merge workflow within the user's authorization, then managed cleanup after integration and usage checks.`;
+  return ` Isolated development branch ${workspace.branchName} at ${workspace.cwd}. Parent uncommitted edits were not copied. Review the child's diff and test evidence before integrating its commits. Do not treat turn completion as merge approval; use the existing Git merge workflow within the user's authorization, capture the exact reviewed tip and declare the whole task complete once with complete_task (workspaceId, headSha, declareComplete:true). The daemon defers cleanup until integration, the applied release and all usage gates pass; new task work invalidates that declaration.`;
 }

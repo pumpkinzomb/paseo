@@ -130,6 +130,11 @@ import type { ProviderPaseoToolsPolicy } from "@getpaseo/protocol/provider-confi
 import { isPaseoToolEnabled } from "../paseo-tool-policy.js";
 
 export interface PaseoToolHostDependencies {
+  declareTaskCompletion?: (
+    workspaceId: string,
+    headSha: string,
+    callerAgentId: string,
+  ) => Promise<import("@getpaseo/protocol/messages").WorkspaceTaskCompletion>;
   workspaceProvisioning?: Pick<WorkspaceProvisioningService, "runInImportWorkspace">;
   agentMessages?: () => AgentMessageDelivery;
   finishSubscriptions?: () => FinishSubscriptions;
@@ -1408,6 +1413,30 @@ function createToolCatalog(
       resolveCallerAgent,
     });
   }
+
+  registerTool(
+    "complete_task",
+    {
+      title: "Declare whole task complete",
+      description:
+        "Owning lead only: durably declare a reviewed whole development task complete once. Requires its captured exact commit SHA. Cleanup waits for integration, applied release and idle consumers; new work invalidates this declaration. Never use for a finished turn on continuing work.",
+      inputSchema: {
+        workspaceId: z.string(),
+        headSha: z.string(),
+        declareComplete: z.literal(true),
+      },
+    },
+    async (args) => {
+      if (!callerAgentId || !options.declareTaskCompletion)
+        throw new Error("Task completion requires the owning lead on a supported host");
+      const completion = await options.declareTaskCompletion(
+        args.workspaceId,
+        args.headSha,
+        callerAgentId,
+      );
+      return { content: [], structuredContent: ensureValidJson({ completion }) };
+    },
+  );
 
   registerTool(
     "list_hosts",

@@ -4,6 +4,19 @@ export class WorkspaceTaskFinalizationGate {
   private readonly revisions = new Map<string, number>();
   private readonly admissions = new Map<string, number>();
   private readonly active = new Map<string, { controller: AbortController; committed: boolean }>();
+  private readonly canceledCompletions = new Set<string>();
+  isCompletionCanceled(id: string) {
+    return this.canceledCompletions.has(id);
+  }
+  private readonly completionIds = new Map<string, string>();
+  completionId(workspaceId: string) {
+    return this.completionIds.get(workspaceId);
+  }
+  bindCompletion(workspaceId: string, id: string) {
+    this.completionIds.set(workspaceId, id);
+  }
+  assertCompletionSupport?: () => void;
+  completionCanceled?: (id: string) => Promise<boolean>;
   onInvalidated?: (workspaceId: string) => void;
 
   watch(workspaceId: string, agentIds: readonly string[]) {
@@ -36,7 +49,13 @@ export class WorkspaceTaskFinalizationGate {
   workspaceActivity(workspaceId: string) {
     this.revisions.set(workspaceId, this.revision(workspaceId) + 1);
     const active = this.active.get(workspaceId);
-    if (!active?.committed) this.onInvalidated?.(workspaceId);
+    if (!active?.committed) {
+      const id = this.completionIds.get(workspaceId);
+      if (id) this.canceledCompletions.add(id);
+      this.onInvalidated?.(workspaceId);
+      // Successful synchronous revocation already persisted the marker. Later prompts need no fsync.
+      if (id) this.completionIds.delete(workspaceId);
+    }
     if (!active) return;
     if (!active.committed) active.controller.abort();
     throw new Error("Task finalization interrupted by new work. Retry after it settles.");

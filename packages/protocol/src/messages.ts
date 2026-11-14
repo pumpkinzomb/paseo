@@ -3077,6 +3077,27 @@ export const WorkspaceTaskFinalizationSchema = z.object({
   reason: z.string().optional(),
 });
 export type WorkspaceTaskFinalization = z.infer<typeof WorkspaceTaskFinalizationSchema>;
+export const WorkspaceTaskCompletionSchema = z.object({
+  task: WorkspaceTaskFinalizationSchema,
+  scopeRevision: z.string(),
+  agentIds: z.array(z.string()),
+  state: z.enum(["pending", "blocked", "invalidated", "retired"]),
+  attempts: z.number(),
+  nextAttemptAt: z.string(),
+  reason: z.string().optional(),
+});
+export type WorkspaceTaskCompletion = z.infer<typeof WorkspaceTaskCompletionSchema>;
+export const WorkspaceTaskCompletionRequestSchema = z.object({
+  type: z.literal("workspace.taskCompletion.declare.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  headSha: z.string(),
+  declareComplete: z.literal(true),
+});
+export const WorkspaceTaskCompletionResponseSchema = z.object({
+  type: z.literal("workspace.taskCompletion.declare.response"),
+  payload: z.object({ requestId: z.string(), completion: WorkspaceTaskCompletionSchema }),
+});
 export const WorkspaceTaskFinalizationPreviewSchema = z.object({
   workspaceId: z.string(),
   name: z.string(),
@@ -3114,7 +3135,11 @@ export const WorkspaceTaskFinalizationApplyResponseSchema = z.object({
 });
 export const WorkspaceTaskFinalizationStatusResponseSchema = z.object({
   type: z.literal("workspace.taskFinalization.status.response"),
-  payload: z.object({ requestId: z.string(), task: WorkspaceTaskFinalizationSchema.nullable() }),
+  payload: z.object({
+    requestId: z.string(),
+    task: WorkspaceTaskFinalizationSchema.nullable(),
+    completion: WorkspaceTaskCompletionSchema.optional(),
+  }),
 });
 const WorkspaceLeadIntentSchema = z.object({
   lead: WorkspaceLeadAssociationSchema,
@@ -3889,6 +3914,7 @@ export const SubscriptionReleaseResponseSchema = z.object({
 });
 
 export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+  WorkspaceTaskCompletionRequestSchema,
   WorkspaceTaskFinalizationInspectRequestSchema,
   WorkspaceTaskFinalizationApplyRequestSchema,
   WorkspaceTaskFinalizationStatusRequestSchema,
@@ -4524,6 +4550,7 @@ export const ServerInfoStatusPayloadSchema = z
         assistantConversationLifecycle: z.boolean().optional(),
         workspaceLeadAssociation: z.boolean().optional(),
         workspaceTaskFinalization: z.boolean().optional(),
+        workspaceTaskCompletion: z.boolean().optional(),
         agentRecordDeletion: z.boolean().optional(),
         workspaceSessionDeletion: z.boolean().optional(),
         nativeSessionDeletion: z.boolean().optional(),
@@ -4831,6 +4858,7 @@ export const WorkspaceGitHubRuntimePayloadSchema = z
 
 const workspaceAgentProvenanceFields = {
   taskFinalization: WorkspaceTaskFinalizationSchema.optional(),
+  taskCompletion: WorkspaceTaskCompletionSchema.optional(),
   leadAssociation: WorkspaceLeadAssociationSchema.optional(),
   workspacePurpose: WorkspacePurposeSchema.optional(),
   creatorAgent: z.object({ serverId: z.string(), agentId: z.string() }).optional(),
@@ -7880,6 +7908,7 @@ export const AgentSkillsImportLegacySelectionResponseSchema = z.object({
 });
 
 export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+  WorkspaceTaskCompletionResponseSchema,
   WorkspaceTaskFinalizationInspectResponseSchema,
   WorkspaceTaskFinalizationApplyResponseSchema,
   WorkspaceTaskFinalizationStatusResponseSchema,

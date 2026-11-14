@@ -195,12 +195,16 @@ export interface PaseoWorkspaceHandle {
   current(): PaseoWorkspace | null;
   refresh(options?: { requestId?: string }): Promise<PaseoWorkspace | null>;
   finalization: {
+    complete(
+      headSha: string,
+    ): Promise<{ completion: import("@getpaseo/protocol/messages").WorkspaceTaskCompletion }>;
     inspect(): Promise<import("@getpaseo/protocol/messages").WorkspaceTaskFinalizationPreview>;
     apply(
       previewToken: string,
     ): Promise<{ task: import("@getpaseo/protocol/messages").WorkspaceTaskFinalization }>;
     status(): Promise<{
       task: import("@getpaseo/protocol/messages").WorkspaceTaskFinalization | null;
+      completion?: import("@getpaseo/protocol/messages").WorkspaceTaskCompletion;
     }>;
   };
   development: {
@@ -982,6 +986,7 @@ function createWorkspaceHandleFactory(
       current: () => current,
       refresh,
       finalization: {
+        complete: (headSha) => daemonClient.declareWorkspaceTaskComplete(id, headSha),
         inspect: () => daemonClient.inspectWorkspaceTaskFinalization(id),
         apply: (token) => daemonClient.applyWorkspaceTaskFinalization(token),
         status: () => daemonClient.getWorkspaceTaskFinalization(id),

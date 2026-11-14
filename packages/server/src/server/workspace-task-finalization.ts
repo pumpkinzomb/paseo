@@ -3,6 +3,7 @@ import { lstat, realpath, readFile } from "node:fs/promises";
 import path from "node:path";
 import type {
   WorkspaceTaskFinalization,
+  WorkspaceTaskCompletion,
   WorkspaceTaskFinalizationPreview,
 } from "@getpaseo/protocol/messages";
 import type { WorkspaceRegistry, PersistedWorkspaceRecord } from "./workspace-registry.js";
@@ -40,7 +41,12 @@ function digest(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 function revision(record: PersistedWorkspaceRecord) {
-  const { taskFinalization: _journal, updatedAt: _updated, ...scope } = record;
+  const {
+    taskFinalization: _journal,
+    taskCompletion: _completion,
+    updatedAt: _updated,
+    ...scope
+  } = record;
   return digest(scope);
 }
 async function git(cwd: string, ...args: string[]) {
@@ -90,6 +96,26 @@ async function disposableRoots(root: string) {
     roots.push(name);
   }
   return roots.sort();
+}
+
+function sameCompletionScope(
+  current: WorkspaceTaskFinalization,
+  frozen: WorkspaceTaskFinalization,
+) {
+  const scope = (task: WorkspaceTaskFinalization) => ({
+    root: task.root,
+    rootDevice: task.rootDevice,
+    rootInode: task.rootInode,
+    branch: task.branch,
+    headSha: task.headSha,
+    evidenceId: task.evidenceId,
+    repository: task.repository,
+    sourceWorkspaceId: task.sourceWorkspaceId,
+    ownershipRevision: task.ownershipRevision,
+    lead: task.lead,
+    disposableRoots: task.disposableRoots,
+  });
+  return digest(scope(current)) === digest(scope(frozen));
 }
 
 type EligibleTask = PersistedWorkspaceRecord & {
@@ -169,6 +195,38 @@ function assertRetryScope(
     throw new Error("Original task scope changed; retry cannot adopt a different task");
 }
 
+export async function recoverTaskCompletion(
+  record: PersistedWorkspaceRecord,
+  registry: WorkspaceRegistry,
+  gate: WorkspaceTaskFinalizationGate,
+  cancellations?: { has(id: string): Promise<boolean> },
+) {
+  const intent = record.taskCompletion;
+  if (!intent || intent.state === "invalidated" || intent.state === "retired") return;
+  if (!cancellations) {
+    await registry.update(record.workspaceId, (r) => ({
+      ...r,
+      taskCompletion: {
+        ...intent,
+        state: "invalidated",
+        reason: "Durable cancellation storage unavailable; declaration canceled",
+      },
+    }));
+    return;
+  }
+  gate.bindCompletion(record.workspaceId, intent.task.id);
+  if (await cancellations.has(intent.task.id)) {
+    await registry.update(record.workspaceId, (r) => ({
+      ...r,
+      taskCompletion: {
+        ...intent,
+        state: "invalidated",
+        reason: "New work durably canceled completion",
+      },
+    }));
+  }
+}
+
 /** Explicit completion of one reviewed self-development task. Never called by turn-finished. */
 export class WorkspaceTaskFinalizer {
   private readonly previews = new Map<string, Preview>();
@@ -241,7 +299,11 @@ export class WorkspaceTaskFinalizer {
     return source;
   }
 
-  async inspect(principal: object, workspaceId: string): Promise<WorkspaceTaskFinalizationPreview> {
+  async inspect(
+    principal: object,
+    workspaceId: string,
+    declaring = false,
+  ): Promise<WorkspaceTaskFinalizationPreview> {
     const record = await this.record(workspaceId);
     const result: WorkspaceTaskFinalizationPreview = {
       workspaceId,
@@ -252,17 +314,7 @@ export class WorkspaceTaskFinalizer {
       if (record.taskFinalization?.phase === "retired")
         return { ...result, task: record.taskFinalization, blockers: ["Task is already retired"] };
       assertEligible(record, this.deps.serverId);
-      const all = await this.deps.registry.listAll();
-      if (
-        all.some(
-          (r) =>
-            r.workspaceId !== workspaceId &&
-            (r.parentWorkspaceId === workspaceId ||
-              r.developmentSourceIds?.includes(workspaceId) ||
-              (!r.archivedAt && r.worktreeRoot === record.worktreeRoot)),
-        )
-      )
-        throw new Error("Task is a retained source, shared checkout or owns child workspaces");
+      await this.assertNotRetained(record);
       const evidence = record.developmentEvidence;
       if (!evidence) throw new Error("Capture the exact reviewed task tip before finalizing");
       const sourceRecord = await this.record(evidence.sourceWorkspaceId);
@@ -273,7 +325,7 @@ export class WorkspaceTaskFinalizer {
       if (!agents.ids.length) throw new Error("Task session evidence is unavailable");
       this.deps.gate.watch(workspaceId, agents.ids);
       this.deps.gate.assertSettled(workspaceId);
-      await this.deps.assertIdle(record, agents.ids);
+      if (!declaring) await this.deps.assertIdle(record, agents.ids);
       const previous = record.taskFinalization;
       const missing = await absent(record.worktreeRoot);
       let task: WorkspaceTaskFinalization;
@@ -289,7 +341,7 @@ export class WorkspaceTaskFinalizer {
           ...previous,
           phase: "pending",
           updatedAt: new Date().toISOString(),
-          appliedRevision: await this.deps.appliedRevision(),
+          appliedRevision: declaring ? "" : await this.deps.appliedRevision(),
           ownershipRevision: ownership.revision,
           ownershipProof: ownership.proof,
         };
@@ -310,7 +362,7 @@ export class WorkspaceTaskFinalizer {
           sourceWorkspaceId: evidence.sourceWorkspaceId,
           repository: evidence.repository,
           evidenceId: evidence.id,
-          appliedRevision: await this.deps.appliedRevision(),
+          appliedRevision: declaring ? "" : await this.deps.appliedRevision(),
           ownershipProof: ownership.proof,
           ownershipRevision: ownership.revision,
           disposableRoots: await disposableRoots(record.worktreeRoot),
@@ -319,12 +371,11 @@ export class WorkspaceTaskFinalizer {
           updatedAt: new Date().toISOString(),
         };
       }
-      await this.unchanged(task, missing);
+      if (declaring) await this.validateDeclaration(task, record, missing);
+      else await this.unchanged(task, missing);
       const token = randomUUID(),
         expires = Date.now() + 5 * 60_000;
-      for (const [id, value] of this.previews)
-        if (value.expires < Date.now()) this.previews.delete(id);
-      if (this.previews.size >= 32) throw new Error("Too many task finalization previews");
+      this.prunePreviews();
       this.previews.set(token, {
         principal,
         expires,
@@ -343,7 +394,186 @@ export class WorkspaceTaskFinalizer {
     }
   }
 
-  async apply(principal: object, token: string, authorized: () => boolean) {
+  private prunePreviews() {
+    for (const [id, value] of this.previews)
+      if (value.expires < Date.now()) this.previews.delete(id);
+    if (this.previews.size >= 32) throw new Error("Too many task finalization previews");
+  }
+
+  private async assertNotRetained(record: PersistedWorkspaceRecord) {
+    const workspaceId = record.workspaceId;
+    const all = await this.deps.registry.listAll();
+    if (
+      all.some(
+        (r) =>
+          r.workspaceId !== workspaceId &&
+          (r.parentWorkspaceId === workspaceId ||
+            r.developmentSourceIds?.includes(workspaceId) ||
+            (!r.archivedAt && r.worktreeRoot === record.worktreeRoot)),
+      )
+    )
+      throw new Error("Task is a retained source, shared checkout or owns child workspaces");
+  }
+
+  private async validateDeclaration(
+    task: WorkspaceTaskFinalization,
+    record: PersistedWorkspaceRecord,
+    missing: boolean,
+  ) {
+    if (missing || record.archivedAt)
+      throw new Error("Completion requires a live reviewed checkout");
+    if (
+      (await git(task.root, "rev-parse", "HEAD")) !== task.headSha ||
+      (await git(task.root, "branch", "--show-current")) !== task.branch ||
+      (await repository(record)) !== task.repository
+    )
+      throw new Error("Reviewed task scope changed");
+  }
+
+  async declareComplete(workspaceId: string, headSha: string) {
+    this.deps.gate.assertCompletionSupport?.();
+    return this.deps.exclusive(workspaceId, async () => {
+      const principal = {};
+      const activity = this.deps.gate.revision(workspaceId);
+      const preview = await this.inspect(principal, workspaceId, true);
+      if (!preview.task || !preview.previewToken || preview.blockers.length)
+        throw new Error(preview.blockers.join("; "));
+      this.previews.delete(preview.previewToken);
+      const task = preview.task;
+      if (task.headSha !== headSha) throw new Error("Completion must name the exact reviewed tip");
+      const record = await this.record(workspaceId);
+      const existing = record.taskCompletion;
+      if (existing && existing.state !== "invalidated") {
+        if (existing.task.headSha !== headSha || existing.scopeRevision !== revision(record))
+          throw new Error("Existing completion scope changed");
+        return existing;
+      }
+      const agents = await this.deps.agents(workspaceId);
+      const completion: WorkspaceTaskCompletion = {
+        task,
+        scopeRevision: revision(record),
+        agentIds: agents.ids,
+        state: "pending",
+        attempts: 0,
+        nextAttemptAt: new Date().toISOString(),
+      };
+      if (activity !== this.deps.gate.revision(workspaceId))
+        throw new Error("New work invalidated completion declaration");
+      this.deps.gate.bindCompletion(workspaceId, task.id);
+      await this.deps.registry.update(workspaceId, (r) => {
+        if (
+          revision(r) !== completion.scopeRevision ||
+          activity !== this.deps.gate.revision(workspaceId)
+        )
+          throw new Error("Task changed during completion");
+        return { ...r, taskCompletion: completion };
+      });
+      return completion;
+    });
+  }
+
+  /** The daemon owns retries; no client connection or expiring preview is retained. */
+  async reconcileCompletions(
+    now = Date.now(),
+    relevantWorkspaces: ReadonlySet<string> = new Set(),
+  ) {
+    for (const record of await this.deps.registry.listAll()) {
+      const intent = record.taskCompletion;
+      if (
+        !intent ||
+        intent.state === "retired" ||
+        intent.state === "invalidated" ||
+        (Date.parse(intent.nextAttemptAt) > now && !relevantWorkspaces.has(record.workspaceId))
+      )
+        continue;
+      await this.reconcileCompletion(record, intent, now);
+    }
+  }
+
+  private async completionScopeChanged(
+    record: PersistedWorkspaceRecord,
+    intent: WorkspaceTaskCompletion,
+  ) {
+    const ownership = await this.deps.owner(record);
+    const agents = await this.deps.agents(record.workspaceId);
+    const frozen = intent.task;
+    const removed = await absent(frozen.root);
+    if (removed) {
+      const source = await this.record(frozen.sourceWorkspaceId);
+      const ref = await git(
+        source.cwd,
+        "for-each-ref",
+        "--format=%(objectname)",
+        `refs/heads/${frozen.branch}`,
+      );
+      if (ref && ref !== frozen.headSha) return true;
+    }
+    return (
+      this.deps.gate.isCompletionCanceled(intent.task.id) ||
+      (await this.deps.gate.completionCanceled?.(intent.task.id)) ||
+      (!removed && revision(record) !== intent.scopeRevision) ||
+      ownership.revision !== frozen.ownershipRevision ||
+      digest(agents.ids) !== digest(intent.agentIds) ||
+      (!removed && (await git(frozen.root, "rev-parse", "HEAD")) !== frozen.headSha)
+    );
+  }
+
+  private async reconcileCompletion(
+    record: PersistedWorkspaceRecord,
+    intent: WorkspaceTaskCompletion,
+    now: number,
+  ) {
+    let state: WorkspaceTaskCompletion["state"] = "blocked";
+    let reason: string | undefined;
+    try {
+      const frozen = intent.task;
+      if (await this.completionScopeChanged(record, intent)) {
+        state = "invalidated";
+        throw new Error("Completion scope changed; declare the reviewed task again");
+      }
+      if (record.taskFinalization?.phase === "retired") state = "retired";
+      else {
+        const activity = this.deps.gate.revision(record.workspaceId);
+        const principal = {};
+        const preview = await this.inspect(principal, record.workspaceId);
+        if (!preview.previewToken || !preview.task || preview.blockers.length)
+          throw new Error(preview.blockers.join("; "));
+        if (!sameCompletionScope(preview.task, frozen)) {
+          this.previews.delete(preview.previewToken);
+          state = "invalidated";
+          throw new Error("Reviewed output or tip changed; completion invalidated");
+        }
+        const result = await this.apply(
+          principal,
+          preview.previewToken,
+          () => this.deps.gate.revision(record.workspaceId) === activity,
+          intent.task.id,
+        );
+        state = result.phase === "retired" ? "retired" : "blocked";
+        reason = result.reason;
+      }
+    } catch (error) {
+      reason = error instanceof Error ? error.message : String(error);
+    }
+    await this.deps.registry.update(record.workspaceId, (r) => {
+      if (r.taskCompletion?.task.id !== intent.task.id || r.taskCompletion.state === "invalidated")
+        return r;
+      return {
+        ...r,
+        taskCompletion: {
+          ...intent,
+          state,
+          reason,
+          attempts: intent.attempts + 1,
+          nextAttemptAt: new Date(
+            now + Math.min(300_000, 5_000 * 2 ** Math.min(intent.attempts, 6)),
+          ).toISOString(),
+        },
+      };
+    });
+  }
+
+  async apply(principal: object, token: string, authorized: () => boolean, completionId?: string) {
     const preview = this.previews.get(token);
     if (
       !preview ||
@@ -363,6 +593,8 @@ export class WorkspaceTaskFinalizer {
         Date.now() < preview.expires &&
         this.deps.gate.revision(task.workspaceId) === preview.activity;
       const checkpoint = async () => {
+        if (completionId && (await this.deps.gate.completionCanceled?.(completionId)))
+          throw new Error("Completion was durably canceled by new work");
         if (!current())
           throw new Error("Task completion approval invalidated by new work or caller change");
         await this.deps.assertIdle(await this.record(task.workspaceId), preview.agents.ids);
