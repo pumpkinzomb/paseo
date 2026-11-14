@@ -135,6 +135,19 @@ describe("room lead ownership", () => {
       ),
     ).toEqual(["a"]);
   });
+  it("does not promote explicitly parented assistants to independent room leads", () => {
+    const root = { id: "root", workspaceId: "room", labels: { "paseo.role": "assistant" } };
+    const child = {
+      ...root,
+      id: "child",
+      labels: {
+        ...root.labels,
+        "paseo.parent-agent-id": "parent-in-another-room",
+        "paseo.parent-server-id": "other-host",
+      },
+    };
+    expect(selectRoomLeadAgentIds([root, child], "room")).toEqual(["root"]);
+  });
   it("groups children of every provider segment with exact parent host authority", () => {
     const conversation = {
       logicalId: "a",

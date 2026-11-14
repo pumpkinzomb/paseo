@@ -984,7 +984,7 @@ export const ko: TranslationResources = {
       modified: "저장되지 않은 변경사항",
       loadingAgentTitle: "에이전트 제목 불러오는 중",
       fallback: {
-        newAgent: "새 리드 에이전트",
+        newAgent: "새 상위 에이전트",
         setup: "설정",
         workspaceSetup: "워크스페이스 설정",
         terminal: "터미널",
@@ -1019,7 +1019,7 @@ export const ko: TranslationResources = {
       },
       actions: {
         newTab: "새 탭",
-        newAgent: "새 리드 에이전트",
+        newAgent: "새 상위 에이전트",
         newTerminal: "새 터미널",
         preparingTerminal: "터미널 탭 준비 중",
         preparingTerminalTooltip: "터미널 준비 중...",
@@ -1092,7 +1092,7 @@ export const ko: TranslationResources = {
       actions: {
         workspaceActions: "워크스페이스 작업",
         workspaceActionsUnhealthy: "워크스페이스 작업, 비정상 서비스가 있습니다",
-        newAgent: "새 리드 에이전트",
+        newAgent: "새 상위 에이전트",
         newTerminal: "새 터미널",
         newBrowser: "새 브라우저 탭",
         importSession: "세션 가져오기",
@@ -2409,7 +2409,7 @@ export const ko: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "새 리드 에이전트",
+      newAgent: "새 상위 에이전트",
       creatingAgent: "에이전트 생성 중",
     },
     file: {

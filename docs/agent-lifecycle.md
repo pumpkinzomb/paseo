@@ -486,6 +486,21 @@ The default-assistant state now persists logical conversations with ordered nati
 
 The first segment remains the app's stable tab/workspace anchor. Its panel resolves the active segment before exposing the composer, approvals, stop controls and current stream. Earlier segments are available as paginated read-only user/assistant history in the same pane; tools and attachments are not merged into that presentation. Native transcripts remain intact. This is a single app conversation container, not identical native state or invisible transfer of all context between models.
 
+A room can own several independent logical lead conversations. Its sidebar children and top tabs
+refer to the same first-segment anchors: selection, names and open-tab ordering stay in sync.
+Provider segments belong to their existing lead; they do not become additional sidebar leads.
+Explicit parent labels identify delegated work even when an agent carries the assistant role.
+
+**New lead agent** opens a draft. The first submission persists the lead in that room; an empty
+draft is only client layout. Closing a lead tab leaves it available in the sidebar for reopening,
+including after reload. Archive and Delete are separate logical-conversation lifecycle actions;
+see [Tabs vs archive](#tabs-vs-archive).
+
+Under each lead, the sidebar links direct, same-host delegated agents whose parent-address labels
+match any of its native segments. Workspace paths and names do not establish ownership. Existing
+room-scoped workspace/history groups remain visible when creator evidence is missing or archived;
+remote-host and archived-per-lead attribution are not inferred.
+
 Navigation consolidates native segment tabs in client layout only. It does not archive or delete agents. Legacy segments in other workspaces are not moved or hidden automatically. A second client can refresh the logical record after assistant events/focus; there is no cross-application native-session ownership lock.
 
 ### Project removal with confirmed session deletion

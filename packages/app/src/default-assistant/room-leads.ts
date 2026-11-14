@@ -1,5 +1,8 @@
 import type { Agent } from "@/stores/session-store";
-import { getParentAddressFromLabels } from "@getpaseo/protocol/agent-labels";
+import {
+  getParentAddressFromLabels,
+  getParentAgentIdFromLabels,
+} from "@getpaseo/protocol/agent-labels";
 import type { AssistantConversation } from "@getpaseo/protocol/messages";
 import { planAssistantConversationNavigation } from "./conversation-navigation-plan";
 
@@ -30,6 +33,7 @@ export function selectRoomLeadAgentIds(
       (agent) =>
         agent.workspaceId === workspaceId &&
         agent.labels["paseo.role"] === "assistant" &&
+        !getParentAgentIdFromLabels(agent.labels) &&
         !agent.archivedAt &&
         !agent.background,
     )
