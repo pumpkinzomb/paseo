@@ -34,15 +34,15 @@ describe("buildDraftPanelDescriptor", () => {
       icon: TestIcon,
     });
 
-    expect(descriptor.label).toBe("New Agent");
+    expect(descriptor.label).toBe("New lead agent");
   });
 
   it("keeps ordinary draft tabs labeled as new agents", () => {
     const descriptor = buildDraftPanelDescriptor({ isCreating: false, icon: TestIcon });
 
     expect(descriptor).toMatchObject({
-      label: "New Agent",
-      subtitle: "New Agent",
+      label: "New lead agent",
+      subtitle: "New lead agent",
       titleState: "ready",
       statusBucket: null,
     });
@@ -61,11 +61,11 @@ describe("buildDraftPanelDescriptor", () => {
     });
 
     expect(idleDescriptor).toMatchObject({
-      label: "新建 Agent",
-      subtitle: "新建 Agent",
+      label: "新建智能体会话",
+      subtitle: "新建智能体会话",
     });
     expect(creatingDescriptor).toMatchObject({
-      label: "新建 Agent",
+      label: "新建智能体会话",
       subtitle: "正在创建 Agent",
     });
     await i18n.changeLanguage("en");
@@ -165,4 +165,23 @@ describe("lead agent title", () => {
     expect(resolveAssistantTitle("Release planning")).toBe("Release planning");
     await i18n.changeLanguage("en");
   });
+});
+
+it("keeps default lead labels stable and distinct without rewriting stored titles", () => {
+  const first = new Date("2026-11-14T01:00:00Z");
+  const second = new Date("2026-11-14T01:01:00Z");
+  expect(resolveAssistantTitle("Lead agent", first)).not.toBe(
+    resolveAssistantTitle("Lead agent", second),
+  );
+  expect(resolveAssistantTitle("Lead agent", first)).toBe(
+    resolveAssistantTitle("Lead agent", new Date(first)),
+  );
+  expect(resolveAssistantTitle("Release planning", first)).toBe("Release planning");
+});
+
+it("distinguishes simultaneous leads using the shared stable anchor suffix", () => {
+  const date = new Date("2026-11-14T01:00:00Z");
+  expect(resolveAssistantTitle("Lead agent", date, "lead-a")).not.toBe(
+    resolveAssistantTitle("Lead agent", date, "lead-b"),
+  );
 });

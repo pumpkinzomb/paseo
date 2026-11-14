@@ -16,12 +16,17 @@ function isAssistantAgent(agent: Agent | null): boolean {
 // Stored titles are not localized, so the client shows its own translation instead.
 const DEFAULT_ASSISTANT_STORED_TITLES = new Set(["Lead agent", "Assistant"]);
 
-/** Localized lead agent name unless the user gave the conversation its own title. */
-export function resolveAssistantTitle(title: string | null | undefined): string {
+/** Canonical anchor suffixes survive tab closure and provider switches without renaming native history. */
+export function resolveAssistantTitle(
+  title: string | null | undefined,
+  createdAt?: Date | null,
+  anchorId?: string,
+): string {
   const label = resolveAgentLabel(title);
-  return label === null || DEFAULT_ASSISTANT_STORED_TITLES.has(label)
-    ? i18n.t("defaultAssistant.title")
-    : label;
+  if (label !== null && !DEFAULT_ASSISTANT_STORED_TITLES.has(label)) return label;
+  const name = i18n.t("defaultAssistant.title");
+  if (anchorId) return `${name} · ${anchorId.slice(-6)}`;
+  return createdAt ? `${name} · ${createdAt.toLocaleString(i18n.language)}` : name;
 }
 
 function formatProviderLabel(provider: Agent["provider"]): string {
@@ -58,11 +63,12 @@ export function useAgentDescriptor(
     useShallow((state) => {
       const session = state.sessions[context.serverId];
       const agent =
-        session?.agents?.get(target.agentId) ?? session?.agentDetails?.get(target.agentId) ?? null;
+        session?.agents.get(target.agentId) ?? session?.agentDetails.get(target.agentId) ?? null;
       return {
         provider: agent?.provider ?? "codex",
         isAssistant: isAssistantAgent(agent),
         title: agent?.title ?? null,
+        createdAt: agent && agent.createdAt,
         status: agent?.status ?? null,
         backgroundWork: agent?.backgroundWork,
         pendingPermissionCount: agent?.pendingPermissions.length ?? 0,
@@ -76,12 +82,16 @@ export function useAgentDescriptor(
   const descriptor = buildAgentDescriptor({
     ...descriptorState,
     title: descriptorState.isAssistant
-      ? resolveAssistantTitle(descriptorState.title)
+      ? resolveAssistantTitle(descriptorState.title, descriptorState.createdAt, target.agentId)
       : descriptorState.title,
     icon: descriptorState.isAssistant ? MessageCircle : icon,
   });
   return descriptorState.isAssistant
-    ? { ...descriptor, subtitle: i18n.t("defaultAssistant.title") }
+    ? {
+        ...descriptor,
+        subtitle: i18n.t("defaultAssistant.title"),
+        tooltip: `${descriptor.label} · ${descriptorState.createdAt?.toISOString() ?? ""} · ${target.agentId}`,
+      }
     : descriptor;
 }
 

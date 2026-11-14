@@ -982,7 +982,7 @@ export const en = {
       modified: "Unsaved changes",
       loadingAgentTitle: "Loading agent title",
       fallback: {
-        newAgent: "New agent session",
+        newAgent: "New lead agent",
         setup: "Setup",
         workspaceSetup: "Workspace setup",
         terminal: "Terminal",
@@ -1016,7 +1016,7 @@ export const en = {
       },
       actions: {
         newTab: "New tab",
-        newAgent: "New agent session",
+        newAgent: "New lead agent",
         newTerminal: "New terminal",
         preparingTerminal: "Preparing terminal tab",
         preparingTerminalTooltip: "Preparing terminal...",
@@ -1089,7 +1089,7 @@ export const en = {
       actions: {
         workspaceActions: "Workspace actions",
         workspaceActionsUnhealthy: "Workspace actions, a service is unhealthy",
-        newAgent: "New agent session",
+        newAgent: "New lead agent",
         newTerminal: "New terminal",
         newBrowser: "New browser tab",
         importSession: "Import session",
@@ -2423,7 +2423,7 @@ export const en = {
   },
   panels: {
     draft: {
-      newAgent: "New agent session",
+      newAgent: "New lead agent",
       creatingAgent: "Creating agent",
     },
     file: {

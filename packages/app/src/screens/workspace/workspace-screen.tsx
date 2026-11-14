@@ -1,6 +1,5 @@
 import { openFileInExplorer } from "@/workspace-tabs/open-file-in-explorer";
 import { openWorkspaceBrowserPage } from "@/desktop/browser/workspace-navigation";
-import { WorkspaceSessionToolbar } from "./workspace-session-toolbar";
 import {
   AdaptiveWorkspaceChrome,
   type WorkspaceCompactHeaderTabs,
@@ -3642,10 +3641,6 @@ function WorkspaceScreenContent({
     () => handleCreateNewTab({ paneId: focusedPaneIdOrUndefined }),
     [handleCreateNewTab, focusedPaneIdOrUndefined],
   );
-  const createAgentSession = useCallback(
-    () => handleCreateDraftTab({ paneId: focusedPaneIdOrUndefined }),
-    [handleCreateDraftTab, focusedPaneIdOrUndefined],
-  );
   const ownsFallbackKeyboardShortcuts = useMemo(
     () => shouldRenderDesktopPaneFallback && isRouteFocused,
     [shouldRenderDesktopPaneFallback, isRouteFocused],
@@ -3860,7 +3855,6 @@ function WorkspaceScreenContent({
   const renderedWorkspaceScreen = (
     <RenderProfile id="WorkspaceScreenContent">
       <View style={containerStyle}>
-        <WorkspaceSessionToolbar onNewSession={createAgentSession} disabled={!isRouteFocused} />
         <WorkspaceDocumentTitleEffectSlot
           tab={activeTabDescriptor}
           serverId={normalizedServerId}

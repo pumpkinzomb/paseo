@@ -36,6 +36,8 @@ import {
 } from "@/components/sidebar/sidebar-workspace-menu";
 import { useWorkspaceLabelDefinitions } from "@/workspace-labels";
 
+import { SidebarRoomLeads } from "./sidebar-room-leads";
+
 const needsInputColorMapping = (theme: Theme) => ({
   color: theme.colors.surface0,
   fill: getStatusDotColor({ theme, bucket: "needs_input" }) ?? undefined,
@@ -73,19 +75,22 @@ export function SidebarWorkspaceRowFrame({
   );
 
   return (
-    <WorkspaceHoverCard
-      workspace={workspace}
-      prHint={workspace.prHint}
-      isDragging={isDragging}
-      disabled={contextMenuOpen}
-    >
-      {children({
-        isHovered: isHovered && !contextMenuOpen && !isDragging,
-        contextMenuOpen,
-        onContextMenuOpenChange: handleContextMenuOpenChange,
-        hoverHandlers,
-      })}
-    </WorkspaceHoverCard>
+    <>
+      <WorkspaceHoverCard
+        workspace={workspace}
+        prHint={workspace.prHint}
+        isDragging={isDragging}
+        disabled={contextMenuOpen}
+      >
+        {children({
+          isHovered: isHovered && !contextMenuOpen && !isDragging,
+          contextMenuOpen,
+          onContextMenuOpenChange: handleContextMenuOpenChange,
+          hoverHandlers,
+        })}
+      </WorkspaceHoverCard>
+      <SidebarRoomLeads serverId={workspace.serverId} workspaceId={workspace.workspaceId} />
+    </>
   );
 }
 
