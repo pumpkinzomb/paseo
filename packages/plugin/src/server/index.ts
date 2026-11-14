@@ -35,3 +35,10 @@ export { spawnProcess, execCommand, terminateProcess } from "./process.js";
 
 export { defineAgentTool } from "./agent-tools.js";
 export type { AgentToolDefinition, AgentToolResult, AgentToolContext } from "./agent-tools.js";
+
+export {
+  prepareTaskArtifactDirectory,
+  inspectTaskArtifacts,
+  removeTaskArtifacts,
+} from "./task-artifacts.js";
+export type { TaskArtifactOwner } from "./task-artifacts.js";

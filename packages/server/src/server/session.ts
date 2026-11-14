@@ -1,3 +1,4 @@
+import { inspectTaskArtifacts, removeTaskArtifacts } from "@getpaseo/plugin/server";
 import {
   assistantWorkspaceDirectory,
   validateAssistantHandoff,
@@ -4337,6 +4338,7 @@ export class Session {
       if (!(await this.projectRegistry.get(request.projectId)))
         throw new Error("Project no longer exists.");
       const workspaceIds = await this.resolveProjectRemovalScope(request.projectId);
+      await this.processWorkspaceGeneratedArtifacts(workspaceIds, "inspect");
       const agentIds = await this.inspectProjectRemovalRecords(workspaceIds);
       if (request.deleteNativeSessions)
         await this.agentManager.validateNativeSessionDeletion(agentIds);
@@ -4364,6 +4366,19 @@ export class Session {
     }
   }
 
+  private async processWorkspaceGeneratedArtifacts(
+    workspaceIds: readonly string[],
+    mode: "inspect" | "remove",
+  ): Promise<void> {
+    for (const workspaceId of workspaceIds) {
+      const workspace = await this.workspaceRegistry.get(workspaceId);
+      if (!workspace) continue;
+      const owner = { cwd: workspace.cwd, workspaceId };
+      if (mode === "inspect") await inspectTaskArtifacts(owner);
+      else await removeTaskArtifacts(owner);
+    }
+  }
+
   private async removeProjectSessionRecords(
     projectId: string,
     confirmed: { workspaceIds: string[]; agentIds: string[] },
@@ -4383,6 +4398,7 @@ export class Session {
     let mutationAttempted = false;
     const execute = async () => {
       await verifyScope();
+      await this.processWorkspaceGeneratedArtifacts(workspaceIds, "inspect");
       await this.inspectProjectRemovalRecords(workspaceIds, confirmed.agentIds, async (ids) => {
         await verifyScope();
         mutationAttempted = ids.length > 0;
@@ -4410,6 +4426,7 @@ export class Session {
         )
       )
         throw new Error("Project sessions changed during deletion. Refresh before retrying.");
+      await this.processWorkspaceGeneratedArtifacts(workspaceIds, "remove");
       const deletedAt = new Date().toISOString();
       for (const workspaceId of workspaceIds) {
         await this.workspaceRegistry.update(workspaceId, (workspace) => ({
@@ -5140,6 +5157,7 @@ export class Session {
       const execute = async () => {
         if (!(await this.workspaceRegistry.get(request.workspaceId)))
           throw new Error("This group no longer exists.");
+        await this.processWorkspaceGeneratedArtifacts(workspaceIds, "inspect");
         const agentIds = await defaultAssistantSelection(
           this.agentManager,
           this.paseoHome,
@@ -5174,7 +5192,8 @@ export class Session {
             )
           )
             throw new Error("The group changed during deletion. Its workspace was not hidden.");
-          // Metadata only. Never invoke worktree removal, terminal teardown, or provider archive.
+          await this.processWorkspaceGeneratedArtifacts(workspaceIds, "remove");
+          // Keep source/worktrees/attachments; only explicitly owned output was removed.
           const deletedAt = new Date().toISOString();
           for (const workspaceId of workspaceIds) {
             await this.workspaceRegistry.update(workspaceId, (workspace) => ({

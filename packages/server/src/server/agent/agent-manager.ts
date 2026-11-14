@@ -1,3 +1,8 @@
+import {
+  inspectTaskArtifacts,
+  removeTaskArtifacts,
+  type TaskArtifactOwner,
+} from "@getpaseo/plugin/server";
 import { planNativeSessionDeletion } from "./native-session-deletion.js";
 import {
   deleteNativeSessionsBeforeRecords,
@@ -4310,6 +4315,28 @@ export class AgentManager {
   }
 
   /** Native deletion requires a new explicit protocol opt-in after user confirmation. */
+  private async inspectConversationTaskArtifactOwners(
+    agentIds: readonly string[],
+    action: "archive" | "restore" | "delete",
+    completeWorkspace: boolean,
+  ): Promise<TaskArtifactOwner[]> {
+    if (action !== "delete" || !completeWorkspace) return [];
+    const owners: TaskArtifactOwner[] = [],
+      seen = new Set<string>();
+    const registry = this.requireRegistry();
+    for (const id of agentIds) {
+      const record = await registry.get(id);
+      if (!record?.workspaceId) continue;
+      const owner = { cwd: record.cwd, workspaceId: record.workspaceId };
+      const key = JSON.stringify(owner);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      await inspectTaskArtifacts(owner);
+      owners.push(owner);
+    }
+    return owners;
+  }
+
   async mutateAssistantConversationRecords(
     agentIds: string[],
     action: "archive" | "restore" | "delete",
@@ -4374,6 +4401,13 @@ export class AgentManager {
       }
       await this.flush();
       await validateWorkspace();
+      // Only complete confirmed workspace deletion owns its generated outputs.
+      // Individual agent deletion/archive never removes another segment's files.
+      const artifactOwners = await this.inspectConversationTaskArtifactOwners(
+        ids,
+        action,
+        Boolean(expectedWorkspaceId),
+      );
       if (deleteNativeSessions) {
         if (action !== "delete") throw new Error("Native deletion requires delete action");
         const inventory = await registry.listAll();
@@ -4448,6 +4482,8 @@ export class AgentManager {
           removePaseoRecords: async () => {},
         });
       }
+      await validateWorkspace();
+      for (const owner of artifactOwners) await removeTaskArtifacts(owner);
       for (const id of ids) {
         const record = await registry.get(id);
         if (action === "delete") {

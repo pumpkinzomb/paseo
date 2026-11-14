@@ -32,6 +32,8 @@ export class PreviewPublishError extends Error {
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 export interface PublishPreviewInput {
   cwd: string;
+  /** Host-selected managed task directory; never a tool input. */
+  outputDirectory?: string;
   title: string;
   sourceUrl: string | null;
   format: "pdf" | "docx" | "xlsx";
@@ -137,7 +139,10 @@ async function prepareOriginalDownload(
 export async function publishPreview(input: PublishPreviewInput) {
   const root = await fs.realpath(input.cwd);
   const sourceUrl = input.sourceUrl === null ? null : normalizeSourceUrl(input.sourceUrl);
-  const cache = path.join(root, ".paseo-document-previews");
+  const outputRoot = input.outputDirectory ? await fs.realpath(input.outputDirectory) : root;
+  if (outputRoot !== root && !outputRoot.startsWith(root + path.sep))
+    throw new PreviewPublishError("OUTSIDE_WORKSPACE");
+  const cache = path.join(outputRoot, ".paseo-document-previews");
   await fs.mkdir(cache, { recursive: true, mode: 0o700 });
   const stat = await fs.lstat(cache);
   if (!stat.isDirectory() || stat.isSymbolicLink() || (await fs.realpath(cache)) !== cache)

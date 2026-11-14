@@ -1,3 +1,5 @@
+import { prepareTaskArtifactDirectory } from "@getpaseo/plugin/server";
+import { access, readFile, symlink } from "node:fs/promises";
 import { createIdleRuntimeCleanup } from "./idle-runtime-cleanup/index.js";
 import {
   prepareAgentMessage,
@@ -15474,4 +15476,45 @@ test("failed native deletion retains records and cannot blindly repeat the provi
     f.manager.mutateAssistantConversationRecords([agent.id], "delete", true, undefined, true),
   ).rejects.toThrow("uncertain");
   expect(remove).toHaveBeenCalledTimes(1);
+});
+
+test("confirmed group deletion cleans only owned output, preserving shared workspace files and other groups", async () => {
+  const f = await conversationLifecycleFixture();
+  const a = await f.create("output-a"),
+    b = await f.create("output-b");
+  const cwd = (await f.storage.get(a.id))!.cwd;
+  const first = await prepareTaskArtifactDirectory({ cwd, workspaceId: "output-a" });
+  const second = await prepareTaskArtifactDirectory({ cwd, workspaceId: "output-b" });
+  writeFileSync(join(first, "patch.diff"), "generated");
+  writeFileSync(join(second, "report.md"), "other");
+  writeFileSync(join(cwd, "source.ts"), "protected");
+  await f.manager.mutateAssistantConversationRecords([a.id], "archive", null, "output-a");
+  await access(join(first, "patch.diff"));
+  await f.manager.mutateAssistantConversationRecords([a.id], "delete", null, "output-a");
+  await expect(access(first)).rejects.toThrow();
+  expect(await readFile(join(second, "report.md"), "utf8")).toBe("other");
+  expect(await readFile(join(cwd, "source.ts"), "utf8")).toBe("protected");
+  expect(await f.storage.get(b.id)).not.toBeNull();
+});
+test("individual agent deletion never deletes the group's generated output", async () => {
+  const f = await conversationLifecycleFixture();
+  const a = await f.create("outputs");
+  const cwd = (await f.storage.get(a.id))!.cwd;
+  const directory = await prepareTaskArtifactDirectory({ cwd, workspaceId: "outputs" });
+  writeFileSync(join(directory, "report.md"), "keep");
+  await f.manager.mutateAssistantConversationRecords([a.id], "delete");
+  expect(await readFile(join(directory, "report.md"), "utf8")).toBe("keep");
+});
+test("unsafe output prevents group record deletion instead of touching protected targets", async () => {
+  const f = await conversationLifecycleFixture();
+  const a = await f.create("outputs");
+  const cwd = (await f.storage.get(a.id))!.cwd;
+  const directory = await prepareTaskArtifactDirectory({ cwd, workspaceId: "outputs" });
+  writeFileSync(join(cwd, "auth.json"), "keep");
+  await symlink(join(cwd, "auth.json"), join(directory, "unsafe"));
+  await expect(
+    f.manager.mutateAssistantConversationRecords([a.id], "delete", null, "outputs"),
+  ).rejects.toThrow("linked");
+  expect(await f.storage.get(a.id)).not.toBeNull();
+  expect(await readFile(join(cwd, "auth.json"), "utf8")).toBe("keep");
 });

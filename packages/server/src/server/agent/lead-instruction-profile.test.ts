@@ -4,7 +4,7 @@ import {
   DEFAULT_ASSISTANT_PROMPT,
 } from "../default-assistant/index.js";
 import { describe, expect, it } from "vitest";
-import { applyLeadInstructionProfile } from "./lead-instruction-profile.js";
+import { applyLeadInstructionProfile, TASK_ARTIFACT_POLICY } from "./lead-instruction-profile.js";
 import type { AgentSessionConfig } from "./agent-sdk-types.js";
 
 describe("lead instruction profile", () => {
@@ -19,7 +19,7 @@ describe("lead instruction profile", () => {
     expect(applyLeadInstructionProfile(config, { "paseo.role": "assistant" })).toEqual({
       ...config,
       instructionProfile: "paseo-lead",
-      systemPrompt: `${DEFAULT_ASSISTANT_IDENTITY}\n\n<paseo-lead-persona-v1>\n${JSON.stringify(DEFAULT_ASSISTANT_PERSONA)}\n</paseo-lead-persona-v1>\n\n${config.systemPrompt}`,
+      systemPrompt: `${DEFAULT_ASSISTANT_IDENTITY}\n\n<paseo-lead-persona-v1>\n${JSON.stringify(DEFAULT_ASSISTANT_PERSONA)}\n${TASK_ARTIFACT_POLICY}\n</paseo-lead-persona-v1>\n\n${config.systemPrompt}`,
     });
     expect(config).not.toHaveProperty("instructionProfile");
   });

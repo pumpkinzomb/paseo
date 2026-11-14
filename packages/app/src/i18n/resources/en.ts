@@ -160,11 +160,11 @@ export const en = {
   },
   workspaceSessionDeletion: {
     nativeConfirm:
-      "Permanently delete all {{count}} Paseo records and their linked Codex/Claude original sessions, including model segments and child transcripts? This cannot be undone. Close these sessions in Codex/Claude and other apps before confirming. Shared project files, worktrees and attachments are preserved. If a native deletion fails or is uncertain, Paseo records remain and retries may require manual review.",
+      "Permanently delete all {{count}} Paseo records and their linked Codex/Claude original sessions, including model segments and child transcripts? Session-owned generated outputs and preview copies are also deleted. This cannot be undone. Close these sessions in Codex/Claude and other apps before confirming. Shared project files, worktrees and attachments are preserved. If a native deletion fails or is uncertain, Paseo records remain and retries may require manual review.",
     completedMenu: "Delete completed sessions",
     completedTitle: "Delete all completed sub-sessions?",
     completedConfirm:
-      "Permanently delete {{groups}} completed sub-session groups ({{count}} Paseo records and timelines), including their descendants? The parent and other sessions, provider originals, project/worktree files and attachments are preserved. This cannot be undone. If a group changes or becomes busy, deletion stops; already deleted groups cannot be restored.",
+      "Permanently delete {{groups}} completed sub-session groups ({{count}} Paseo records and timelines), including their descendants? The parent and other sessions, provider originals, project/worktree files and attachments are preserved. Session-owned generated outputs and preview copies are also deleted. This cannot be undone. If a group changes or becomes busy, deletion stops; already deleted groups cannot be restored.",
 
     uncertain:
       "The deletion result could not be confirmed. Reload and check the group before trying again.",
@@ -173,7 +173,7 @@ export const en = {
     menu: "Delete",
     title: "Delete this session group?",
     confirm:
-      "Permanently delete all {{count}} Paseo session records and timelines in this group, including model segments and child sessions, and remove this group from the sidebar? This cannot be undone in Paseo. Other groups, original provider sessions, project/worktree files and attachments are preserved. Active work is never stopped; finish it before deleting.",
+      "Permanently delete all {{count}} Paseo session records and timelines in this group, including model segments and child sessions, and remove this group from the sidebar? Session-owned generated outputs and preview copies are also deleted. This cannot be undone in Paseo. Other groups, original provider sessions, project/worktree files and attachments are preserved. Active work is never stopped; finish it before deleting.",
     busy: "This group still has active work, pending approval, or a child session outside the group. Finish the work or detach the child first. Nothing was deleted.",
     done: "Session group deleted from Paseo.",
     moved: "This session moved to another workspace. Reopen its menu.",
@@ -1634,7 +1634,7 @@ export const en = {
       },
       confirmations: {
         removeNativeMessage:
-          'Permanently remove "{{projectName}}", its {{workspaceCount}} groups, {{sessionCount}} Paseo records and their linked original provider conversations? Close those sessions in other apps first. This cannot be undone. Running/shared sessions block deletion. Source folders, installed apps, worktrees, auth, settings and protected/shared files are preserved; no source-directory deletion is performed. Offline cache removal cannot delete remote originals.',
+          'Permanently remove "{{projectName}}", its {{workspaceCount}} groups, {{sessionCount}} Paseo records and their linked original provider conversations? Close those sessions in other apps first. This cannot be undone. Running/shared sessions block deletion. Source folders, installed apps, worktrees, auth, settings and protected/shared files are preserved; no source-directory deletion is performed. Offline cache removal cannot delete remote originals. Session-owned generated outputs and preview copies are also deleted.',
         forgetOfflineTitle: "Remove offline project cache?",
         forgetOfflineMessage:
           'Remove the cached project "{{projectName}}" and its cached groups from this device? The old host is not connected. This does NOT delete remote conversations, Codex/Claude originals or source files. If the host reconnects and still has this project, it may appear again.',

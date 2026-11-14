@@ -1,4 +1,5 @@
-import { mkdtemp, rm, mkdir, writeFile, readFile, symlink } from "node:fs/promises";
+import { prepareTaskArtifactDirectory } from "@getpaseo/plugin/server";
+import { mkdtemp, rm, mkdir, writeFile, readFile, symlink, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -30,7 +31,13 @@ async function fixture() {
       archivedAt: "2026-01-01",
     },
     { workspaceId: "sibling", projectId: "other", parentWorkspaceId: null, archivedAt: null },
-  ];
+  ].map((workspace) => ({
+    workspaceId: workspace.workspaceId,
+    projectId: workspace.projectId,
+    parentWorkspaceId: workspace.parentWorkspaceId,
+    archivedAt: workspace.archivedAt,
+    cwd: home,
+  }));
   const records = new Map(
     workspaces.map((workspace) => [
       workspace.workspaceId,
@@ -47,7 +54,11 @@ async function fixture() {
   Object.assign(session, {
     paseoHome: home,
     agentStorage: { listAll: async () => [...records.values()] },
-    workspaceRegistry: { listAll: async () => workspaces, update },
+    workspaceRegistry: {
+      listAll: async () => workspaces,
+      get: async (id: string) => workspaces.find((w) => w.workspaceId === id) ?? null,
+      update,
+    },
     agentManager: {
       mutateAssistantConversationRecords: remove,
       validateAssistantConversationMutation: validate,
@@ -191,4 +202,31 @@ it("project metadata removal never deletes protected source, installed-app, auth
   await f.execute(undefined, true);
   for (const p of paths) expect(await readFile(p, "utf8")).toBe("must survive");
   expect(await readFile(join(f.home, "project-alias", "source.ts"), "utf8")).toBe("must survive");
+});
+
+it("removing empty project groups cleans their owned output even after prior individual agent removal", async () => {
+  const f = await fixture();
+  for (const id of ["root", "child", "archived"]) f.records.delete(id);
+  const selected = await prepareTaskArtifactDirectory({ cwd: f.home, workspaceId: "root" });
+  const other = await prepareTaskArtifactDirectory({ cwd: f.home, workspaceId: "sibling" });
+  await writeFile(join(selected, "report.md"), "selected");
+  await writeFile(join(other, "report.md"), "other");
+  await f.execute({ workspaceIds: ["archived", "child", "root"], agentIds: [] });
+  await expect(access(selected)).rejects.toThrow();
+  expect(await readFile(join(other, "report.md"), "utf8")).toBe("other");
+});
+
+it("unsafe output in an empty descendant blocks project cleanup before any records are deleted", async () => {
+  const f = await fixture();
+  f.records.delete("child");
+  const directory = await prepareTaskArtifactDirectory({ cwd: f.home, workspaceId: "child" });
+  await writeFile(join(directory, ".paseo-owner.json"), "{}");
+  await expect(
+    f.execute(
+      { workspaceIds: ["archived", "child", "root"], agentIds: ["archived", "root"] },
+      true,
+    ),
+  ).rejects.toThrow("ownership");
+  expect(f.remove).not.toHaveBeenCalled();
+  expect(f.records.size).toBe(3);
 });

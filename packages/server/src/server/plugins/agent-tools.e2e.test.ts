@@ -134,11 +134,20 @@ async function setup(
     client,
     directory,
     install,
-    async create(labels: Record<string, string> = {}) {
+    async create(labels: Record<string, string> = {}, inWorkspace = false) {
+      let workspaceId: string | undefined;
+      if (inWorkspace) {
+        const result = await client.createWorkspace({
+          source: { kind: "directory", path: directory },
+        });
+        if (!result.workspace || result.error)
+          throw Error(result.error ?? "Workspace fixture missing");
+        workspaceId = result.workspace.id;
+      }
       return daemon.daemon.agentManager.createAgent(
         { provider: "codex", cwd: directory },
         undefined,
-        { labels, initialTitle: "Chosen title" },
+        { labels, workspaceId, initialTitle: "Chosen title" },
       );
     },
     async mcp(agentId?: string) {
@@ -1047,7 +1056,7 @@ test("connected document tool publishes and refreshes a no-login workspace previ
     await h.client.installDirectoryPlugin(
       fileURLToPath(new URL("../../../../../plugins/document-preview", import.meta.url)),
     );
-    const agent = await h.create();
+    const agent = await h.create({}, true);
     const mcp = await h.mcp(agent.id);
     expect((await mcp.listTools()).tools.map((tool) => tool.name)).toContain(
       "show_connected_document",
@@ -1067,7 +1076,12 @@ test("connected document tool publishes and refreshes a no-login workspace previ
         kind: "connected-document-snapshot",
       },
     });
-    const directory = path.join(h.directory, ".paseo-document-previews");
+    const output = await mcp.callTool({ name: "prepare_task_artifacts", arguments: {} });
+    expect(output.isError).not.toBe(true);
+    const owned = (output.structuredContent as { directory: string }).directory;
+    const directory = path.dirname(String((first.structuredContent as { path: string }).path));
+    expect(directory).toBe(path.join(owned, ".paseo-document-previews"));
+    expect(owned).toContain(path.join(h.directory, ".paseo-task-artifacts"));
     const entries = await readdir(directory);
     expect(entries).toHaveLength(1);
     const entry = entries[0];
@@ -1089,6 +1103,22 @@ test("connected document tool publishes and refreshes a no-login workspace previ
     });
     expect(rejected.isError).toBe(true);
     expect(await readFile(file, "utf8")).toContain(updated.text);
+    // Another workspace at the same cwd must not overwrite the first preview.
+    const otherAgent = await h.create({}, true);
+    const otherMcp = await h.mcp(otherAgent.id);
+    const other = await otherMcp.callTool({
+      name: "show_connected_document",
+      arguments: { ...input, text: "Other workspace" },
+    });
+    expect(other.isError).not.toBe(true);
+    const otherPath = (other.structuredContent as { path: string }).path;
+    expect(otherPath).not.toBe(file);
+    expect(await readFile(file, "utf8")).toContain(updated.text);
+    if (!agent.workspaceId) throw Error("Missing test workspace");
+    const removed = await h.client.deleteWorkspaceSessions(agent.workspaceId, [agent.id]);
+    expect(removed.error).toBeNull();
+    await expect(readFile(file, "utf8")).rejects.toThrow();
+    expect(await readFile(otherPath, "utf8")).toContain("Other workspace");
   } finally {
     await h.close();
   }
@@ -1101,7 +1131,7 @@ test("rendered file tool publishes original Office bytes through the installed M
       new URL("../../../../../plugins/document-preview", import.meta.url),
     );
     await h.client.installDirectoryPlugin(plugin);
-    const agent = await h.create();
+    const agent = await h.create({}, true);
     const mcp = await h.mcp(agent.id);
     expect((await mcp.listTools()).tools.map((tool) => tool.name)).toContain("show_rendered_file");
     if (process.platform !== "darwin") return;
@@ -1126,12 +1156,13 @@ test("rendered file tool publishes original Office bytes through the installed M
         renderer: "macos-quicklook",
       },
     });
-    const files = await readdir(path.join(h.directory, ".paseo-document-previews"));
+    const previewDirectory = path.dirname(
+      String((result.structuredContent as { path: string }).path),
+    );
+    const files = await readdir(previewDirectory);
     const manifest = files.find((file) => file.endsWith(".paseoview"));
     if (!manifest) throw new Error("Expected rendered manifest");
-    const artifact = JSON.parse(
-      await readFile(path.join(h.directory, ".paseo-document-previews", manifest), "utf8"),
-    );
+    const artifact = JSON.parse(await readFile(path.join(previewDirectory, manifest), "utf8"));
     expect(artifact.content.sheets.map((sheet: { name: string }) => sheet.name)).toEqual([
       "Summary",
       "Detail",
@@ -1148,7 +1179,7 @@ test("rendered preview MCP retains a separate editable original", async () => {
       new URL("../../../../../plugins/document-preview", import.meta.url),
     );
     await h.client.installDirectoryPlugin(plugin);
-    const agent = await h.create();
+    const agent = await h.create({}, true);
     const mcp = await h.mcp(agent.id);
     const original = await readFile(path.join(plugin, "test/document.docx"));
     await writeFile(path.join(h.directory, "editable.docx"), original);
@@ -1165,7 +1196,7 @@ test("rendered preview MCP retains a separate editable original", async () => {
     });
     expect(result.isError).not.toBe(true);
     expect(result).toMatchObject({ structuredContent: { format: "pdf", downloadFormat: "docx" } });
-    const directory = path.join(h.directory, ".paseo-document-previews");
+    const directory = path.dirname(String((result.structuredContent as { path: string }).path));
     const manifest = (await readdir(directory)).find((name) => name.endsWith(".paseoview"));
     if (!manifest) throw Error("Missing artifact");
     const artifact = JSON.parse(await readFile(path.join(directory, manifest), "utf8"));

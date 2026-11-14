@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { defineAgentTool, type PluginServerContext } from "@getpaseo/plugin/server";
+import {
+  defineAgentTool,
+  prepareTaskArtifactDirectory,
+  type PluginServerContext,
+} from "@getpaseo/plugin/server";
 import { publishPreview, validateExportUrl } from "./server/publish.js";
 import { normalizeSourceUrl, saveDocumentSnapshot } from "./server/snapshot.js";
 
@@ -30,7 +34,7 @@ export const documentPreviewTool = defineAgentTool({
   async execute(input, { agent, signal }) {
     const snapshot = await saveDocumentSnapshot({
       ...input,
-      cwd: agent.cwd,
+      cwd: await taskDirectory(agent),
       capturedAt: new Date().toISOString(),
       signal,
     });
@@ -75,7 +79,12 @@ export const renderedFilePreviewTool = defineAgentTool({
       .optional(),
   }),
   async execute(input, { agent, signal }) {
-    const artifact = await publishPreview({ ...input, cwd: agent.cwd, signal });
+    const artifact = await publishPreview({
+      ...input,
+      cwd: agent.cwd,
+      outputDirectory: await taskDirectory(agent),
+      signal,
+    });
     const citation = `:codex-file-citation{path=${JSON.stringify(artifact.path)} title=${JSON.stringify(artifact.title)} purpose="output"}`;
     return {
       text: citation,
@@ -84,9 +93,36 @@ export const renderedFilePreviewTool = defineAgentTool({
   },
 });
 
+async function taskDirectory(agent: { cwd: string; workspaceId: string | null }) {
+  if (!agent.workspaceId) throw Error("Task output requires a workspace identity");
+  return prepareTaskArtifactDirectory({ cwd: agent.cwd, workspaceId: agent.workspaceId });
+}
+
+export const taskArtifactsTool = defineAgentTool({
+  name: "prepare_task_artifacts",
+  title: "Prepare session-owned task output directory",
+  description:
+    "Before writing generated reports, patches, screenshots or test logs, obtain this session group's owned output directory. Save disposable task outputs only beneath the returned directory, not a shared root artifacts folder or another session's output. All model segments in this workspace share ownership. Permanent session-group/project removal deletes these generated outputs; archive preserves them. Keep authoritative source code and user documents in their proper project, not this disposable directory. This tool does not adopt legacy files, delete files, or grant filesystem permissions.",
+  input: z.object({}).strict(),
+  async execute(_input, { agent }) {
+    const directory = await taskDirectory(agent);
+    return {
+      text: `Session-owned generated output directory: ${directory}`,
+      structuredContent: {
+        directory,
+        workspaceId: agent.workspaceId,
+        cleanup: "permanent-session-group-removal",
+      },
+    };
+  },
+});
+
 export default function contribute(server: PluginServerContext) {
   return server.addHook("agent.open.before", async ({ request }) => {
     if (request.purpose !== "interactive") return;
-    return { ...request, tools: [...request.tools, documentPreviewTool, renderedFilePreviewTool] };
+    return {
+      ...request,
+      tools: [...request.tools, taskArtifactsTool, documentPreviewTool, renderedFilePreviewTool],
+    };
   });
 }

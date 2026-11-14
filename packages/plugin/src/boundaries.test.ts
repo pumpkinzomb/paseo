@@ -92,10 +92,13 @@ function typeErrors(code: string): string[] {
     .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
 }
 describe("plugin SDK import boundaries", () => {
-  it("publishes process capabilities without their Windows implementation helpers", () => {
+  it("publishes server capabilities without their Windows implementation helpers", () => {
     expect(Object.keys(server).sort()).toEqual([
       "defineAgentTool",
       "execCommand",
+      "inspectTaskArtifacts",
+      "prepareTaskArtifactDirectory",
+      "removeTaskArtifacts",
       "spawnProcess",
       "terminateProcess",
     ]);
