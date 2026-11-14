@@ -1,4 +1,10 @@
-import { useCallback, useMemo, type ComponentProps } from "react";
+import { Trash2 } from "lucide-react-native";
+import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
+import { DensityIcon } from "@/components/ui/density-icon";
+import { useDeleteWorkspaceSessions } from "@/hooks/use-delete-workspace-sessions";
+import { openWorkspaceTargetAtLocation } from "@/workspace-tabs/open-beside";
+import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
+import { useCallback, useMemo, type ComponentProps, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
@@ -31,13 +37,9 @@ import {
   deriveSidebarStateBucket,
 } from "@/utils/sidebar-agent-state";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
-import { SidebarSubSessionGroup } from "./sidebar-sub-session-group";
+import { SidebarSubSessionGroup, ArchivedSubSessionRow } from "./sidebar-sub-session-group";
 import { useSidebarRoomWork } from "./sidebar-room-work-context";
-import {
-  partitionRoomWork,
-  leadCollapseKey,
-  isRoomSessionWorkspaceVisible,
-} from "./sidebar-sub-sessions";
+import { partitionRoomWork, leadCollapseKey } from "./sidebar-sub-sessions";
 import type {
   SidebarWorkspaceEntry,
   SidebarWorkspacePlacement,
@@ -80,81 +82,132 @@ export function SidebarRoomLeads({
       bi = order.indexOf(b.segments[0]!.agentId);
     return (ai < 0 ? Infinity : ai) - (bi < 0 ? Infinity : bi);
   });
-  const zeroSessionIds = useMemo(
-    () =>
-      new Set([
-        ...placements
-          .filter((item) => entries.get(item.workspaceKey)?.sessionCount === 0)
-          .map((item) => item.workspaceId),
-        ...archivedSubSessions
-          .filter((item) => item.sessionCount === 0)
-          .map((item) => item.workspaceId),
-      ]),
-    [placements, entries, archivedSubSessions],
-  );
-  const agentWorkspaceIds = useSessionStore(
+  const assistantTree =
+    query.available ||
+    placements.some(
+      (item) => entries.get(item.workspaceKey)?.leadAssociation?.roomWorkspaceId === workspaceId,
+    ) ||
+    archivedSubSessions.some((item) => item.leadAssociation?.roomWorkspaceId === workspaceId);
+  const evidenceIds = useSessionStore(
     useShallow((state) => {
-      const session = state.sessions[serverId];
-      const evidence = new Set<string>();
-      // Exact-host cached records can contradict an older zero-count projection. Never infer
-      // absence from this partial inventory, or scan other hosts to establish room membership.
-      for (const records of [session?.agents, session?.agentDetails]) {
-        for (const agent of records?.values() ?? []) {
-          if (!agent.background && agent.workspaceId && zeroSessionIds.has(agent.workspaceId)) {
-            evidence.add(agent.workspaceId);
-          }
-        }
-      }
-      return [...evidence];
+      if (!assistantTree || placements.length === 0) return [];
+      const session = state.sessions[serverId],
+        ids = new Set(placements.map((item) => item.workspaceId)),
+        found = new Set<string>();
+      for (const agents of [session?.agents, session?.agentDetails])
+        for (const agent of agents?.values() ?? [])
+          if (!agent.background && agent.workspaceId && ids.has(agent.workspaceId))
+            found.add(agent.workspaceId);
+      return [...found];
     }),
   );
-  const hasLeads = leads.length > 0;
   const workspaceWork = placements
-    .filter((placement) =>
-      isRoomSessionWorkspaceVisible({
-        hasLeads,
-        sessionCount: entries.get(placement.workspaceKey)?.sessionCount,
-        hasAgentEvidence: agentWorkspaceIds.includes(placement.workspaceId),
-      }),
-    )
+    .filter((item) => {
+      const entry = entries.get(item.workspaceKey);
+      if (assistantTree && entry?.workspacePurpose === "source" && entry.sessionCount === 0)
+        return false;
+      return (
+        !assistantTree ||
+        entry?.sessionCount !== 0 ||
+        entry.workspacePurpose === "planned" ||
+        !entry.workspacePurpose ||
+        evidenceIds.includes(item.workspaceId)
+      );
+    })
     .map((placement) => ({
       placement,
       creatorAgent: entries.get(placement.workspaceKey)?.creatorAgent,
+      leadAssociation: entries.get(placement.workspaceKey)?.leadAssociation,
     }));
-  const partition = partitionRoomWork(serverId, leads, workspaceWork);
+  const unclassified = assistantTree
+    ? workspaceWork.filter((item) => {
+        const entry = entries.get(item.placement.workspaceKey);
+        return (
+          !(entry?.sessionCount ?? 0) &&
+          !evidenceIds.includes(item.placement.workspaceId) &&
+          !(entry?.workspacePurpose === "planned" && entry.sessionCount === 0)
+        );
+      })
+    : [];
+  const partition = partitionRoomWork(
+    serverId,
+    leads,
+    workspaceWork.filter((item) => !unclassified.includes(item)),
+    workspaceId,
+  );
+  const recoveryItems = [...partition.unassigned, ...unclassified];
+  const sessionArchives = archivedSubSessions.filter(
+    (item) => !assistantTree || item.agentId !== null || item.sessionCount !== 0,
+  );
+  const uncertainArchives = assistantTree
+    ? sessionArchives.filter((item) => item.agentId === null)
+    : [];
   const archivePartition = partitionRoomWork(
     serverId,
     leads,
-    archivedSubSessions.filter((item) =>
-      isRoomSessionWorkspaceVisible({
-        hasLeads,
-        sessionCount: item.sessionCount,
-        hasAgentEvidence: item.agentId !== null || agentWorkspaceIds.includes(item.workspaceId),
-      }),
-    ),
+    sessionArchives.filter((item) => !uncertainArchives.includes(item)),
+    workspaceId,
+  );
+  const recoveryArchives = [...archivePartition.unassigned, ...uncertainArchives];
+  const renderRoomRow = useCallback(
+    (placement: SidebarWorkspacePlacement) => {
+      const entry = entries.get(placement.workspaceKey);
+      return assistantTree &&
+        entry &&
+        !(entry.sessionCount ?? 0) &&
+        !evidenceIds.includes(entry.workspaceId) ? (
+        <RoomWorkspaceRow
+          key={placement.workspaceKey}
+          entry={entry}
+          roomWorkspaceId={workspaceId}
+        />
+      ) : (
+        renderRow(placement)
+      );
+    },
+    [assistantTree, entries, evidenceIds, workspaceId, renderRow],
   );
   const { refetch } = query;
   const retry = useCallback(() => {
     void refetch();
   }, [refetch]);
+  let recovery: ReactNode = null;
+  if (recoveryItems.length || recoveryArchives.length)
+    recovery = assistantTree ? (
+      <View testID={`sidebar-room-recovery-${serverId}:${workspaceId}`}>
+        <Text style={styles.commonLabel} accessibilityRole="alert">
+          {t("sidebar.workspace.subSessions.ownershipUnavailable")}
+        </Text>
+        {recoveryItems.map((item) => renderRoomRow(item.placement))}
+        {recoveryArchives.map((item) => (
+          <ArchivedSubSessionRow
+            key={item.workspaceId}
+            serverId={serverId}
+            parentWorkspaceId={workspaceId}
+            subSession={item}
+            historyRecord={!item.agentId}
+            scopedDeletion
+          />
+        ))}
+      </View>
+    ) : (
+      <SidebarSubSessionGroup
+        serverId={serverId}
+        parentKey={`${serverId}:${workspaceId}`}
+        parentName={parentName}
+        subSessions={partition.unassigned.map((item) => item.placement)}
+        archivedSubSessions={archivePartition.unassigned}
+        workspaceEntriesByKey={entries}
+        renderRow={renderRow}
+        strictWorkspaceScope
+        allowBulkDeletion={false}
+      />
+    );
   return (
     <>
       {query.available ? (
         <View style={styles.group} testID={`sidebar-room-leads-${serverId}:${workspaceId}`}>
-          {query.isError ? (
-            <>
-              <Text style={styles.name}>{query.error.message}</Text>
-              <PressHighlight onPress={retry}>
-                <Text style={styles.name}>{t("common.actions.retry")}</Text>
-              </PressHighlight>
-            </>
-          ) : null}
-          {!query.connected && !query.data ? (
-            <Text style={styles.name}>{t("workspace.terminal.hostDisconnected")}</Text>
-          ) : null}
-          {query.connected && query.isPending ? (
-            <Text style={styles.name}>{t("common.loading")}</Text>
-          ) : null}
+          <RoomLeadLoadState query={query} retry={retry} />
           {leads.map((conversation) => (
             <LeadRow
               key={conversation.logicalId}
@@ -168,30 +221,106 @@ export function SidebarRoomLeads({
                 archivePartition.byLead.get(conversation.logicalId) ?? EMPTY_ARCHIVED
               }
               workspaceEntriesByKey={entries}
-              renderRow={renderRow}
+              renderRow={renderRoomRow}
             />
           ))}
         </View>
       ) : null}
-      {partition.unassigned.length || archivePartition.unassigned.length ? (
-        <View testID={`sidebar-room-unassigned-${serverId}:${workspaceId}`}>
-          {query.available ? (
-            <Text style={styles.commonLabel}>{t("sidebar.workspace.subSessions.unassigned")}</Text>
-          ) : null}
-          <SidebarSubSessionGroup
-            serverId={serverId}
-            parentKey={`${serverId}:${workspaceId}`}
-            parentName={parentName}
-            subSessions={partition.unassigned.map((item) => item.placement)}
-            archivedSubSessions={archivePartition.unassigned}
-            workspaceEntriesByKey={entries}
-            renderRow={renderRow}
-            strictWorkspaceScope
-            allowBulkDeletion={false}
-          />
-        </View>
+      {recovery}
+    </>
+  );
+}
+
+function RoomLeadLoadState({
+  query,
+  retry,
+}: {
+  query: ReturnType<typeof useRoomLeads>;
+  retry: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {query.isError ? (
+        <>
+          <Text style={styles.name}>{query.error.message}</Text>
+          <PressHighlight onPress={retry}>
+            <Text style={styles.name}>{t("common.actions.retry")}</Text>
+          </PressHighlight>
+        </>
+      ) : null}
+      {!query.connected && !query.data ? (
+        <Text style={styles.name}>{t("workspace.terminal.hostDisconnected")}</Text>
+      ) : null}
+      {query.connected && query.isPending ? (
+        <Text style={styles.name}>{t("common.loading")}</Text>
       ) : null}
     </>
+  );
+}
+
+function RoomWorkspaceRow({
+  entry,
+  roomWorkspaceId,
+}: {
+  entry: SidebarWorkspaceEntry;
+  roomWorkspaceId: string;
+}) {
+  const { t } = useTranslation();
+  const open = useCallback(() => {
+    openWorkspaceTargetAtLocation({
+      workspaceKey: entry.workspaceKey,
+      target: { kind: "files" },
+      location: "main",
+    });
+    navigateToWorkspace({ serverId: entry.serverId, workspaceId: entry.workspaceId });
+  }, [entry.workspaceKey, entry.serverId, entry.workspaceId]);
+  const options = useMemo(
+    () => ({
+      historyScope: {
+        roomWorkspaceId,
+        leadAssociation: entry.leadAssociation,
+        itemKind: "planned" as const,
+      },
+    }),
+    [roomWorkspaceId, entry.leadAssociation],
+  );
+  const deletion = useDeleteWorkspaceSessions(
+    entry.serverId,
+    entry.workspaceId,
+    undefined,
+    options,
+  );
+  return (
+    <View style={styles.row}>
+      <PressHighlight
+        style={styles.title}
+        onPress={open}
+        accessibilityRole="button"
+        testID={`sidebar-room-workspace-${entry.workspaceId}`}
+      >
+        <Text style={styles.name} numberOfLines={1}>
+          {entry.name}
+        </Text>
+        <Text style={styles.count}>
+          {t(
+            entry.workspacePurpose === "planned" && entry.sessionCount === 0
+              ? "sidebar.workspace.subSessions.notStarted"
+              : "sidebar.workspace.subSessions.needsReview",
+          )}
+        </Text>
+      </PressHighlight>
+      {entry.workspacePurpose === "planned" && entry.sessionCount === 0 && deletion.remove ? (
+        <ToolbarButton
+          label={t("workspaceSessionDeletion.historyMenu")}
+          onPress={deletion.remove}
+          disabled={deletion.pending}
+          testID={`sidebar-planned-remove-${entry.workspaceId}`}
+        >
+          <DensityIcon icon={Trash2} size="sm" color="foregroundMuted" />
+        </ToolbarButton>
+      ) : null}
+    </View>
   );
 }
 
@@ -245,9 +374,21 @@ function LeadRow({
   );
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
   const expandedState = useMemo(() => ({ expanded: !collapsed }), [collapsed]);
+  const associations = useMemo(
+    () =>
+      new Map(
+        [...workspaceEntriesByKey.values()]
+          .filter((item) => item.serverId === serverId && item.leadAssociation)
+          .map((item) => [item.workspaceId, item.leadAssociation!]),
+      ),
+    [workspaceEntriesByKey, serverId],
+  );
   const children = useSessionStore(
     useShallow((state) =>
-      selectLeadWork(state.sessions[serverId]?.agents.values() ?? [], serverId, conversation),
+      selectLeadWork(state.sessions[serverId]?.agents.values() ?? [], serverId, conversation, {
+        roomWorkspaceId: workspaceId,
+        associations,
+      }),
     ),
   );
   const buckets = useSessionStore(
@@ -350,6 +491,7 @@ function LeadRow({
           activeAgentRows={directRows(false)}
           doneAgentRows={directRows(true)}
           strictWorkspaceScope
+          assistantSessionTree
         />
       ) : null}
     </>

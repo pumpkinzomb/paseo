@@ -631,3 +631,47 @@ describe("terminal collection protocol compatibility", () => {
     ).toMatchObject({ payload: { terminals: [{ isScript: true, createdAt: null }] } });
   });
 });
+
+test("optional intended lead and purpose remain independent from creator and inventory on the wire", () => {
+  const lead = {
+    serverId: "host",
+    roomWorkspaceId: "room",
+    logicalId: "logical-B",
+    anchorAgentId: "anchor-B",
+  };
+  const response = fetchWorkspacesResponse(
+    workspaceDescriptor({
+      sessionCount: 0,
+      creatorAgent: { serverId: "host", agentId: "creator-A" },
+      leadAssociation: lead,
+      workspacePurpose: "planned",
+    }),
+  );
+  expect(SessionOutboundMessageSchema.parse(response)).toMatchObject({
+    payload: {
+      entries: [
+        {
+          sessionCount: 0,
+          leadAssociation: lead,
+          workspacePurpose: "planned",
+          creatorAgent: { agentId: "creator-A" },
+        },
+      ],
+    },
+  });
+  expect(
+    SessionOutboundMessageSchema.safeParse(fetchWorkspacesResponse(workspaceDescriptor())).success,
+  ).toBe(true);
+  expect(
+    SessionInboundMessageSchema.safeParse({
+      type: "workspace.leadAssociation.inspect.request",
+      requestId: "preview",
+      roomWorkspaceId: "room",
+      assignments: Array.from({ length: 21 }, (_, i) => ({
+        workspaceId: `item-${i}`,
+        lead,
+        purpose: "planned",
+      })),
+    }).success,
+  ).toBe(false);
+});

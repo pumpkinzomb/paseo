@@ -64,16 +64,22 @@ afterEach(cleanup);
 function Harness({
   workspaceId = "workspace",
   strict = false,
+  scoped = false,
 }: {
   workspaceId?: string;
   strict?: boolean;
+  scoped?: boolean;
 }) {
   const { remove, pending } = useDeleteCompletedSubSessions(
     "host",
     workspaceId,
     ["child-a", "child-b", "child-a"],
     mocks.close,
-    { restrictToTargets: strict, ownerKey: strict ? "lead-a" : undefined },
+    {
+      restrictToTargets: strict,
+      ownerKey: strict ? "lead-a" : undefined,
+      ...(scoped ? { leadAssociations: { "child-a": undefined, "child-b": undefined } } : {}),
+    },
   );
   return (
     <button type="button" disabled={!remove || pending} onClick={remove}>
@@ -146,4 +152,29 @@ it("refuses a lead batch if any preview reaches a sibling or unassigned workspac
   await waitFor(() => expect(mocks.toast.error).toHaveBeenCalled());
   expect(mocks.confirm).not.toHaveBeenCalled();
   expect(mocks.remove).not.toHaveBeenCalled();
+});
+
+it("freezes exact room/owner revisions for each lead-owned completed target", async () => {
+  mocks.preview.mockImplementation(async (id: string) => ({
+    agentIds: [id],
+    workspaceIds: [id],
+    workspaceRevision: `revision-${id}`,
+    error: null,
+  }));
+  mocks.confirm.mockResolvedValue(true);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <Harness strict scoped />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole("button"));
+  await waitFor(() => expect(mocks.remove).toHaveBeenCalledTimes(2));
+  for (const id of ["child-a", "child-b"]) {
+    const scope = { roomWorkspaceId: "workspace", leadAssociation: undefined, itemKind: "session" };
+    expect(mocks.preview).toHaveBeenCalledWith(id, scope);
+    expect(mocks.remove).toHaveBeenCalledWith(id, [id], [id], false, {
+      scope,
+      revision: `revision-${id}`,
+    });
+  }
 });

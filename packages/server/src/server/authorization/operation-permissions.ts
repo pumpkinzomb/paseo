@@ -6,6 +6,8 @@ type OutboundOperation = SessionOutboundMessage["type"];
 export type PermissionRequirement = DaemonPermission | readonly DaemonPermission[] | null;
 
 const INBOUND_PERMISSION = {
+  "workspace.leadAssociation.inspect.request": "workspace.manage",
+  "workspace.leadAssociation.apply.request": "workspace.manage",
   "workspace.development.read.request": "workspace.read",
   "workspace.development.link.request": "workspace.manage",
   "workspace.development.capture.request": "workspace.manage",
@@ -251,6 +253,8 @@ const INBOUND_PERMISSION = {
 } as const satisfies Record<InboundOperation, PermissionRequirement>;
 
 const OUTBOUND_PERMISSION = {
+  "workspace.leadAssociation.inspect.response": "workspace.manage",
+  "workspace.leadAssociation.apply.response": "workspace.manage",
   "workspace.development.read.response": "workspace.read",
   "workspace.development.link.response": "workspace.manage",
   "workspace.development.capture.response": "workspace.manage",

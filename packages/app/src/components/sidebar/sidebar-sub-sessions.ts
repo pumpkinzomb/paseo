@@ -24,15 +24,6 @@ export interface SidebarSubSessionGroups {
 
 const EMPTY_CHILDREN = new Map<string, readonly SidebarWorkspacePlacement[]>();
 
-/** Only a resolved assistant room uses conversation-only navigation. Unknown inventory stays visible. */
-export function isRoomSessionWorkspaceVisible(input: {
-  hasLeads: boolean;
-  sessionCount: number | undefined;
-  hasAgentEvidence: boolean;
-}): boolean {
-  return !input.hasLeads || input.sessionCount !== 0 || input.hasAgentEvidence;
-}
-
 /**
  * Maps each visible sub-session to the visible root session it nests under. Nesting is one
  * level deep: a sub-session of a sub-session joins the same root. A parent that is hidden,
@@ -133,11 +124,20 @@ export function groupSubSessionsByActivity(input: {
  * place a workspace under one; no-agent/unknown inventory never establishes completion.
  */
 export function partitionRoomWork<
-  T extends { creatorAgent?: { serverId: string; agentId: string } },
+  T extends {
+    creatorAgent?: { serverId: string; agentId: string };
+    leadAssociation?: {
+      serverId: string;
+      roomWorkspaceId: string;
+      logicalId: string;
+      anchorAgentId: string;
+    };
+  },
 >(
   serverId: string,
   conversations: readonly { logicalId: string; segments: readonly { agentId: string }[] }[],
   items: readonly T[],
+  roomWorkspaceId?: string,
 ): { byLead: Map<string, T[]>; unassigned: T[] } {
   const owners = new Map<string, string | null>();
   for (const conversation of conversations) {
@@ -155,7 +155,17 @@ export function partitionRoomWork<
   const unassigned: T[] = [];
   for (const item of items) {
     const creator = item.creatorAgent;
-    const owner = creator?.serverId === serverId ? owners.get(creator.agentId) : null;
+    const association = item.leadAssociation;
+    const associated =
+      association?.serverId === serverId && association.roomWorkspaceId === roomWorkspaceId
+        ? conversations.find(
+            (lead) =>
+              lead.logicalId === association.logicalId &&
+              lead.segments[0]?.agentId === association.anchorAgentId,
+          )?.logicalId
+        : null;
+    let owner = associated;
+    if (!association && creator?.serverId === serverId) owner = owners.get(creator.agentId);
     if (!owner) unassigned.push(item);
     else {
       const siblings = byLead.get(owner) ?? [];

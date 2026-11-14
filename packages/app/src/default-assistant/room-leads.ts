@@ -3,7 +3,7 @@ import {
   getParentAddressFromLabels,
   getParentAgentIdFromLabels,
 } from "@getpaseo/protocol/agent-labels";
-import type { AssistantConversation } from "@getpaseo/protocol/messages";
+import type { AssistantConversation, WorkspaceLeadAssociation } from "@getpaseo/protocol/messages";
 import { planAssistantConversationNavigation } from "./conversation-navigation-plan";
 
 /** Fetch each logical conversation once, even when the directory contains several segments. */
@@ -42,17 +42,32 @@ export function selectRoomLeadAgentIds(
 }
 
 export function selectLeadWork<
-  T extends Pick<Agent, "id" | "labels" | "archivedAt" | "background">,
->(agents: Iterable<T>, serverId: string, conversation: AssistantConversation): T[] {
+  T extends Pick<Agent, "id" | "labels" | "archivedAt" | "background"> & { workspaceId?: string },
+>(
+  agents: Iterable<T>,
+  serverId: string,
+  conversation: AssistantConversation,
+  scope?: { roomWorkspaceId: string; associations: ReadonlyMap<string, WorkspaceLeadAssociation> },
+): T[] {
   const segments = new Set(conversation.segments.map((segment) => segment.agentId));
   return [...agents].filter((agent) => {
+    if (agent.archivedAt || agent.background || segments.has(agent.id)) return false;
     const parent = getParentAddressFromLabels(agent.labels, serverId);
-    return (
-      !agent.archivedAt &&
-      !agent.background &&
-      !segments.has(agent.id) &&
-      parent?.serverId === serverId &&
-      segments.has(parent.agentId)
-    );
+    const association =
+      agent.workspaceId && agent.workspaceId !== scope?.roomWorkspaceId
+        ? scope?.associations.get(agent.workspaceId)
+        : undefined;
+    if (association)
+      return (
+        !(
+          agent.labels["paseo.role"] === "assistant" && !getParentAgentIdFromLabels(agent.labels)
+        ) &&
+        association.serverId === serverId &&
+        association.roomWorkspaceId === scope?.roomWorkspaceId &&
+        association.logicalId === conversation.logicalId &&
+        association.anchorAgentId === conversation.segments[0]?.agentId
+      );
+
+    return parent?.serverId === serverId && segments.has(parent.agentId);
   });
 }

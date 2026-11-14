@@ -180,6 +180,10 @@ export const ko: TranslationResources = {
     retry: "다시 시도",
   },
   workspaceSessionDeletion: {
+    historyMenu: "기록 제거",
+    historyTitle: "이 작업공간 기록을 제거할까요?",
+    historyConfirm:
+      "이 항목을 상위 에이전트에서 제거하고 Paseo 기록 {{count}}개 및 연결된 원본 제공자 세션을 영구 삭제합니다. 세션이 소유한 생성 결과물과 미리보기 사본도 제거됩니다. 레지스트리의 안전 정보와 검토 근거는 보존됩니다. 소스·프로젝트·작업트리 파일, 사용자 문서와 첨부 파일은 보존됩니다. 세션이 있다면 다른 앱에서 먼저 닫아 주세요. 제거된 데이터는 복원할 수 없습니다.",
     nativeConfirm:
       "Paseo 기록 {{count}}개와 연결된 Codex·Claude 원본 대화를 영구 삭제할까요? 모델 전환 구간과 하위 대화 기록도 포함하며 세션 전용 생성 결과물과 미리보기 사본도 삭제합니다. 복구할 수 없습니다. 확인하기 전에 Codex·Claude 및 다른 앱에서 해당 세션을 종료해 주세요. 공유 프로젝트·worktree·첨부 파일은 보존합니다. 원본 삭제가 실패하거나 결과가 불확실하면 Paseo 기록을 유지하며 재시도 전 확인이 필요할 수 있습니다.",
     completedMenu: "완료된 세션 삭제",
@@ -1689,6 +1693,17 @@ export const ko: TranslationResources = {
         pending: "대기 중: {{count}}개",
       },
       subSessions: {
+        needsReview: "확인 필요",
+        notStarted: "시작 전",
+        ownershipUnavailable:
+          "일부 항목의 상위 에이전트나 용도를 확인해야 합니다. 호스트를 새로 고치거나 연결 정보를 확인해 주세요.",
+        purpose: {
+          planned: "계획",
+          source: "소스",
+          task: "작업",
+          preparation: "준비",
+          unknown: "작업공간",
+        },
         unassigned: "방 작업공간",
         workspaceHistory: "작업공간 기록 ({{count}})",
         delegatedCount: "위임된 작업: {{count}}",

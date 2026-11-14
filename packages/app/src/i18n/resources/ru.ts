@@ -1385,6 +1385,17 @@ export const ru: TranslationResources = {
         pending: "Ожидают: {{count}}",
       },
       subSessions: {
+        needsReview: "Review needed",
+        notStarted: "Not started",
+        ownershipUnavailable:
+          "Some items need their lead or purpose confirmed. Refresh the host or review their assignment.",
+        purpose: {
+          planned: "Planned",
+          source: "Source",
+          task: "Task",
+          preparation: "Preparation",
+          unknown: "Workspace",
+        },
         unassigned: "Рабочие области комнаты",
         workspaceHistory: "История рабочих областей ({{count}})",
         delegatedCount: "Делегированные задачи: {{count}}",

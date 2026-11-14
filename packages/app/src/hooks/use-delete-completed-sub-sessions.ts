@@ -1,3 +1,4 @@
+import type { WorkspaceLeadAssociation } from "@getpaseo/protocol/messages";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
@@ -20,19 +21,26 @@ export function useDeleteCompletedSubSessions(
   parentWorkspaceId: string,
   completedWorkspaceIds: readonly string[],
   onDeleted?: (workspaceIds: readonly string[]) => void,
-  options?: { restrictToTargets?: boolean; ownerKey?: string },
+  options?: {
+    restrictToTargets?: boolean;
+    ownerKey?: string;
+    leadAssociations?: Record<string, WorkspaceLeadAssociation | undefined>;
+  },
 ) {
   const { t } = useTranslation();
   const toast = useToast();
   const client = useHostRuntimeClient(serverId);
-  const supported = useHostFeature(serverId, "workspaceSessionDeletion");
+  const deletionSupported = useHostFeature(serverId, "workspaceSessionDeletion");
+  const associationSupported = useHostFeature(serverId, "workspaceLeadAssociation");
+  const scopedAssociations = options?.leadAssociations;
+  const supported = deletionSupported && (!scopedAssociations || associationSupported);
   const queryClient = useQueryClient();
   const active = useActiveWorkspaceSelection();
   const activeRef = useRef(active);
   activeRef.current = active;
   const targetKey = JSON.stringify([...new Set(completedWorkspaceIds)].sort());
   const restrictToTargets = options?.restrictToTargets ?? false;
-  const scope = `${serverId}:${parentWorkspaceId}:${options?.ownerKey ?? ""}:${restrictToTargets}:${targetKey}`;
+  const scope = `${serverId}:${parentWorkspaceId}:${options?.ownerKey ?? ""}:${restrictToTargets}:${targetKey}:${JSON.stringify(scopedAssociations ?? null)}`;
   const currentScope = useRef(scope);
   currentScope.current = scope;
   const mounted = useRef(true);
@@ -58,17 +66,27 @@ export function useDeleteCompletedSubSessions(
     const inspectTargets = async () => {
       const previews = [];
       for (const workspaceId of targets) {
-        const preview = await client.inspectWorkspaceSessionDeletion(workspaceId);
+        const historyScope = scopedAssociations
+          ? {
+              roomWorkspaceId: parentWorkspaceId,
+              leadAssociation: scopedAssociations[workspaceId],
+              itemKind: "session" as const,
+            }
+          : undefined;
+        const preview = historyScope
+          ? await client.inspectWorkspaceSessionDeletion(workspaceId, historyScope)
+          : await client.inspectWorkspaceSessionDeletion(workspaceId);
         if (preview.error) throw new Error(preview.error);
         // Refuse old/incompatible or invalid scope instead of risking the parent.
         if (
+          (historyScope && (!preview.workspaceRevision || preview.workspaceIds?.length !== 1)) ||
           !preview.workspaceIds?.includes(workspaceId) ||
           preview.workspaceIds.includes(parentWorkspaceId) ||
           (restrictToTargets && preview.workspaceIds.some((id) => !targets.includes(id)))
         ) {
           throw new Error(t("workspaceSessionDeletion.moved"));
         }
-        previews.push({ workspaceId, preview });
+        previews.push({ workspaceId, preview, historyScope });
       }
       return previews;
     };
@@ -112,17 +130,25 @@ export function useDeleteCompletedSubSessions(
       });
       if (!confirmed || !stillCurrent()) return;
       const owned = collectSessionWorkspaces(serverId);
-      for (const { workspaceId, preview } of previews) {
+      for (const { workspaceId, preview, historyScope } of previews) {
         if (removedWorkspaces.has(workspaceId)) continue;
         // Once the confirmed batch starts, directory broadcasts may update the sidebar.
         // Keep its frozen preview, which the server revalidates before each mutation.
         started = true;
         awaitingResult = true;
-        const result = await client.deleteWorkspaceSessions(
-          workspaceId,
-          preview.agentIds,
-          preview.workspaceIds,
-        );
+        const result = historyScope
+          ? await client.deleteWorkspaceSessions(
+              workspaceId,
+              preview.agentIds,
+              preview.workspaceIds,
+              false,
+              { scope: historyScope, revision: preview.workspaceRevision! },
+            )
+          : await client.deleteWorkspaceSessions(
+              workspaceId,
+              preview.agentIds,
+              preview.workspaceIds,
+            );
         awaitingResult = false;
         removedAny ||= result.agentIds.length > 0;
         closeSessionTabs(
@@ -148,6 +174,7 @@ export function useDeleteCompletedSubSessions(
   }, [
     client,
     supported,
+    scopedAssociations,
     targetKey,
     restrictToTargets,
     parentWorkspaceId,

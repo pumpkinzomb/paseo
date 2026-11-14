@@ -3044,13 +3044,81 @@ export const AssistantConversationLifecycleResponseSchema = z.object({
   }),
 });
 
+// Intended navigation ownership is separate from creation provenance and session activity.
+export const WorkspaceLeadAssociationSchema = z.object({
+  serverId: z.string().min(1),
+  roomWorkspaceId: z.string().min(1),
+  logicalId: z.string().min(1),
+  anchorAgentId: z.string().min(1),
+});
+export const WorkspacePurposeSchema = z.enum(["planned", "source", "task", "preparation"]);
+export type WorkspaceLeadAssociation = z.infer<typeof WorkspaceLeadAssociationSchema>;
+export type WorkspacePurpose = z.infer<typeof WorkspacePurposeSchema>;
+const WorkspaceLeadIntentSchema = z.object({
+  lead: WorkspaceLeadAssociationSchema,
+  purpose: WorkspacePurposeSchema,
+});
+export const WorkspaceLeadAssociationInspectRequestSchema = z.object({
+  type: z.literal("workspace.leadAssociation.inspect.request"),
+  requestId: z.string(),
+  roomWorkspaceId: z.string(),
+  assignments: z
+    .array(z.object({ workspaceId: z.string(), ...WorkspaceLeadIntentSchema.shape }))
+    .min(1)
+    .max(20),
+});
+export const WorkspaceLeadAssociationApplyRequestSchema = z.object({
+  type: z.literal("workspace.leadAssociation.apply.request"),
+  requestId: z.string(),
+  previewToken: z.string(),
+});
+export const WorkspaceLeadAssociationInspectResponseSchema = z.object({
+  type: z.literal("workspace.leadAssociation.inspect.response"),
+  payload: z.object({
+    requestId: z.string(),
+    previewToken: z.string(),
+    expiresAt: z.string(),
+    entries: z.array(
+      z.object({
+        workspaceId: z.string(),
+        name: z.string(),
+        lead: WorkspaceLeadAssociationSchema,
+        leadName: z.string(),
+        purpose: WorkspacePurposeSchema,
+        archived: z.boolean(),
+        sessionCount: z.number(),
+        revision: z.string(),
+      }),
+    ),
+  }),
+});
+export const WorkspaceLeadAssociationApplyResponseSchema = z.object({
+  type: z.literal("workspace.leadAssociation.apply.response"),
+  payload: z.object({ requestId: z.string(), workspaceIds: z.array(z.string()) }),
+});
+export type WorkspaceLeadAssociationAssignment = z.infer<
+  typeof WorkspaceLeadAssociationInspectRequestSchema
+>["assignments"][number];
+export type WorkspaceLeadAssociationPreview = z.infer<
+  typeof WorkspaceLeadAssociationInspectResponseSchema
+>["payload"];
+
+export const WorkspaceHistoryScopeSchema = z.object({
+  itemKind: z.enum(["archived", "planned", "session"]).optional(),
+  roomWorkspaceId: z.string(),
+  leadAssociation: WorkspaceLeadAssociationSchema.optional(),
+});
+export type WorkspaceHistoryScope = z.infer<typeof WorkspaceHistoryScopeSchema>;
 export const WorkspaceSessionsDeleteInspectRequestSchema = z.object({
+  historyScope: WorkspaceHistoryScopeSchema.optional(),
   type: z.literal("workspace.sessions.delete.inspect.request"),
   requestId: z.string(),
   workspaceId: z.string().regex(/^wks_[a-f0-9]{16}$/),
   includeDescendants: z.boolean().optional(),
 });
 export const WorkspaceSessionsDeleteRequestSchema = z.object({
+  historyScope: WorkspaceHistoryScopeSchema.optional(),
+  expectedWorkspaceRevision: z.string().optional(),
   type: z.literal("workspace.sessions.delete.request"),
   requestId: z.string(),
   workspaceId: z.string().regex(/^wks_[a-f0-9]{16}$/),
@@ -3061,6 +3129,7 @@ export const WorkspaceSessionsDeleteRequestSchema = z.object({
 export const WorkspaceSessionsDeleteInspectResponseSchema = z.object({
   type: z.literal("workspace.sessions.delete.inspect.response"),
   payload: z.object({
+    workspaceRevision: z.string().optional(),
     requestId: z.string(),
     agentIds: z.array(z.string()),
     workspaceIds: z.array(z.string()).optional(),
@@ -3116,6 +3185,7 @@ export const AssistantEnsureRequestSchema = z.object({
 });
 
 export const WorkspaceCreateRequestSchema = z.object({
+  leadIntent: WorkspaceLeadIntentSchema.optional(),
   type: z.literal("workspace.create.request"),
   workspaceId: z
     .string()
@@ -3757,6 +3827,8 @@ export const SubscriptionReleaseResponseSchema = z.object({
 });
 
 export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+  WorkspaceLeadAssociationInspectRequestSchema,
+  WorkspaceLeadAssociationApplyRequestSchema,
   DevelopmentReviewReadRequestSchema,
   DevelopmentReviewLinkRequestSchema,
   DevelopmentReviewCaptureRequestSchema,
@@ -4385,6 +4457,7 @@ export const ServerInfoStatusPayloadSchema = z
         leadIdentitySettings: z.boolean().optional(),
         defaultAssistantConversations: z.boolean().optional(),
         assistantConversationLifecycle: z.boolean().optional(),
+        workspaceLeadAssociation: z.boolean().optional(),
         agentRecordDeletion: z.boolean().optional(),
         workspaceSessionDeletion: z.boolean().optional(),
         nativeSessionDeletion: z.boolean().optional(),
@@ -4691,6 +4764,8 @@ export const WorkspaceGitHubRuntimePayloadSchema = z
   .nullable();
 
 const workspaceAgentProvenanceFields = {
+  leadAssociation: WorkspaceLeadAssociationSchema.optional(),
+  workspacePurpose: WorkspacePurposeSchema.optional(),
   creatorAgent: z.object({ serverId: z.string(), agentId: z.string() }).optional(),
   // Complete durable visible-agent inventory, including archived records. Missing means unknown.
   sessionCount: z.number().int().nonnegative().optional(),
@@ -7738,6 +7813,8 @@ export const AgentSkillsImportLegacySelectionResponseSchema = z.object({
 });
 
 export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+  WorkspaceLeadAssociationInspectResponseSchema,
+  WorkspaceLeadAssociationApplyResponseSchema,
   DevelopmentReviewResponseSchema,
   DevelopmentReviewLinkResponseSchema,
   DevelopmentReviewCaptureResponseSchema,

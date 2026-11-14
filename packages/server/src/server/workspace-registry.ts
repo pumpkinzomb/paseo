@@ -1,3 +1,9 @@
+import {
+  WorkspaceLeadAssociationSchema,
+  WorkspacePurposeSchema,
+  type WorkspaceLeadAssociation,
+  type WorkspacePurpose,
+} from "@getpaseo/protocol/messages";
 import type { JsonValue } from "@getpaseo/protocol/agent-types";
 import { promises as fs } from "node:fs";
 
@@ -59,6 +65,8 @@ const DevelopmentEvidenceSchema = z.object({
 });
 
 const PersistedWorkspaceRecordSchema = z.object({
+  leadAssociation: WorkspaceLeadAssociationSchema.optional(),
+  workspacePurpose: WorkspacePurposeSchema.optional(),
   parentWorkspaceId: z.string().optional(),
   creatorAgent: z.object({ serverId: z.string(), agentId: z.string() }).optional(),
   developmentSourceIds: z.array(z.string()).optional(),
@@ -172,6 +180,12 @@ export interface ProjectRegistry {
 }
 
 export interface WorkspaceRegistry {
+  commitLeadAssociationMutation?(
+    stage: (
+      records: ReadonlyMap<string, PersistedWorkspaceRecord>,
+    ) => readonly PersistedWorkspaceRecord[],
+    validate: () => Promise<void>,
+  ): Promise<void>;
   initialize(): Promise<void>;
   existsOnDisk(): Promise<boolean>;
   listAll(): Promise<PersistedWorkspaceRecord[]>;
@@ -617,6 +631,28 @@ export class FileBackedWorkspaceRegistry
     await this.notifyMutation({ kind: "remove", workspaceId, workspace });
   }
 
+  /** Validate the whole intended-ownership batch under the registry queue; publish only after atomic commit. */
+  async commitLeadAssociationMutation(
+    stage: (
+      records: ReadonlyMap<string, PersistedWorkspaceRecord>,
+    ) => readonly PersistedWorkspaceRecord[],
+    validate: () => Promise<void>,
+  ): Promise<void> {
+    let changed: PersistedWorkspaceRecord[] = [];
+    await this.mutateCache(
+      (records) => {
+        changed = stage(records).map((record) => PersistedWorkspaceRecordSchema.parse(record));
+        for (const record of changed) records.set(record.workspaceId, record);
+      },
+      { forcePersist: () => true, beforeWrite: validate },
+    );
+    await Promise.all(
+      changed.map((workspace) =>
+        this.notifyMutation({ kind: "upsert", workspaceId: workspace.workspaceId, workspace }),
+      ),
+    );
+  }
+
   async commitWorkspaceLabelMutation<TResult>(input: {
     stage: (records: ReadonlyMap<string, PersistedWorkspaceRecord>) => {
       updates: readonly PersistedWorkspaceRecord[];
@@ -697,6 +733,8 @@ export function resolveProjectDisplayName(record: PersistedProjectRecord): strin
 }
 
 export function createPersistedWorkspaceRecord(input: {
+  leadAssociation?: WorkspaceLeadAssociation;
+  workspacePurpose?: WorkspacePurpose;
   parentWorkspaceId?: string;
   creatorAgent?: { serverId: string; agentId: string };
   workspaceId: string;

@@ -2077,6 +2077,7 @@ export class VoiceAssistantWebSocketServer {
         leadIdentitySettings: true,
         defaultAssistantConversations: true,
         assistantConversationLifecycle: true,
+        workspaceLeadAssociation: true,
         agentRecordDeletion: true,
         workspaceSessionDeletion: true,
         nativeSessionDeletion: true,

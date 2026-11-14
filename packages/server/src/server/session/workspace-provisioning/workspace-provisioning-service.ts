@@ -1,3 +1,5 @@
+import { workspaceRoomAncestry } from "../../workspace-lead-association.js";
+import type { WorkspaceLeadAssociation, WorkspacePurpose } from "@getpaseo/protocol/messages";
 import { DevelopmentReview } from "../../development-review.js";
 import type { JsonValue } from "@getpaseo/protocol/agent-types";
 import type { PluginLifecycle } from "../../plugins/lifecycle/index.js";
@@ -36,6 +38,8 @@ export interface ResolveOrCreateWorkspaceIdInput {
   background?: boolean;
   callerWorkspaceId?: string;
   callerAgentId?: string;
+  leadIntent?: { lead: WorkspaceLeadAssociation; purpose: WorkspacePurpose };
+  workspacePurpose?: WorkspacePurpose;
 }
 
 export interface ImportWorkspaceInput {
@@ -64,6 +68,8 @@ export interface CreateWorktreeWorkspaceInput {
   background?: boolean;
   callerWorkspaceId?: string;
   callerAgentId?: string;
+  leadIntent?: { lead: WorkspaceLeadAssociation; purpose: WorkspacePurpose };
+  workspacePurpose?: WorkspacePurpose;
 }
 
 export interface WorkspaceProvisioningService {
@@ -84,6 +90,8 @@ export interface WorkspaceProvisioningService {
       background?: boolean;
       callerWorkspaceId?: string;
       callerAgentId?: string;
+      leadIntent?: { lead: WorkspaceLeadAssociation; purpose: WorkspacePurpose };
+      workspacePurpose?: WorkspacePurpose;
     },
   ): Promise<PersistedWorkspaceRecord>;
   createWorkspaceForWorktree(
@@ -113,6 +121,14 @@ export class WorkspaceProvisioningError extends Error {
 
 export function createWorkspaceProvisioningService(deps: {
   serverId?: string;
+  resolveCallerLead?: (
+    agentId: string,
+    workspaceId: string,
+  ) => Promise<WorkspaceLeadAssociation | undefined>;
+  validateLeadIntent?: (
+    lead: WorkspaceLeadAssociation,
+    purpose: WorkspacePurpose,
+  ) => Promise<{ leadAssociation: WorkspaceLeadAssociation; workspacePurpose: WorkspacePurpose }>;
   workspaceRegistry: WorkspaceRegistry;
   projectRegistry: ProjectRegistry;
   workspaceGitService: Pick<WorkspaceGitService, "getCheckout" | "getSnapshot">;
@@ -279,18 +295,51 @@ export function createWorkspaceProvisioningService(deps: {
     background?: boolean;
     callerWorkspaceId?: string;
     callerAgentId?: string;
+    leadIntent?: { lead: WorkspaceLeadAssociation; purpose: WorkspacePurpose };
+    workspacePurpose?: WorkspacePurpose;
   }): Promise<{
     background: boolean;
     parentWorkspaceId?: string;
     creatorAgent?: { serverId: string; agentId: string };
+    leadAssociation?: WorkspaceLeadAssociation;
+    workspacePurpose?: WorkspacePurpose;
   }> {
-    if (!input?.callerWorkspaceId) return { background: input?.background ?? false };
+    if (!input?.callerWorkspaceId)
+      return {
+        background: input?.background ?? false,
+        ...(input?.workspacePurpose ? { workspacePurpose: input.workspacePurpose } : {}),
+      };
     if (input.workspaceId === input.callerWorkspaceId) {
       throw new Error("A workspace cannot be its own parent");
     }
     const callerWorkspace = await workspaceRegistry.get(input.callerWorkspaceId);
     if (!callerWorkspace) throw new Error(`Caller workspace ${input.callerWorkspaceId} not found`);
+    const declared = input.leadIntent;
+    if (declared && callerWorkspace.workspaceId !== declared.lead.roomWorkspaceId)
+      workspaceRoomAncestry(
+        new Map((await workspaceRegistry.listAll()).map((r) => [r.workspaceId, r])),
+        callerWorkspace.workspaceId,
+        declared.lead.roomWorkspaceId,
+      );
+
+    let intent: {
+      leadAssociation?: WorkspaceLeadAssociation;
+      workspacePurpose?: WorkspacePurpose;
+    } = {};
+    if (declared) {
+      if (!deps.validateLeadIntent) throw new Error("Host cannot validate lead intent");
+      intent = await deps.validateLeadIntent(declared.lead, declared.purpose);
+    } else if (input.callerAgentId && deps.resolveCallerLead) {
+      intent = {
+        leadAssociation: await deps.resolveCallerLead(
+          input.callerAgentId,
+          callerWorkspace.workspaceId,
+        ),
+      };
+    }
     return {
+      ...intent,
+      ...(input.workspacePurpose ? { workspacePurpose: input.workspacePurpose } : {}),
       background: input.background ?? callerWorkspace.background,
       parentWorkspaceId: callerWorkspace.workspaceId,
       ...(input.callerAgentId && deps.serverId
@@ -310,6 +359,8 @@ export function createWorkspaceProvisioningService(deps: {
       background?: boolean;
       callerWorkspaceId?: string;
       callerAgentId?: string;
+      leadIntent?: { lead: WorkspaceLeadAssociation; purpose: WorkspacePurpose };
+      workspacePurpose?: WorkspacePurpose;
     },
   ): Promise<PersistedWorkspaceRecord> {
     const normalizedCwd = resolve(cwd);
@@ -468,6 +519,8 @@ export function createWorkspaceProvisioningService(deps: {
     return (
       await createWorkspaceForDirectory(input.cwd, input.initialTitle, undefined, {
         expectsInitialAgent: true,
+        workspacePurpose: input.workspacePurpose ?? "task",
+        leadIntent: input.leadIntent,
         background: input.background,
         callerWorkspaceId: input.callerWorkspaceId,
         callerAgentId: input.callerAgentId,

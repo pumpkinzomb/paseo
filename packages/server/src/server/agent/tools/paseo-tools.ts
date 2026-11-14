@@ -1,3 +1,4 @@
+import { WorkspacePurposeSchema, type WorkspacePurpose } from "@getpaseo/protocol/messages";
 import { runGitCommand } from "../../../utils/run-git-command.js";
 import {
   isolateDevelopmentTask,
@@ -156,7 +157,12 @@ export interface PaseoToolHostDependencies {
     cwd: string,
     title?: string | null,
     projectId?: string,
-    context?: { background?: boolean; callerWorkspaceId?: string; callerAgentId?: string },
+    context?: {
+      background?: boolean;
+      callerWorkspaceId?: string;
+      callerAgentId?: string;
+      workspacePurpose?: WorkspacePurpose;
+    },
   ) => Promise<PersistedWorkspaceRecord>;
   workspaceScripts?: Pick<WorkspaceScriptsService, "list" | "launch" | "stop">;
   markWorkspaceArchiving?: ArchiveDependencies["markWorkspaceArchiving"];
@@ -166,7 +172,12 @@ export interface PaseoToolHostDependencies {
   ensureWorkspaceForCreate?: (
     cwd: string,
     firstAgentContext?: FirstAgentContext,
-    context?: { background?: boolean; callerWorkspaceId?: string; callerAgentId?: string },
+    context?: {
+      background?: boolean;
+      callerWorkspaceId?: string;
+      callerAgentId?: string;
+      workspacePurpose?: WorkspacePurpose;
+    },
   ) => Promise<string>;
   browserToolsEnabled?: boolean;
   browserToolsBroker?: BrowserToolsBroker | null;
@@ -1419,6 +1430,9 @@ function createToolCatalog(
         "Create a workspace using an existing local checkout or a new Paseo-managed worktree.",
       inputSchema: {
         isolation: z.enum(["local", "worktree"]),
+        workspacePurpose: WorkspacePurposeSchema.optional().describe(
+          "Explicit purpose: planned, source, task or preparation. Omit when unknown; this is separate from session state.",
+        ),
         path: z
           .string()
           .optional()
@@ -1467,6 +1481,7 @@ function createToolCatalog(
       outputSchema: WorkspaceAutomationSummarySchema.shape,
     },
     async ({
+      workspacePurpose,
       isolation,
       path,
       projectId,
@@ -1501,12 +1516,10 @@ function createToolCatalog(
         if (!options.createDirectoryWorkspace) {
           throw new Error("Workspace provisioning is not configured");
         }
-        workspace = await options.createDirectoryWorkspace(
-          cwd,
-          title,
-          projectId,
-          workspaceBackgroundIntent(background),
-        );
+        workspace = await options.createDirectoryWorkspace(cwd, title, projectId, {
+          ...workspaceBackgroundIntent(background),
+          workspacePurpose,
+        });
       } else {
         let cwd =
           path !== undefined || !projectId ? resolveScopedCwd(path, { required: true }) : null;
@@ -1538,6 +1551,7 @@ function createToolCatalog(
             ...worktreeTarget,
             ...(title ? { title } : {}),
             ...workspaceBackgroundIntent(background),
+            workspacePurpose,
           },
         );
         if (!result.ok) {

@@ -53,8 +53,31 @@ beforeEach(() => {
   mocks.refresh.mockResolvedValue(undefined);
 });
 afterEach(cleanup);
-function Harness({ workspaceId = "workspace" }: { workspaceId?: string }) {
-  const { remove, pending } = useDeleteWorkspaceSessions("host", workspaceId, mocks.close);
+function Harness({
+  workspaceId = "workspace",
+  history = false,
+}: {
+  workspaceId?: string;
+  history?: boolean;
+}) {
+  const { remove, pending } = useDeleteWorkspaceSessions(
+    "host",
+    workspaceId,
+    mocks.close,
+    history
+      ? {
+          historyScope: {
+            roomWorkspaceId: "room",
+            leadAssociation: {
+              serverId: "host",
+              roomWorkspaceId: "room",
+              logicalId: "logical-A",
+              anchorAgentId: "anchor-A",
+            },
+          },
+        }
+      : undefined,
+  );
   return (
     <button type="button" disabled={!remove || pending} onClick={remove}>
       Delete
@@ -228,4 +251,54 @@ it("sends the confirmed descendant workspace scope and closes child tabs in thei
       ["child", "child-workspace"],
     ]),
   );
+});
+
+it("empty history removal freezes one archived record revision without deleting native sessions", async () => {
+  mocks.preview.mockResolvedValue({
+    agentIds: [],
+    workspaceIds: ["empty"],
+    workspaceRevision: "revision",
+    error: null,
+  });
+  mocks.remove.mockResolvedValue({ agentIds: [], workspaceIds: ["empty"], error: null });
+  mocks.confirm.mockResolvedValue(true);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <Harness workspaceId="empty" history />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole("button"));
+  await waitFor(() => expect(mocks.remove).toHaveBeenCalledOnce());
+  const scope = {
+    roomWorkspaceId: "room",
+    leadAssociation: {
+      serverId: "host",
+      roomWorkspaceId: "room",
+      logicalId: "logical-A",
+      anchorAgentId: "anchor-A",
+    },
+  };
+  expect(mocks.preview).toHaveBeenCalledWith("empty", scope);
+  expect(mocks.confirm.mock.calls[0][0].message).toBe("workspaceSessionDeletion.historyConfirm:0");
+  expect(mocks.remove).toHaveBeenCalledWith("empty", [], ["empty"], false, {
+    scope,
+    revision: "revision",
+  });
+});
+it("history removal refuses unscoped/descendant previews and old host support", async () => {
+  mocks.preview.mockResolvedValue({
+    agentIds: [],
+    workspaceIds: ["empty", "sibling"],
+    workspaceRevision: "revision",
+    error: null,
+  });
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <Harness workspaceId="empty" history />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole("button"));
+  await waitFor(() => expect(mocks.toast.error).toHaveBeenCalled());
+  expect(mocks.confirm).not.toHaveBeenCalled();
+  expect(mocks.remove).not.toHaveBeenCalled();
 });

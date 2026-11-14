@@ -10156,3 +10156,76 @@ test("development review rejects an old host without sending path-based fallback
   );
   expect(mock.sent.length).toBe(before);
 });
+
+test("lead association writes and scoped item deletion require the single host capability", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "lead-capability",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+  const connecting = client.connect();
+  mock.triggerOpen({ features: { workspaceSessionDeletion: true, nativeSessionDeletion: true } });
+  await connecting;
+  const lead = {
+    serverId: "host",
+    roomWorkspaceId: "room",
+    logicalId: "logical",
+    anchorAgentId: "anchor",
+  };
+  await expect(
+    client.inspectWorkspaceLeadAssociations({
+      roomWorkspaceId: "room",
+      assignments: [{ workspaceId: "planned", lead, purpose: "planned" }],
+    }),
+  ).rejects.toThrow(/Update this host/);
+  await expect(client.applyWorkspaceLeadAssociations("preview")).rejects.toThrow(
+    /Update this host/,
+  );
+  await expect(
+    client.createWorkspace({
+      source: { kind: "directory", path: "/synthetic" },
+      leadIntent: { lead, purpose: "planned" },
+    }),
+  ).rejects.toThrow(/Update this host/);
+  await expect(
+    client.inspectWorkspaceSessionDeletion("planned", {
+      roomWorkspaceId: "room",
+      leadAssociation: lead,
+      itemKind: "planned",
+    }),
+  ).rejects.toThrow(/Update this host/);
+  expect(mock.sent).toHaveLength(0);
+});
+
+test("sends exact intended lead and purpose through the supported creation transport", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "lead-intent",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+  const connecting = client.connect();
+  mock.triggerOpen({ features: { workspaceLeadAssociation: true } });
+  await connecting;
+  const leadIntent = {
+    lead: {
+      serverId: "host",
+      roomWorkspaceId: "room",
+      logicalId: "logical-B",
+      anchorAgentId: "anchor-B",
+    },
+    purpose: "planned" as const,
+  };
+  void client
+    .createWorkspace({ source: { kind: "directory", path: "/synthetic" }, leadIntent })
+    .catch(() => undefined);
+  expect(parseSentFrame(mock.sent[0])).toMatchObject({
+    type: "workspace.create.request",
+    leadIntent,
+  });
+});

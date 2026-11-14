@@ -177,6 +177,10 @@ export const en = {
     retry: "Retry",
   },
   workspaceSessionDeletion: {
+    historyMenu: "Remove record",
+    historyTitle: "Remove this workspace record?",
+    historyConfirm:
+      "Remove this item from its lead and permanently delete {{count}} Paseo records and any linked original provider sessions? Session-owned generated outputs and preview copies are also removed. Registry safety and review evidence are retained. Source, project/worktree files, user documents and attachments are preserved. If sessions exist, close them in other apps first. Removed data cannot be restored.",
     nativeConfirm:
       "Permanently delete all {{count}} Paseo records and their linked Codex/Claude original sessions, including model segments and child transcripts? Session-owned generated outputs and preview copies are also deleted. This cannot be undone. Close these sessions in Codex/Claude and other apps before confirming. Shared project files, worktrees and attachments are preserved. If a native deletion fails or is uncertain, Paseo records remain and retries may require manual review.",
     completedMenu: "Delete completed sessions",
@@ -1690,6 +1694,17 @@ export const en = {
         pending: "Pending: {{count}}",
       },
       subSessions: {
+        needsReview: "Review needed",
+        notStarted: "Not started",
+        ownershipUnavailable:
+          "Some items need their lead or purpose confirmed. Refresh the host or review their assignment.",
+        purpose: {
+          planned: "Planned",
+          source: "Source",
+          task: "Task",
+          preparation: "Preparation",
+          unknown: "Workspace",
+        },
         unassigned: "Room workspaces",
         workspaceHistory: "Workspace history ({{count}})",
         delegatedCount: "Delegated work: {{count}}",

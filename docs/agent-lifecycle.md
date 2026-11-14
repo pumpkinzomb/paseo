@@ -502,18 +502,30 @@ The lead's status follows its current provider segment; the separate work count 
 its delegated tasks, including while collapsed. An idle lead with running children remains idle.
 
 Workspace creation through an authenticated agent tool retains its creator address through archive
-and folder cleanup. Legacy records can use unambiguous parent-address evidence from their exact
-stored agents, matching any provider segment of the lead. Conflicting evidence stays unassigned;
-it never changes a stored creator. Paths, names and the selected tab cannot establish ownership.
+and folder cleanup. Intended lead association is separate: a lead can prepare planned or source
+workspaces for another lead before any agent starts. Provider continuation keeps that logical
+association. Legacy records without an association can use unambiguous parent-address evidence
+from their exact stored agents. Paths, names, session counts and selected tabs never establish
+ownership. Conflicting or missing evidence leaves workspaces visibly room-scoped.
 
-Room workspaces without proven ownership remain room-scoped. Complete server inventory distinguishes
-zero registered Paseo sessions from a completed session; missing inventory means unknown. This count
-does not establish whether external provider history exists. In a room with logical leads, confirmed
-zero-session workspaces and empty archived
-preparations are omitted from the session tree. Ordinary project workspace navigation keeps them.
-This display filter does not change workspace records, source associations or files. A lead's
-completed-work action refuses previews that reach another lead or an unassigned workspace.
-Source links in Files remain independent of these presentation groups.
+Planned, source, task and preparation purpose is explicit; missing purpose stays unknown. A zero
+registered Paseo session count does not imply planned work or absence of external native history.
+The assistant tree shows actual child sessions and explicitly planned **Not started** tasks under
+their lead. Retained sources stay in Files/development scopes; empty preparation records are
+internal workspace storage, not session history. Ordinary project workspace navigation remains
+available. Source links and pinned review identities in Files stay independent. Actual sessions
+with missing or conflicting ownership show an explicit recovery state instead of being assigned
+to a neighboring lead. Each lead's Done group contains actual completed sessions only.
+
+**Remove record** uses the existing protected deletion lifecycle for actual sessions and explicit
+planned items. A scoped preview freezes the exact item, room, intended owner, ancestry, record
+revision and session inventory; changes require another preview. Retained sources are protected
+by declared purpose and actual source references. Removal marks the retained registry record;
+safety and review evidence remain. Confirmed session records, linked native sessions when present,
+and explicitly session-owned generated outputs/preview copies are removed. Project/worktree
+files, user documents, attachments and unrelated records remain. Empty preparation folders do not
+appear as sessions merely to expose a delete action. Ordinary archived workspace views can remove
+their records through the same guarded lifecycle.
 
 Navigation consolidates native segment tabs in client layout only. It does not archive or delete agents. Legacy segments in other workspaces are not moved or hidden automatically. A second client can refresh the logical record after assistant events/focus; there is no cross-application native-session ownership lock.
 

@@ -178,3 +178,37 @@ describe("room lead ownership", () => {
     ).toEqual([first, second]);
   });
 });
+
+it("intended lead association owns work prepared by another lead without rewriting parent provenance", () => {
+  const a = {
+    logicalId: "A",
+    activeAgentId: "continuation-A",
+    activeWorkspaceId: "room",
+    segments: [segment("anchor-A", "room"), segment("continuation-A", "room")],
+  };
+  const b = {
+    logicalId: "B",
+    activeAgentId: "anchor-B",
+    activeWorkspaceId: "room",
+    segments: [segment("anchor-B", "room")],
+  };
+  const child = {
+    id: "child",
+    workspaceId: "planned",
+    labels: { "paseo.parent-agent-id": "continuation-A", "paseo.parent-server-id": "host" },
+  };
+  const association = {
+    serverId: "host",
+    roomWorkspaceId: "room",
+    logicalId: "B",
+    anchorAgentId: "anchor-B",
+  };
+  const scope = { roomWorkspaceId: "room", associations: new Map([["planned", association]]) };
+  expect(selectLeadWork([child], "host", a, scope)).toEqual([]);
+  expect(selectLeadWork([child], "host", b, scope)).toEqual([child]);
+  expect(child.labels["paseo.parent-agent-id"]).toBe("continuation-A");
+  expect(selectLeadWork([child], "foreign", b, scope)).toEqual([]);
+  expect(selectLeadWork([child], "host", b, { ...scope, roomWorkspaceId: "other-room" })).toEqual(
+    [],
+  );
+});

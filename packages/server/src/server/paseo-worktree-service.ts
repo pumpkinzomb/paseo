@@ -1,3 +1,4 @@
+import type { WorkspaceLeadAssociation, WorkspacePurpose } from "@getpaseo/protocol/messages";
 import type { JsonValue } from "@getpaseo/protocol/agent-types";
 import type { PluginLifecycle } from "./plugins/lifecycle/index.js";
 import { stat } from "node:fs/promises";
@@ -39,6 +40,8 @@ export interface CreatePaseoWorktreeInput extends CreateWorktreeCoreInput {
   background?: boolean;
   callerWorkspaceId?: string;
   callerAgentId?: string;
+  leadIntent?: { lead: WorkspaceLeadAssociation; purpose: WorkspacePurpose };
+  workspacePurpose?: WorkspacePurpose;
 }
 
 export interface CreatePaseoWorktreeResult {
@@ -119,6 +122,8 @@ async function createPaseoWorktreeWithPriority(
       metadata: input.metadata,
       expectsInitialAgent: Boolean(input.firstAgentContext),
       background: input.background,
+      leadIntent: input.leadIntent,
+      workspacePurpose: input.workspacePurpose,
       callerWorkspaceId: input.callerWorkspaceId,
       callerAgentId: input.callerAgentId,
       ...(createdWorktree.intent.kind === "checkout-change-request" &&

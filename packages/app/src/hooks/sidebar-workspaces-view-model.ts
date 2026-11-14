@@ -49,6 +49,8 @@ export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
   // The workspace whose agent created this one. Sub-sessions nest under it in the sidebar.
   parentWorkspaceId?: string | null;
   creatorAgent?: WorkspaceDescriptor["creatorAgent"];
+  leadAssociation?: WorkspaceDescriptor["leadAssociation"];
+  workspacePurpose?: WorkspaceDescriptor["workspacePurpose"];
   sessionCount?: number;
   // Cleaned-up sub-sessions this workspace's agents created, kept for review under "Done".
   archivedSubSessions?: WorkspaceDescriptor["archivedSubSessions"];
@@ -174,6 +176,8 @@ export function createSidebarWorkspaceEntry(input: {
     pinnedAt: input.workspace.pinnedAt,
     parentWorkspaceId: input.workspace.parentWorkspaceId ?? null,
     creatorAgent: input.workspace.creatorAgent,
+    leadAssociation: input.workspace.leadAssociation,
+    workspacePurpose: input.workspace.workspacePurpose,
     sessionCount: input.workspace.sessionCount,
     archivedSubSessions: input.workspace.archivedSubSessions,
     labels: input.workspace.labels ?? EMPTY_WORKSPACE_LABELS,

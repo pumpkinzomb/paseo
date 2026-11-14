@@ -1,3 +1,5 @@
+import { WorkspaceLeadAssociations } from "./workspace-lead-association.js";
+import { defaultAssistantSelection } from "./default-assistant/index.js";
 import {
   observeInstalledUpdateControl,
   type UpdateControlPublication,
@@ -1022,6 +1024,9 @@ async function createPaseoDaemonInternal(
     }
   });
   const workspaceProvisioning = createWorkspaceProvisioningService({
+    resolveCallerLead: (agentId, workspaceId) =>
+      workspaceLeadAssociations.forCaller(agentId, workspaceId),
+    validateLeadIntent: (lead, purpose) => workspaceLeadAssociations.validateIntent(lead, purpose),
     lifecycle: pluginRuntime,
     serverId,
     projectRegistry,
@@ -1094,6 +1099,20 @@ async function createPaseoDaemonInternal(
     agentManager,
     agentStorage,
   );
+  const workspaceLeadAssociations = new WorkspaceLeadAssociations({
+    serverId,
+    registry: workspaceRegistry,
+    getAgent: (id) => agentStorage.get(id),
+    listAgents: (ids) => agentStorage.listByWorkspaces(ids, { includeArchived: true }),
+    getConversation: (input) =>
+      defaultAssistantSelection(agentManager, config.paseoHome).getConversation({
+        ...input,
+        find: async (id) => {
+          const agent = await agentStorage.get(id);
+          return agent?.labels["paseo.role"] === "assistant" ? { agent } : null;
+        },
+      }),
+  });
   await agentStorage.initialize();
   const restartRecovery = createRestartRecovery({
     storage: agentStorage,

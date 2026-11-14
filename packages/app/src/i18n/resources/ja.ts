@@ -1381,6 +1381,17 @@ export const ja: TranslationResources = {
         pending: "保留中: {{count}}",
       },
       subSessions: {
+        needsReview: "Review needed",
+        notStarted: "Not started",
+        ownershipUnavailable:
+          "Some items need their lead or purpose confirmed. Refresh the host or review their assignment.",
+        purpose: {
+          planned: "Planned",
+          source: "Source",
+          task: "Task",
+          preparation: "Preparation",
+          unknown: "Workspace",
+        },
         unassigned: "ルームのワークスペース",
         workspaceHistory: "ワークスペース履歴 ({{count}})",
         delegatedCount: "委任された作業: {{count}}",

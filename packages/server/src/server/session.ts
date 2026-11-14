@@ -1,3 +1,9 @@
+import {
+  WorkspaceLeadAssociations,
+  workspaceEvidenceRevision,
+  validateWorkspaceItemScope,
+} from "./workspace-lead-association.js";
+import type { WorkspaceLeadAssociation, WorkspacePurpose } from "@getpaseo/protocol/messages";
 import { workspaceAgentProvenance } from "./workspace-agent-provenance.js";
 import { DevelopmentReview } from "./development-review.js";
 import { inspectTaskArtifacts, removeTaskArtifacts } from "@getpaseo/plugin/server";
@@ -906,6 +912,23 @@ export class Session {
   private readonly creationService: Pick<CreationService, "create" | "subscribe">;
 
   private readonly serverId: string | undefined;
+  private workspaceLeadAssociations?: WorkspaceLeadAssociations;
+  private leadAssociations() {
+    if (!this.serverId) throw new Error("Host identity unavailable");
+    return (this.workspaceLeadAssociations ??= new WorkspaceLeadAssociations({
+      serverId: this.serverId,
+      registry: this.workspaceRegistry,
+      withWorkspaceLock: (id, operation) =>
+        this.agentManager.withWorkspaceSessionDeletion(id, operation),
+      getAgent: (id) => this.agentStorage.get(id),
+      listAgents: (ids) => this.agentStorage.listByWorkspaces(ids, { includeArchived: true }),
+      getConversation: (input) =>
+        defaultAssistantSelection(this.agentManager, this.paseoHome).getConversation({
+          ...input,
+          find: (id) => this.findAssistantConversationAgent(id),
+        }),
+    }));
+  }
 
   constructor(options: SessionOptions) {
     this.serverId = options.serverId;
@@ -1039,6 +1062,9 @@ export class Session {
     });
     this.workspaceAutoName = workspaceAutoName;
     this.workspaceProvisioning = createWorkspaceProvisioningService({
+      resolveCallerLead: (agentId, workspaceId) =>
+        this.leadAssociations().forCaller(agentId, workspaceId),
+      validateLeadIntent: (lead, purpose) => this.leadAssociations().validateIntent(lead, purpose),
       withCheckoutLock: this.workspaceBaseBranch.withCheckoutLock,
       lifecycle: this.pluginRuntime,
       serverId,
@@ -3372,6 +3398,9 @@ export class Session {
         return this.handleCreationSubscription(msg, source);
       case "workspace.create.request":
         return this.handleWorkspaceCreation(msg, source);
+      case "workspace.leadAssociation.inspect.request":
+      case "workspace.leadAssociation.apply.request":
+        return this.handleWorkspaceLeadAssociation(msg, source);
       case "workspace.sessions.delete.inspect.request":
       case "workspace.sessions.delete.request":
         return this.handleWorkspaceSessionsDelete(msg, source);
@@ -5143,6 +5172,50 @@ export class Session {
     return agent?.labels["paseo.role"] === "assistant" ? { agent } : null;
   }
 
+  private async handleWorkspaceLeadAssociation(
+    request: Extract<
+      SessionInboundMessage,
+      {
+        type:
+          | "workspace.leadAssociation.inspect.request"
+          | "workspace.leadAssociation.apply.request";
+      }
+    >,
+    source?: object,
+  ) {
+    const principal = source ?? this;
+    if (request.type === "workspace.leadAssociation.inspect.request") {
+      this.emitForSource(
+        {
+          type: "workspace.leadAssociation.inspect.response",
+          payload: {
+            requestId: request.requestId,
+            ...(await this.leadAssociations().inspect(
+              principal,
+              request.roomWorkspaceId,
+              request.assignments,
+            )),
+          },
+        },
+        source,
+      );
+      return;
+    }
+    const workspaceIds = await this.leadAssociations().apply(
+      principal,
+      request.previewToken,
+      () => !this.isCleanedUp && this.authorization.allowsPermission("workspace.manage"),
+    );
+    this.emitForSource(
+      {
+        type: "workspace.leadAssociation.apply.response",
+        payload: { requestId: request.requestId, workspaceIds },
+      },
+      source,
+    );
+    await this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds);
+  }
+
   private async handleWorkspaceSessionsDelete(
     request: Extract<
       SessionInboundMessage,
@@ -5177,6 +5250,47 @@ export class Session {
         return [...ids].sort();
       };
       const workspaceIds = await resolveScope();
+      let frozenRecordRevision: string | undefined;
+      const verifyHistory = async (checkSessions = true): Promise<string | undefined> => {
+        if (!request.historyScope) return undefined;
+        const records = await this.workspaceRegistry.listAll();
+        const { record, chain } = validateWorkspaceItemScope(
+          this.serverId,
+          records,
+          request.workspaceId,
+          workspaceIds,
+          request.historyScope,
+        );
+        if (
+          request.historyScope.itemKind === "planned" &&
+          (
+            await this.agentStorage.listByWorkspaces([record.workspaceId], {
+              includeArchived: true,
+            })
+          ).length
+        )
+          throw new Error("Planned item now has sessions. Review its session actions.");
+        const rootRevision = workspaceEvidenceRevision(record, [], chain);
+        if (frozenRecordRevision && frozenRecordRevision !== rootRevision)
+          throw new Error("Workspace history changed. Reopen Remove record.");
+        frozenRecordRevision = rootRevision;
+        if (!checkSessions) return workspaceRevision;
+        const agents = await this.agentStorage.listByWorkspaces([record.workspaceId], {
+          includeArchived: true,
+        });
+        const revision = workspaceEvidenceRevision(
+          record,
+          [...agents].sort((a, b) => a.id.localeCompare(b.id)),
+          chain,
+        );
+        if (
+          request.type === "workspace.sessions.delete.request" &&
+          request.expectedWorkspaceRevision !== revision
+        )
+          throw new Error("Workspace history changed. Reopen Remove record.");
+        return revision;
+      };
+      const workspaceRevision: string | undefined = await verifyHistory();
       if (
         request.type === "workspace.sessions.delete.request" &&
         request.expectedWorkspaceIds !== undefined &&
@@ -5184,7 +5298,9 @@ export class Session {
           JSON.stringify(workspaceIds)
       )
         throw new Error("The session groups changed. Reopen Delete and review them again.");
-      const verifyScope = async () => {
+      const verifyScope = async (checkSessions = true) => {
+        if (workspaceRevision !== (await verifyHistory(checkSessions)))
+          throw new Error("Workspace history changed. Reopen Remove record.");
         if (JSON.stringify(await resolveScope()) !== JSON.stringify(workspaceIds))
           throw new Error("The session groups changed. Reopen Delete and review them again.");
       };
@@ -5219,7 +5335,7 @@ export class Session {
           },
         });
         if (deleting) {
-          await verifyScope();
+          await verifyScope(false);
           if (
             (await this.agentStorage.listAll()).some(
               (record) => record.workspaceId && workspaceIds.includes(record.workspaceId),
@@ -5248,7 +5364,16 @@ export class Session {
             );
       const agentIds = deleting ? await locked(0) : await execute();
       this.emitForSource(
-        { type, payload: { requestId: request.requestId, agentIds, workspaceIds, error: null } },
+        {
+          type,
+          payload: {
+            requestId: request.requestId,
+            agentIds,
+            workspaceIds,
+            ...(workspaceRevision ? { workspaceRevision } : {}),
+            error: null,
+          },
+        },
         source,
       );
     } catch (error) {
@@ -7124,6 +7249,8 @@ export class Session {
       ...(workspace.labels && workspace.labels.length > 0 ? { labels: workspace.labels } : {}),
       metadata: workspace.metadata,
       background: workspace.background,
+      leadAssociation: workspace.leadAssociation,
+      workspacePurpose: workspace.workspacePurpose,
       parentWorkspaceId: workspace.parentWorkspaceId,
       ...workspaceAgentProvenance(
         this.serverId,
@@ -7189,6 +7316,8 @@ export class Session {
               records.filter((agent) => agent.workspaceId === child.workspaceId),
             ),
             {
+              leadAssociation: child.leadAssociation,
+              workspacePurpose: child.workspacePurpose,
               workspaceId: child.workspaceId,
               name: resolveWorkspaceDisplayName(child),
               archivedAt: child.archivedAt!,
@@ -7278,6 +7407,8 @@ export class Session {
       projectKind: projectRecord?.kind ?? "git",
       workspaceKind: result.workspace.kind,
       background: result.workspace.background,
+      leadAssociation: result.workspace.leadAssociation,
+      workspacePurpose: result.workspace.workspacePurpose,
       parentWorkspaceId: result.workspace.parentWorkspaceId,
       name: resolveWorkspaceName({
         title: result.workspace.title,
@@ -8384,11 +8515,17 @@ export class Session {
   private async workspaceBackgroundIntent(
     background: boolean | undefined,
     callerAgentId: string | undefined,
-  ): Promise<{ background?: boolean; callerWorkspaceId?: string }> {
+    leadIntent?: { lead: WorkspaceLeadAssociation; purpose: WorkspacePurpose },
+  ): Promise<{
+    background?: boolean;
+    callerWorkspaceId?: string;
+    leadIntent?: { lead: WorkspaceLeadAssociation; purpose: WorkspacePurpose };
+  }> {
     const caller = await this.resolveCreationCaller(callerAgentId);
     return {
       background: inheritWorkspaceBackground(background, caller),
-      callerWorkspaceId: caller?.workspaceId,
+      callerWorkspaceId: caller?.workspaceId ?? leadIntent?.lead.roomWorkspaceId,
+      leadIntent,
     };
   }
 
@@ -8439,7 +8576,11 @@ export class Session {
         expectsInitialAgent: Boolean(request.firstAgentContext),
         workspaceId,
         metadata: request.metadata,
-        ...(await this.workspaceBackgroundIntent(request.background, request.callerAgentId)),
+        ...(await this.workspaceBackgroundIntent(
+          request.background,
+          request.callerAgentId,
+          request.leadIntent,
+        )),
       },
     );
     await this.syncWorkspaceGitObserverForWorkspace(workspace);
@@ -8507,7 +8648,11 @@ export class Session {
         firstAgentContext: request.firstAgentContext,
         title: request.title,
         metadata: request.metadata,
-        ...(await this.workspaceBackgroundIntent(request.background, request.callerAgentId)),
+        ...(await this.workspaceBackgroundIntent(
+          request.background,
+          request.callerAgentId,
+          request.leadIntent,
+        )),
       },
       source.baseBranch
         ? { resolveDefaultBranch: async () => source.baseBranch as string }

@@ -5,7 +5,6 @@ import type {
   SidebarWorkspacePlacement,
 } from "@/hooks/use-sidebar-workspaces-list";
 import {
-  isRoomSessionWorkspaceVisible,
   areSubSessionRootKeysEqual,
   groupSubSessionsByActivity,
   partitionRoomWork,
@@ -256,33 +255,49 @@ describe("room logical-lead ownership", () => {
   });
 });
 
-describe("assistant-room conversation visibility", () => {
-  test("hides only confirmed zero-session entries inside a resolved lead room", () => {
-    const source = Object.freeze({ ...entry("source"), sessionCount: 0 });
-    const before = structuredClone(source);
-    expect(
-      isRoomSessionWorkspaceVisible({
-        hasLeads: true,
-        sessionCount: source.sessionCount,
-        hasAgentEvidence: false,
-      }),
-    ).toBe(false);
-    expect(
-      isRoomSessionWorkspaceVisible({ hasLeads: false, sessionCount: 0, hasAgentEvidence: false }),
-    ).toBe(true);
-    expect(
-      isRoomSessionWorkspaceVisible({
-        hasLeads: true,
-        sessionCount: undefined,
-        hasAgentEvidence: false,
-      }),
-    ).toBe(true);
-    expect(
-      isRoomSessionWorkspaceVisible({ hasLeads: true, sessionCount: 1, hasAgentEvidence: false }),
-    ).toBe(true);
-    expect(
-      isRoomSessionWorkspaceVisible({ hasLeads: true, sessionCount: 0, hasAgentEvidence: true }),
-    ).toBe(true);
-    expect(source).toEqual(before);
+test("intended association distinguishes planned/source ownership independently of creator and sessions", () => {
+  const leads = [
+    { logicalId: "A", segments: [{ agentId: "anchor-A" }, { agentId: "continuation-A" }] },
+    { logicalId: "B", segments: [{ agentId: "anchor-B" }] },
+  ];
+  const association = {
+    serverId: "host",
+    roomWorkspaceId: "room",
+    logicalId: "B",
+    anchorAgentId: "anchor-B",
+  };
+  const planned = Object.freeze({
+    id: "planned",
+    sessionCount: 0,
+    workspacePurpose: "planned",
+    creatorAgent: { serverId: "host", agentId: "continuation-A" },
+    leadAssociation: association,
   });
+  const task = { id: "task", creatorAgent: { serverId: "host", agentId: "continuation-A" } };
+  const unknown = { id: "unknown", creatorAgent: undefined };
+  const foreign = {
+    ...planned,
+    id: "foreign",
+    leadAssociation: { ...association, serverId: "foreign" },
+  };
+  const wrongRoom = {
+    ...planned,
+    id: "wrongRoom",
+    leadAssociation: { ...association, roomWorkspaceId: "elsewhere" },
+  };
+  const wrongAnchor = {
+    ...planned,
+    id: "wrongAnchor",
+    leadAssociation: { ...association, anchorAgentId: "continuation-A" },
+  };
+  const result = partitionRoomWork(
+    "host",
+    leads,
+    [planned, task, unknown, foreign, wrongRoom, wrongAnchor],
+    "room",
+  );
+  expect(result.byLead.get("A")).toEqual([task]);
+  expect(result.byLead.get("B")).toEqual([planned]);
+  expect(result.unassigned).toEqual([unknown, foreign, wrongRoom, wrongAnchor]);
+  expect(planned.creatorAgent.agentId).toBe("continuation-A");
 });

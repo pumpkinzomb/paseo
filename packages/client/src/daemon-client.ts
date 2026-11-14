@@ -537,6 +537,7 @@ export interface CreateAgentRequestOptions extends AgentConfigOverrides {
 }
 
 export interface CreateWorkspaceRequestOptions {
+  leadIntent?: Extract<SessionInboundMessage, { type: "workspace.create.request" }>["leadIntent"];
   source: WorkspaceCreateRequest["source"];
   title?: string;
   /** Plugin-owned data stored on the workspace. Needs a host with `entityMetadata`. */
@@ -3849,6 +3850,29 @@ export class DaemonClient {
       message: { type: "workspace.development.read.request", ...input },
     });
   }
+  private requireWorkspaceLeadAssociation(required = true): void {
+    if (required && !this.lastServerInfoMessage?.features?.workspaceLeadAssociation)
+      throw new Error("Update this host to manage lead-linked work.");
+  }
+
+  async inspectWorkspaceLeadAssociations(
+    input: Omit<
+      Extract<SessionInboundMessage, { type: "workspace.leadAssociation.inspect.request" }>,
+      "type" | "requestId"
+    >,
+  ) {
+    this.requireWorkspaceLeadAssociation();
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.leadAssociation.inspect.response">(
+      { message: { type: "workspace.leadAssociation.inspect.request", ...input } },
+    );
+  }
+  async applyWorkspaceLeadAssociations(previewToken: string) {
+    this.requireWorkspaceLeadAssociation();
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.leadAssociation.apply.response">({
+      message: { type: "workspace.leadAssociation.apply.request", previewToken },
+    });
+  }
+
   async linkDevelopmentSource(workspaceId: string, sourceWorkspaceId: string) {
     if (!this.getLastServerInfoMessage()?.features?.developmentReview)
       throw new Error("Update the host to link development sources");
@@ -5650,14 +5674,22 @@ export class DaemonClient {
     });
   }
 
-  async inspectWorkspaceSessionDeletion(workspaceId: string) {
+  async inspectWorkspaceSessionDeletion(
+    workspaceId: string,
+    historyScope?: Extract<
+      SessionInboundMessage,
+      { type: "workspace.sessions.delete.inspect.request" }
+    >["historyScope"],
+  ) {
+    this.requireWorkspaceLeadAssociation(Boolean(historyScope));
     if (!this.lastServerInfoMessage?.features?.workspaceSessionDeletion)
       throw new Error("Update this host to delete grouped sessions.");
     return this.sendCorrelatedSessionRequest({
       message: {
         type: "workspace.sessions.delete.inspect.request",
         workspaceId,
-        includeDescendants: true,
+        includeDescendants: !historyScope,
+        ...(historyScope ? { historyScope } : {}),
       },
       responseType: "workspace.sessions.delete.inspect.response",
     });
@@ -5668,9 +5700,17 @@ export class DaemonClient {
     expectedAgentIds: string[],
     expectedWorkspaceIds?: string[],
     deleteNativeSessions = false,
+    history?: {
+      scope: Extract<
+        SessionInboundMessage,
+        { type: "workspace.sessions.delete.inspect.request" }
+      >["historyScope"];
+      revision: string;
+    },
   ) {
     if (!this.lastServerInfoMessage?.features?.workspaceSessionDeletion)
       throw new Error("Update this host to delete grouped sessions.");
+    this.requireWorkspaceLeadAssociation(Boolean(history));
     if (deleteNativeSessions && !this.lastServerInfoMessage?.features?.nativeSessionDeletion)
       throw new Error("Update this host to delete original provider sessions.");
     return this.sendCorrelatedSessionRequest({
@@ -5679,6 +5719,9 @@ export class DaemonClient {
         workspaceId,
         expectedAgentIds,
         expectedWorkspaceIds,
+        ...(history
+          ? { historyScope: history.scope, expectedWorkspaceRevision: history.revision }
+          : {}),
         ...(deleteNativeSessions ? { deleteNativeSessions: true as const } : {}),
       },
       responseType: "workspace.sessions.delete.response",
@@ -5791,6 +5834,7 @@ export class DaemonClient {
     requestId?: string,
   ): Promise<WorkspaceCreatePayload> {
     const resolvedRequestId = this.createRequestId(requestId ?? input.requestId);
+    this.requireWorkspaceLeadAssociation(Boolean(input.leadIntent));
     if (input.background !== undefined || input.callerAgentId) this.requireBackgroundWorkspaces();
     if (input.agent?.background !== undefined)
       throw new Error("Configure background on the workspace, not its initial agent.");
@@ -5823,6 +5867,7 @@ export class DaemonClient {
       message: {
         type: "workspace.create.request",
         source: input.source,
+        ...(input.leadIntent ? { leadIntent: input.leadIntent } : {}),
         // COMPAT(workspaceRequestReceipts): added in v0.8.0; remove after 2027-03-15 once the daemon floor supports workspace receipts.
         ...(this.lastServerInfoMessage?.features?.workspaceRequestReceipts &&
         input.idempotencyKey !== undefined

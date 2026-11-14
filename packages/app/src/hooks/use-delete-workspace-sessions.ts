@@ -1,3 +1,4 @@
+import type { WorkspaceHistoryScope } from "@getpaseo/protocol/messages";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
@@ -47,21 +48,74 @@ function redirectDeletedWorkspace(
   });
 }
 
+type DeletionClient = NonNullable<ReturnType<typeof useHostRuntimeClient>>;
+type DeletionPreview = Awaited<ReturnType<DeletionClient["inspectWorkspaceSessionDeletion"]>>;
+const HISTORY_CONFIRMATION = {
+  title: "workspaceSessionDeletion.historyTitle",
+  message: "workspaceSessionDeletion.historyConfirm",
+  action: "workspaceSessionDeletion.historyMenu",
+} as const;
+const SESSION_CONFIRMATION = {
+  title: "workspaceSessionDeletion.title",
+  message: "workspaceSessionDeletion.nativeConfirm",
+  action: "workspaceSessionDeletion.menu",
+} as const;
+async function inspectDeletion(
+  client: DeletionClient,
+  workspaceId: string,
+  historyScope: WorkspaceHistoryScope | undefined,
+  scopeError: string,
+) {
+  const preview = historyScope
+    ? await client.inspectWorkspaceSessionDeletion(workspaceId, historyScope)
+    : await client.inspectWorkspaceSessionDeletion(workspaceId);
+  if (preview.error) throw new Error(preview.error);
+  if (
+    historyScope &&
+    (!preview.workspaceRevision ||
+      preview.workspaceIds?.length !== 1 ||
+      preview.workspaceIds[0] !== workspaceId)
+  )
+    throw new Error(scopeError);
+  return preview;
+}
+function applyDeletion(
+  client: DeletionClient,
+  workspaceId: string,
+  preview: DeletionPreview,
+  historyScope: WorkspaceHistoryScope | undefined,
+) {
+  if (historyScope)
+    return client.deleteWorkspaceSessions(
+      workspaceId,
+      preview.agentIds,
+      preview.workspaceIds,
+      preview.agentIds.length > 0,
+      { scope: historyScope, revision: preview.workspaceRevision! },
+    );
+  return client.deleteWorkspaceSessions(workspaceId, preview.agentIds, preview.workspaceIds, true);
+}
+
 export function useDeleteWorkspaceSessions(
   serverId: string,
   workspaceId: string,
   onDeleted?: () => void,
+  options?: { historyScope: WorkspaceHistoryScope },
 ) {
   const { t } = useTranslation();
   const toast = useToast();
   const client = useHostRuntimeClient(serverId);
-  const supported = useHostFeature(serverId, "nativeSessionDeletion");
+  const nativeSupported = useHostFeature(serverId, "nativeSessionDeletion");
+  const associationSupported = useHostFeature(serverId, "workspaceLeadAssociation");
+  const historyScope = options?.historyScope;
+  const confirmation = historyScope ? HISTORY_CONFIRMATION : SESSION_CONFIRMATION;
+  const supported = nativeSupported && (!historyScope || associationSupported);
   const queryClient = useQueryClient();
   const activeWorkspace = useActiveWorkspaceSelection();
   const activeWorkspaceRef = useRef(activeWorkspace);
   activeWorkspaceRef.current = activeWorkspace;
   const locked = useRef(false);
-  const scope = `${serverId}:${workspaceId}`;
+  const scope = `${serverId}:${workspaceId}:${JSON.stringify(historyScope ?? null)}`;
   const currentScope = useRef(scope);
   currentScope.current = scope;
   const mounted = useRef(true);
@@ -82,25 +136,24 @@ export function useDeleteWorkspaceSessions(
     let responseReceived = false;
     try {
       // The server inventory includes archived/hidden sessions and children, unlike the sidebar cache.
-      const preview = await client.inspectWorkspaceSessionDeletion(workspaceId);
-      if (preview.error) throw new Error(preview.error);
+      const preview = await inspectDeletion(
+        client,
+        workspaceId,
+        historyScope,
+        t("workspaceSessionDeletion.moved"),
+      );
       if (!stillCurrent()) return;
       const confirmed = await confirmDialog({
-        title: t("workspaceSessionDeletion.title"),
-        message: t("workspaceSessionDeletion.nativeConfirm", { count: preview.agentIds.length }),
-        confirmLabel: t("workspaceSessionDeletion.menu"),
+        title: t(confirmation.title),
+        message: t(confirmation.message, { count: preview.agentIds.length }),
+        confirmLabel: t(confirmation.action),
         cancelLabel: t("common.actions.cancel"),
         destructive: true,
       });
       if (!confirmed || !stillCurrent()) return;
       const ownedWorkspaces = collectSessionWorkspaces(serverId);
       mutationStarted = true;
-      const result = await client.deleteWorkspaceSessions(
-        workspaceId,
-        preview.agentIds,
-        preview.workspaceIds,
-        true,
-      );
+      const result = await applyDeletion(client, workspaceId, preview, historyScope);
       responseReceived = true;
       const workspaces = new Map(
         result.agentIds.map((id) => [id, ownedWorkspaces.get(id) ?? workspaceId]),
@@ -143,6 +196,18 @@ export function useDeleteWorkspaceSessions(
       locked.current = false;
       if (mounted.current) setPending(false);
     }
-  }, [client, onDeleted, queryClient, scope, serverId, supported, t, toast, workspaceId]);
+  }, [
+    client,
+    historyScope,
+    confirmation,
+    onDeleted,
+    queryClient,
+    scope,
+    serverId,
+    supported,
+    t,
+    toast,
+    workspaceId,
+  ]);
   return { remove: supported ? remove : undefined, pending };
 }

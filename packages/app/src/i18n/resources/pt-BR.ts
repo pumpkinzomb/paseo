@@ -1390,6 +1390,17 @@ export const ptBR: TranslationResources = {
         pending: "Pendentes: {{count}}",
       },
       subSessions: {
+        needsReview: "Review needed",
+        notStarted: "Not started",
+        ownershipUnavailable:
+          "Some items need their lead or purpose confirmed. Refresh the host or review their assignment.",
+        purpose: {
+          planned: "Planned",
+          source: "Source",
+          task: "Task",
+          preparation: "Preparation",
+          unknown: "Workspace",
+        },
         unassigned: "Espaços da sala",
         workspaceHistory: "Histórico de espaços ({{count}})",
         delegatedCount: "Trabalho delegado: {{count}}",

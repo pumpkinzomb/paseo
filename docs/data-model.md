@@ -34,6 +34,19 @@ Workspace archive runs lifecycle teardown from the exact `cwd` but removes only 
 `worktreeRoot` after its last active reference disappears. Worktree recovery recreates that backing
 checkout from `mainRepoRoot`, then restores the relative path from `worktreeRoot` to `cwd`.
 
+A workspace's optional `leadAssociation` records intended navigation ownership by host, room,
+logical conversation and first-segment anchor. It is independent of immutable `creatorAgent`:
+a lead can prepare a workspace for another lead. Optional `workspacePurpose` records explicitly
+declared planned, source, task or preparation intent; absence means unknown. Neither field grants
+file access, execution or deletion authority. Agent inventory determines activity, never ownership
+or declared purpose. Archive and checkout cleanup preserve both fields.
+
+Legacy association uses a bounded host-owned inspect/apply transaction. The preview is tied to
+its requesting connection and exact canonical targets, ancestry, record and session evidence;
+changed evidence requires another preview. Apply adds missing associations and purpose without
+reassigning an existing different owner or changing creator provenance. The registry queue commits
+the batch atomically. Existing source links and review evidence remain independent.
+
 Paseo uses **file-based JSON persistence** instead of a traditional database. All data is validated at runtime with Zod schemas. Most stores write atomically (write to temp file, then rename); a few still use plain `writeFile` — see each section. There is no schema-versioning/migration framework — schemas rely on optional fields with defaults for forward compatibility, with a small amount of inline normalization in `persisted-config.ts` for legacy provider/speech entries.
 
 All server-side stores live under `$PASEO_HOME` (defaults to `~/.paseo`).

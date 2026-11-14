@@ -1364,6 +1364,17 @@ export const ar: TranslationResources = {
         pending: "قيد الانتظار: {{count}}",
       },
       subSessions: {
+        needsReview: "Review needed",
+        notStarted: "Not started",
+        ownershipUnavailable:
+          "Some items need their lead or purpose confirmed. Refresh the host or review their assignment.",
+        purpose: {
+          planned: "Planned",
+          source: "Source",
+          task: "Task",
+          preparation: "Preparation",
+          unknown: "Workspace",
+        },
         unassigned: "مساحات عمل الغرفة",
         workspaceHistory: "سجل مساحات العمل ({{count}})",
         delegatedCount: "المهام المفوضة: {{count}}",

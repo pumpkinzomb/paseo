@@ -1355,6 +1355,17 @@ export const zhCN: TranslationResources = {
         pending: "等待中: {{count}}",
       },
       subSessions: {
+        needsReview: "Review needed",
+        notStarted: "Not started",
+        ownershipUnavailable:
+          "Some items need their lead or purpose confirmed. Refresh the host or review their assignment.",
+        purpose: {
+          planned: "Planned",
+          source: "Source",
+          task: "Task",
+          preparation: "Preparation",
+          unknown: "Workspace",
+        },
         unassigned: "房间工作区",
         workspaceHistory: "工作区历史 ({{count}})",
         delegatedCount: "委派任务：{{count}}",

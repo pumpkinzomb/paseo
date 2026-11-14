@@ -1185,3 +1185,65 @@ test("workspace parent placement alone cannot stamp an authenticated creator", a
   await workspaceRegistry.archive(child.workspaceId, ARCHIVED_AT);
   expect((await workspaceRegistry.get(child.workspaceId))?.creatorAgent).toBeUndefined();
 });
+
+test("authenticated creation stores intended lead independently from creator and explicit purpose", async () => {
+  const parent = await provisioning.createWorkspaceForDirectory(path.join(tmpDir, "parent"));
+  const lead = {
+    serverId: "host",
+    roomWorkspaceId: parent.workspaceId,
+    logicalId: "logical-B",
+    anchorAgentId: "anchor-B",
+  };
+  let resolved = 0;
+  const service = createWorkspaceProvisioningService({
+    serverId: "host",
+    workspaceRegistry,
+    projectRegistry,
+    workspaceGitService: gitService(),
+    isDirectory,
+    logger,
+    resolveCallerLead: async (agentId, workspaceId) => {
+      expect(agentId).toBe("trusted-A");
+      expect(workspaceId).toBe(parent.workspaceId);
+      resolved++;
+      return lead;
+    },
+    validateLeadIntent: async (target, purpose) => {
+      expect(target).toEqual(lead);
+      return { leadAssociation: target, workspacePurpose: purpose };
+    },
+  });
+  const child = await service.createWorkspaceForDirectory(
+    path.join(tmpDir, "planned"),
+    null,
+    undefined,
+    {
+      callerWorkspaceId: parent.workspaceId,
+      callerAgentId: "trusted-A",
+      workspacePurpose: "planned",
+    },
+  );
+  expect(resolved).toBe(1);
+  expect(child).toMatchObject({
+    creatorAgent: { serverId: "host", agentId: "trusted-A" },
+    leadAssociation: lead,
+    workspacePurpose: "planned",
+  });
+  const userPlanned = await service.createWorkspaceForDirectory(
+    path.join(tmpDir, "user-plan"),
+    null,
+    undefined,
+    { callerWorkspaceId: parent.workspaceId, leadIntent: { lead, purpose: "source" } },
+  );
+  expect(userPlanned.creatorAgent).toBeUndefined();
+  expect(userPlanned.leadAssociation).toEqual(lead);
+  expect(userPlanned.workspacePurpose).toBe("source");
+  expect(resolved).toBe(1);
+  await workspaceRegistry.archive(child.workspaceId, ARCHIVED_AT);
+  const reloaded = new FileBackedWorkspaceRegistry(
+    path.join(tmpDir, "projects", "workspaces.json"),
+    logger,
+  );
+  expect((await reloaded.get(child.workspaceId))?.leadAssociation).toEqual(lead);
+  expect((await reloaded.get(child.workspaceId))?.workspacePurpose).toBe("planned");
+});

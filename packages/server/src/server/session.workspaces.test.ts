@@ -10250,12 +10250,20 @@ test("workspace wire caller cannot claim a durable creator", async () => {
   expect(findByType(emitted, "workspace.create.response")?.payload.error).toBeNull();
   expect(saved?.parentWorkspaceId).toBe("ws-repo-running");
   expect(saved?.creatorAgent).toBeUndefined();
+  expect(saved?.leadAssociation).toBeUndefined();
 });
 
-test("archived workspace projection retains exact creator and session count after folder cleanup", async () => {
+test("archived workspace projection retains exact creator, intended lead, purpose and session count after folder cleanup", async () => {
   const archived = createPersistedWorkspaceRecord({
     workspaceId: "archived-task",
     parentWorkspaceId: "ws-repo-running",
+    leadAssociation: {
+      serverId: "host",
+      roomWorkspaceId: "ws-repo-running",
+      logicalId: "logical-lead",
+      anchorAgentId: "lead-anchor",
+    },
+    workspacePurpose: "task",
     creatorAgent: { serverId: "host", agentId: "lead-segment" },
     projectId: "proj-repo-running",
     cwd: "/removed/owned-task",
@@ -10284,10 +10292,153 @@ test("archived workspace projection retains exact creator and session count afte
       {
         workspaceId: "archived-task",
         creatorAgent: archived.creatorAgent,
+        leadAssociation: archived.leadAssociation,
+        workspacePurpose: "task",
         sessionCount: 1,
         agentId: stored.id,
       },
     ],
   });
   expect(read).toHaveBeenCalledWith([archived.workspaceId], { includeArchived: true });
+});
+
+test("archived empty history removal is exact, revision guarded and retains sources/files", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "history-lifecycle-"));
+  try {
+    const emitted: SessionOutboundMessage[] = [];
+    const mutate = vi.fn(async () => {});
+    const session = createSessionForWorkspaceTests({
+      serverId: "host",
+      paseoHome: path.join(root, "state"),
+      onMessage: (m) => emitted.push(m),
+      agentStorage: { listAll: async () => [], listByWorkspaces: async () => [] },
+      agentManager: {
+        withWorkspaceSessionDeletion: async (_id: string, operation: () => Promise<unknown>) =>
+          operation(),
+        validateAssistantConversationMutation: async () => {},
+        mutateAssistantConversationRecords: mutate,
+      },
+    });
+    const parent = (await session.workspaceRegistry.listAll())[0]!;
+    const lead = {
+      serverId: "host",
+      roomWorkspaceId: parent.workspaceId,
+      logicalId: "logical-A",
+      anchorAgentId: "anchor-A",
+    };
+    const child = createPersistedWorkspaceRecord({
+      workspaceId: "empty-history",
+      parentWorkspaceId: parent.workspaceId,
+      leadAssociation: lead,
+      workspacePurpose: "preparation",
+      projectId: parent.projectId,
+      cwd: path.join(root, "child"),
+      kind: "directory",
+      displayName: "Empty preparation",
+      createdAt: "2026-11-14T00:00:00Z",
+      updatedAt: "2026-11-14T00:00:00Z",
+      archivedAt: "2026-11-14T01:00:00Z",
+    });
+    mkdirSync(child.cwd);
+    writeFileSync(path.join(child.cwd, "user.txt"), "preserve");
+    const sibling = { ...child, workspaceId: "sibling", title: "Sibling" };
+    const records = new Map([parent, child, sibling].map((r) => [r.workspaceId, r]));
+    session.workspaceRegistry.get = async (id) => records.get(id) ?? null;
+    session.workspaceRegistry.listAll = async () => [...records.values()];
+    session.workspaceRegistry.update = async (id, update) => {
+      const old = records.get(id);
+      if (!old) return null;
+      const next = update(old);
+      records.set(id, next);
+      return next;
+    };
+    const scope: import("@getpaseo/protocol/messages").WorkspaceHistoryScope = {
+      roomWorkspaceId: parent.workspaceId,
+      leadAssociation: lead,
+    };
+    const inspect = async (requestId: string) => {
+      await session.handleMessage({
+        type: "workspace.sessions.delete.inspect.request",
+        workspaceId: child.workspaceId,
+        historyScope: scope,
+        requestId,
+      });
+      return emitted.find(
+        (m) =>
+          m.type === "workspace.sessions.delete.inspect.response" &&
+          m.payload.requestId === requestId,
+      ) as Extract<SessionOutboundMessage, { type: "workspace.sessions.delete.inspect.response" }>;
+    };
+    const preview = await inspect("preview");
+    expect(preview.payload.error).toBeNull();
+    expect(preview.payload.agentIds).toEqual([]);
+    expect(preview.payload.workspaceIds).toEqual([child.workspaceId]);
+    records.set(child.workspaceId, { ...child, title: "Changed while modal open" });
+    await session.handleMessage({
+      type: "workspace.sessions.delete.request",
+      workspaceId: child.workspaceId,
+      historyScope: scope,
+      expectedWorkspaceRevision: preview.payload.workspaceRevision,
+      expectedWorkspaceIds: [child.workspaceId],
+      expectedAgentIds: [],
+      requestId: "stale",
+    });
+    expect(mutate).not.toHaveBeenCalled();
+    expect(records.get(child.workspaceId)?.metadata.sessionRecordsDeletedAt).toBeUndefined();
+    const fresh = await inspect("fresh");
+    await session.handleMessage({
+      type: "workspace.sessions.delete.request",
+      workspaceId: child.workspaceId,
+      historyScope: scope,
+      expectedWorkspaceRevision: fresh.payload.workspaceRevision,
+      expectedWorkspaceIds: [child.workspaceId],
+      expectedAgentIds: [],
+      requestId: "remove",
+    });
+    expect(
+      emitted.find(
+        (m) => m.type === "workspace.sessions.delete.response" && m.payload.requestId === "remove",
+      ),
+    ).toMatchObject({ payload: { error: null, workspaceIds: [child.workspaceId], agentIds: [] } });
+    expect(records.get(child.workspaceId)?.metadata.sessionRecordsDeletedAt).toEqual(
+      expect.any(String),
+    );
+    expect(records.get(parent.workspaceId)).toBe(parent);
+    expect(records.get(sibling.workspaceId)).toBe(sibling);
+    expect(existsSync(path.join(child.cwd, "user.txt"))).toBe(true);
+    // Actual retained source references protect a record even when purpose is absent.
+    records.set(child.workspaceId, { ...child, workspacePurpose: undefined });
+    records.set(parent.workspaceId, { ...parent, developmentSourceIds: [child.workspaceId] });
+    expect((await inspect("source-ref")).payload.error).toMatch(/Retained source/);
+    records.set(parent.workspaceId, parent);
+    records.set(child.workspaceId, { ...child, workspacePurpose: "source" });
+    expect((await inspect("source-purpose")).payload.error).toMatch(/Retained source/);
+    records.set(child.workspaceId, {
+      ...child,
+      leadAssociation: { ...lead, logicalId: "logical-B" },
+    });
+    expect((await inspect("forged-owner")).payload.error).toMatch(/ownership changed/);
+    records.set(child.workspaceId, { ...child, archivedAt: null, workspacePurpose: "planned" });
+    scope.itemKind = "planned";
+    const planned = await inspect("planned");
+    expect(planned.payload.error).toBeNull();
+    await session.handleMessage({
+      type: "workspace.sessions.delete.request",
+      workspaceId: child.workspaceId,
+      historyScope: scope,
+      expectedWorkspaceRevision: planned.payload.workspaceRevision,
+      expectedWorkspaceIds: [child.workspaceId],
+      expectedAgentIds: [],
+      requestId: "remove-plan",
+    });
+    expect(records.get(child.workspaceId)?.metadata.sessionRecordsDeletedAt).toEqual(
+      expect.any(String),
+    );
+    expect(existsSync(path.join(child.cwd, "user.txt"))).toBe(true);
+    expect(records.get(parent.workspaceId)).toBe(parent);
+    expect(records.get(sibling.workspaceId)).toBe(sibling);
+    await session.cleanup();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
