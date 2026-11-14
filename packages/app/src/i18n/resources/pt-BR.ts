@@ -1355,6 +1355,7 @@ export const ptBR: TranslationResources = {
         removing: "Removendo...",
       },
       confirmations: {
+        ...en.sidebar.project.confirmations,
         removeTitle: "Remover projeto?",
         removeMessage:
           'Remover "{{projectName}}", seus {{workspaceCount}} grupos de sessões e {{sessionCount}} sessões de agentes, incluindo as sessões filhas?\n\nOs registros de conversas do Paseo serão excluídos permanentemente e não poderão ser restaurados. Os arquivos do projeto e os registros originais armazenados pelos provedores de agentes não serão excluídos.',

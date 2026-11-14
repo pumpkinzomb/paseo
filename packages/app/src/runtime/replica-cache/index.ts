@@ -1189,6 +1189,70 @@ export class ReplicaCache {
     });
   }
 
+  /** Remove an explicitly selected offline project's local replicas, never provider data. */
+  async forgetProject(
+    serverId: string,
+    projectId: string,
+    assertOffline: () => void,
+  ): Promise<{ workspaceIds: string[]; agentIds: string[] }> {
+    assertOffline();
+    if (!(await this.syncPending())) throw new Error("Pending cache writes could not be saved");
+    let failure: unknown;
+    let result = { workspaceIds: [] as string[], agentIds: [] as string[] };
+    await this.queueOperation(async () => {
+      try {
+        assertOffline();
+        const rows = await this.rowStore.read(serverId, [
+          "project",
+          "workspace",
+          "agent",
+          "timeline",
+          "checkpoint",
+        ]);
+        const workspaceIds = new Set(
+          rows
+            .filter((row) => row.kind === "workspace")
+            .filter(
+              (row) =>
+                parseStoredPayload(StoredWorkspaceSchema, row.payload).projectId === projectId,
+            )
+            .map((row) => row.id),
+        );
+        const agentIds = new Set(
+          rows
+            .filter((row) => row.kind === "agent")
+            .filter((row) => {
+              const agent = deserializeAgent(
+                serverId,
+                parseStoredPayload(StoredAgentSchema, row.payload),
+              );
+              return agent.workspaceId !== undefined && workspaceIds.has(agent.workspaceId);
+            })
+            .map((row) => row.id),
+        );
+        const changes: ReplicaRowChanges = {
+          upserts: [],
+          deletes: rows.filter(
+            (row) =>
+              (row.kind === "project" && row.id === projectId) ||
+              (row.kind === "workspace" && workspaceIds.has(row.id)) ||
+              ((row.kind === "agent" || row.kind === "timeline") && agentIds.has(row.id)) ||
+              row.kind === "checkpoint",
+          ),
+        };
+        assertOffline();
+        await this.rowStore.apply(changes);
+        this.invalidateHostReads(serverId);
+        this.applyStoredChanges(changes);
+        result = { workspaceIds: [...workspaceIds], agentIds: [...agentIds] };
+      } catch (error) {
+        failure = error;
+      }
+    });
+    if (failure) throw failure;
+    return result;
+  }
+
   commitDirectoryMutations(
     serverId: string,
     mutations: readonly DirectoryReplicaMutation[],

@@ -17,7 +17,7 @@ import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import type { AgentPermissionRequest } from "@getpaseo/protocol/agent-types";
 import type { HostConnection, HostProfile } from "@/types/host-connection";
 import { defaultHostAppearance } from "@/hosts/appearance";
-import { useSessionStore, type Agent } from "@/stores/session-store";
+import { normalizeProjectDescriptor, useSessionStore, type Agent } from "@/stores/session-store";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { isAgentArchiving, setAgentArchiving } from "@/hooks/use-archive-agent";
 import { queryClient } from "@/data/query-client";
@@ -5163,4 +5163,43 @@ describe("HostRuntimeStore initial connection hint bootstrap", () => {
     expect(seenProbes).not.toContainEqual(expect.objectContaining({ endpoint: "metro-host:8081" }));
     expect(store.getHosts()).toHaveLength(0);
   });
+});
+
+it("forgets only the explicitly selected orphan project from the local session replica", async () => {
+  const store = new HostRuntimeStore({
+    storage: createMemoryHostRuntimeStorage(),
+    replicaRowStore: createMemoryReplicaRowStore(),
+  });
+  const state = useSessionStore.getState();
+  state.initializeSession("orphan-host", null);
+  state.initializeSession("current-host", null);
+  const project = normalizeProjectDescriptor({
+    projectId: "offline-project",
+    projectDisplayName: "Paseo",
+    projectRootPath: "/old-paseo",
+    projectKind: "git",
+  });
+  state.upsertProject("orphan-host", project);
+  state.upsertProject("current-host", project);
+  await store.forgetOfflineProject("orphan-host", project.projectId);
+  expect(useSessionStore.getState().sessions["orphan-host"]?.projects.has(project.projectId)).toBe(
+    false,
+  );
+  expect(useSessionStore.getState().sessions["current-host"]?.projects.has(project.projectId)).toBe(
+    true,
+  );
+  state.clearSession("orphan-host");
+  state.clearSession("current-host");
+});
+it("refuses cache-only project removal when its host is connected or reconnecting", async () => {
+  const store = new HostRuntimeStore({
+    storage: createMemoryHostRuntimeStorage(),
+    replicaRowStore: createMemoryReplicaRowStore(),
+  });
+  for (const connectionStatus of ["online", "connecting"] as const) {
+    vi.spyOn(store, "getSnapshot").mockReturnValue({ connectionStatus } as never);
+    await expect(store.forgetOfflineProject("host", "project")).rejects.toThrow(
+      "connection changed",
+    );
+  }
 });

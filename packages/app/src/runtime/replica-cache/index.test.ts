@@ -1245,3 +1245,50 @@ it("retains canonical spoken origins and speakers through disk cache hydration",
   const restored = await createCache(storage).readTimeline(SERVER_ID, "agent-1");
   expect(restored?.items).toEqual([user, assistant]);
 });
+
+describe("explicit offline project cache removal", () => {
+  it("persists exact project, workspace, agent and timeline removal without touching another host", async () => {
+    const storage = new MemoryStorage();
+    const cache = createCache(storage);
+    cache.setHosts([SERVER_ID, "other-host"]);
+    cache.replaceDirectoryBaseline(SERVER_ID, directory());
+    cache.commitTimeline(SERVER_ID, "agent-1", timeline());
+    cache.replaceDirectoryBaseline("other-host", directory());
+    await cache.flush();
+    const result = await cache.forgetProject(SERVER_ID, "project-1", () => {});
+    expect(result).toEqual({ workspaceIds: ["workspace-1"], agentIds: ["agent-1"] });
+    const after = await cache.readDirectory(SERVER_ID);
+    expect(after.projects.size).toBe(0);
+    expect(after.workspaces.size).toBe(0);
+    expect(after.agents.size).toBe(0);
+    expect(await cache.readTimeline(SERVER_ID, "agent-1")).toBeUndefined();
+    expect((await cache.readDirectory("other-host")).projects.size).toBe(1);
+    const reopened = new ReplicaCache(storage, noLegacyCleanup);
+    reopened.setHosts([SERVER_ID, "other-host"]);
+    expect((await reopened.readDirectory(SERVER_ID)).projects.size).toBe(0);
+  });
+  it("does not report success or purge memory if persistent removal fails", async () => {
+    const storage = new MemoryStorage(),
+      cache = createCache(storage);
+    cache.replaceDirectoryBaseline(SERVER_ID, directory());
+    await cache.flush();
+    storage.nextWriteFailure = new Error("disk failed");
+    await expect(cache.forgetProject(SERVER_ID, "project-1", () => {})).rejects.toThrow(
+      "disk failed",
+    );
+    expect((await cache.readDirectory(SERVER_ID)).projects.size).toBe(1);
+  });
+  it("rechecks a host that reconnects during the operation before any removal", async () => {
+    const storage = new MemoryStorage(),
+      cache = createCache(storage);
+    cache.replaceDirectoryBaseline(SERVER_ID, directory());
+    await cache.flush();
+    let checks = 0;
+    await expect(
+      cache.forgetProject(SERVER_ID, "project-1", () => {
+        if (++checks > 1) throw Error("reconnected");
+      }),
+    ).rejects.toThrow("reconnected");
+    expect((await cache.readDirectory(SERVER_ID)).projects.size).toBe(1);
+  });
+});
