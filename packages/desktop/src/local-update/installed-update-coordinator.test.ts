@@ -52,7 +52,10 @@ vi.mock("./installed-handoff-split.js", () => ({
   resumeInstalledReplacement: state.resume,
 }));
 vi.mock("./squirrel-apply.js", () => ({ requestNativeSquirrelInstall: vi.fn() }));
-import { createInstalledUpdateCoordinator } from "./installed-update-coordinator.js";
+import {
+  createInstalledUpdateCoordinator,
+  createLiveInstalledUpdateCoordinator,
+} from "./installed-update-coordinator.js";
 let approval: Record<string, unknown>;
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -167,4 +170,26 @@ it("offers retry after a proven precommit rejection but not after uncertain hand
     phase: "failed",
     failure: { code: "recovery_required", retryable: false },
   });
+});
+
+it("live packaged coordinator discovers a later trusted archive without startup recovery or daemon work", async () => {
+  const live = (await createLiveInstalledUpdateCoordinator())!;
+  await live.resumeIfPending();
+  expect((await live.driver.readStatus()).candidate).toBeUndefined();
+  await approvedArchive();
+  expect((await live.driver.readStatus()).candidate?.token).toBe(approval.candidateDigest);
+  expect(state.prepare).not.toHaveBeenCalled();
+  expect(state.resume).not.toHaveBeenCalled();
+  await fs.unlink(path.join(state.home, ".paseo-installed", "approved-update.json"));
+  expect((await live.driver.readStatus()).candidate).toBeUndefined();
+});
+it("live discovery rejects a later unsigned approval instead of exposing a stale offer", async () => {
+  const live = (await createLiveInstalledUpdateCoordinator())!;
+  await approvedArchive();
+  state.signed = false;
+  await expect(live.driver.readStatus()).rejects.toThrow("signature");
+  await expect(live.driver.requestUpdate(approval.candidateDigest as string)).rejects.toThrow(
+    "signature",
+  );
+  expect(state.prepare).not.toHaveBeenCalled();
 });

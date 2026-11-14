@@ -41,3 +41,24 @@ Once stop is attempted, or hold/stopped/native-commit evidence exists, failures
 remain non-retryable and consumed. Unknown status/read errors do not restore the
 button. Recovery-required failures remain visible and require operator review;
 a timestamp is never authority to remove a handoff lock.
+
+## Live offer discovery
+
+The main-process IPC driver remains available when no approval exists at startup.
+The existing renderer status poll (15 seconds, plus window focus) re-reads the
+fixed private approval record. A changed offer constructs and verifies a fresh
+coordinator, including signature, revision, private-file and archive checks;
+no app quit, daemon restart, admission request or startup handoff recovery is
+performed to discover an offer. Missing approval withdraws an idle offer.
+
+Selection/application is serialized. Applying or recovery-required coordinators
+are pinned; replacing a manifest cannot reset their fences or consumed tokens.
+Stale button clicks are revalidated against the current offer before application.
+Malformed/untrusted approvals fail closed, not back to a stale actionable offer.
+Startup handoff recovery still runs once, before normal daemon connection.
+
+Candidate publication must still preserve completed transaction evidence and must
+never clear an unfinished handoff. This change does not authorize deleting locks
+or bypassing the native updater. Builds installed before live discovery need a
+one-time UI reload to bootstrap this implementation; subsequent approved offers
+do not require a pre-update restart.

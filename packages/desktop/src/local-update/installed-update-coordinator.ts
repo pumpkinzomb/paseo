@@ -1,3 +1,4 @@
+import { createLiveUpdateCoordinator } from "./live-update-coordinator.js";
 import { PrecommitUpdateRejected } from "./precommit-rejected.js";
 import { app, autoUpdater } from "electron";
 import { constants } from "node:fs";
@@ -388,4 +389,24 @@ export async function createInstalledUpdateCoordinator(): Promise<{
       if (stopped) await resumeInstalledReplacement(host);
     },
   };
+}
+
+/** Stable main-process driver: trusted approval discovery stays live without UI restart. */
+export async function createLiveInstalledUpdateCoordinator() {
+  if (!app.isPackaged) return null;
+  const root = path.join(os.homedir(), ".paseo-installed");
+  return createLiveUpdateCoordinator({
+    currentVersion: app.getVersion(),
+    createCoordinator: createInstalledUpdateCoordinator,
+    readApprovalKey: async () => {
+      try {
+        await directory(root);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw error;
+      }
+      const raw = await json(path.join(root, "approved-update.json"));
+      return raw === null ? null : JSON.stringify(raw);
+    },
+  });
 }

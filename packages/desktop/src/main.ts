@@ -1,4 +1,4 @@
-import { createInstalledUpdateCoordinator } from "./local-update/installed-update-coordinator.js";
+import { createLiveInstalledUpdateCoordinator } from "./local-update/installed-update-coordinator.js";
 import { registerLocalUpdateIpc } from "./local-update/ipc.js";
 import { isTrustedLocalUpdateSender } from "./local-update/trusted-sender.js";
 import { createUsageAuthenticator } from "./features/usage-auth.js";
@@ -1002,7 +1002,7 @@ async function bootstrap(): Promise<void> {
   }
   // A verified stopped update must resume before the normal connection-only
   // registration probe. Only the single owning app process may run this phase.
-  const installedUpdate = await createInstalledUpdateCoordinator();
+  const installedUpdate = await createLiveInstalledUpdateCoordinator();
   await installedUpdate?.resumeIfPending();
   await initializeRegisteredDaemonConnection();
 
