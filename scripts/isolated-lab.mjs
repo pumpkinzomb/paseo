@@ -201,7 +201,7 @@ function releasePreparationLock(fd, lock) {
 }
 
 export async function prepareLabDependencies(
-  { root, releases, donor, minFreeBytes = 8 * 1024 ** 3 },
+  { root, releases, donor, metadataEquivalentDependencies = false, minFreeBytes = 8 * 1024 ** 3 },
   { prepare = prepareDependencies } = {},
 ) {
   if (!donor?.id || !/^[a-f0-9]{64}$/.test(donor.digest ?? ""))
@@ -242,9 +242,18 @@ export async function prepareLabDependencies(
       releases,
       donor,
       allowInstall: false,
+      metadataEquivalentDependencies,
       minFreeBytes,
     });
     if (result.mode !== "reuse") throw new Error("Lab dependencies require verified reuse");
+    if (result.metadataEquivalence) {
+      fs.mkdirSync(path.join(plan.state), { recursive: true, mode: 0o700 });
+      fs.writeFileSync(
+        path.join(plan.state, "dependency-metadata-equivalence.json"),
+        JSON.stringify({ donor: result.donor, ...result.metadataEquivalence }, null, 2),
+        { flag: "wx", mode: 0o600 },
+      );
+    }
     return { mode: result.mode, donor: result.donor, root: plan.root };
   } finally {
     releasePreparationLock(fd, lock);
@@ -256,6 +265,11 @@ async function main() {
   const options = {};
   for (let i = 3; i < process.argv.length; i += 2) {
     const key = process.argv[i];
+    if (key === "--metadata-equivalent-dependencies" && !options[key]) {
+      options[key] = true;
+      i -= 1;
+      continue;
+    }
     if (
       !["--root", "--releases", "--dependency-release", "--dependency-digest"].includes(key) ||
       !process.argv[i + 1] ||
@@ -273,6 +287,7 @@ async function main() {
       JSON.stringify(
         await prepareLabDependencies({
           root,
+          metadataEquivalentDependencies: options["--metadata-equivalent-dependencies"] === true,
           releases: options["--releases"],
           donor: { id: options["--dependency-release"], digest: options["--dependency-digest"] },
         }),

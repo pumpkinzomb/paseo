@@ -1,3 +1,4 @@
+import { proveDependencyMetadataEquivalence } from "./dependency-metadata-equivalence.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { constants } from "node:fs";
@@ -247,32 +248,7 @@ async function inspectDependencyEntries(root, entries, donorRoot, verifyBytes) {
   });
 }
 
-export async function prepareDependencies({
-  source,
-  releases,
-  donor,
-  allowInstall = false,
-  minFreeBytes = 8 * 1024 ** 3,
-  verify = verifyRelease,
-  clone = cloneDependencyEntries,
-}) {
-  if (!donor) {
-    if (!allowInstall)
-      throw new Error(
-        "Provide --dependency-release and --dependency-digest, or explicitly --install-dependencies for a necessary clean install",
-      );
-    await assertDiskReserve(source, minFreeBytes);
-    return { mode: "install" };
-  }
-  const verified = await verify(releases, donor.id, donor.digest);
-  let actual;
-  try {
-    actual = await dependencyInputs(source);
-  } catch (error) {
-    if (!allowInstall || error.code !== "UNREVIEWED_INSTALL_HOOK") throw error;
-    await assertDiskReserve(source, minFreeBytes);
-    return { mode: "install", reason: "dependency-lifecycle-changed" };
-  }
+async function donorInputEntries(source, verified) {
   // Manifest scans include generated dist/package.json files. Only tracked source
   // inputs of the donor commit describe the install that produced its payload.
   let donorTree;
@@ -296,13 +272,53 @@ export async function prepareDependencies({
     if (!entry?.sha256) throw new Error(`Donor dependency input missing: ${name}`);
     expected[name] = entry;
   }
+  return expected;
+}
+
+export async function prepareDependencies({
+  source,
+  releases,
+  donor,
+  allowInstall = false,
+  metadataEquivalentDependencies = false,
+  minFreeBytes = 8 * 1024 ** 3,
+  verify = verifyRelease,
+  clone = cloneDependencyEntries,
+}) {
+  if (!donor) {
+    if (!allowInstall)
+      throw new Error(
+        "Provide --dependency-release and --dependency-digest, or explicitly --install-dependencies for a necessary clean install",
+      );
+    await assertDiskReserve(source, minFreeBytes);
+    return { mode: "install" };
+  }
+  const verified = await verify(releases, donor.id, donor.digest);
+  let actual;
+  try {
+    actual = await dependencyInputs(source);
+  } catch (error) {
+    if (!allowInstall || error.code !== "UNREVIEWED_INSTALL_HOOK") throw error;
+    await assertDiskReserve(source, minFreeBytes);
+    return { mode: "install", reason: "dependency-lifecycle-changed" };
+  }
+  const expected = await donorInputEntries(source, verified);
   const canonical = (value) =>
     JSON.stringify(
       Object.keys(value)
         .sort()
         .map((key) => [key, value[key]]),
     );
-  if (canonical(actual) !== canonical(expected)) {
+  let metadataEquivalence;
+  if (canonical(actual) !== canonical(expected) && metadataEquivalentDependencies) {
+    metadataEquivalence = await proveDependencyMetadataEquivalence({
+      source,
+      donorRevision: verified.manifest.sourceRevision,
+      expected,
+      actual,
+    });
+  }
+  if (canonical(actual) !== canonical(expected) && !metadataEquivalence) {
     if (!allowInstall)
       throw new Error("Dependency inputs changed; explicitly allow a necessary clean install");
     await assertDiskReserve(source, minFreeBytes);
@@ -314,6 +330,8 @@ export async function prepareDependencies({
     ),
   );
   if (!Object.keys(entries).length) throw new Error("Verified donor has no dependency artifacts");
+  if (canonical(await dependencyInputs(source)) !== canonical(actual))
+    throw new Error("Dependency inputs changed during metadata verification");
   try {
     await clone({
       source: verified.root,
@@ -339,6 +357,7 @@ export async function prepareDependencies({
   }
   return {
     mode: "reuse",
+    metadataEquivalence,
     donor: { id: donor.id, digest: donor.digest },
     entries,
   };

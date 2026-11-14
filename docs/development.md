@@ -55,6 +55,12 @@ than downloading a published desktop release.
   supplies the donor identity/digest; the shared setup reader overrides older
   Paseo branches with legacy install commands. Other repositories retain their
   configured setup commands.
+- The task-only `isolated-lab.mjs prepare-dependencies` command accepts an explicit
+  `--metadata-equivalent-dependencies` opt-in for reviewed own-version/internal-pin
+  changes and the exact plugin example-typecheck installer removal. It still verifies
+  the original sealed donor, exact external lock graph, workspace/input membership,
+  independent CoW files and reserve. `.lab/dependency-metadata-equivalence.json`
+  records original/current hashes and each permitted delta; it does not reseal the donor.
 - Setup refuses changed install inputs, partial existing dependencies, aliases,
   missing managed context, and insufficient space instead of silently downloading
   another Electron/native dependency tree. Necessary dependency upgrades remain an

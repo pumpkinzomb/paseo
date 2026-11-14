@@ -376,3 +376,187 @@ test("final scan detects payload, permission, link and missing dependency change
   await fs.link(file, path.join(root, "hardlink"));
   await assert.rejects(verifyDependencyMetadata(root, expected), /payload changed/);
 });
+
+async function metadataFixture(t, plugin = false) {
+  const f = await fixture(t);
+  const files = {
+    "package.json": {
+      name: "paseo",
+      version: "1.0.0",
+      workspaces: ["packages/app"],
+      scripts: { prepare: "lefthook install --force" },
+    },
+    "packages/app/package.json": {
+      name: "@getpaseo/app",
+      version: "1.0.0",
+      dependencies: { external: "^1.0.0" },
+    },
+    "package-lock.json": {
+      name: "paseo",
+      version: "1.0.0",
+      packages: {
+        "": { name: "paseo", version: "1.0.0" },
+        "packages/app": {
+          name: "@getpaseo/app",
+          version: "1.0.0",
+          dependencies: { external: "^1.0.0" },
+        },
+        "node_modules/external": {
+          version: "1.0.1",
+          resolved: "https://example.invalid/pkg.tgz",
+          integrity: "sha512-original",
+        },
+      },
+    },
+    "packages/app/package-lock.json": {
+      name: "@getpaseo/app",
+      version: "0.9.0",
+      packages: {
+        "": { name: "@getpaseo/app", version: "0.9.0", dependencies: { external: "^1.0.0" } },
+      },
+    },
+  };
+  if (plugin) {
+    files["package.json"].workspaces.push("packages/plugin");
+    files["packages/plugin/package.json"] = {
+      name: "@getpaseo/plugin",
+      version: "1.0.0",
+      scripts: {
+        "typecheck:examples":
+          "npm --prefix ../../plugin-examples/markdown-panel install --ignore-scripts --no-audit --no-fund && tsgo -p tsconfig.examples.json --noEmit",
+      },
+    };
+  }
+  for (const [name, value] of Object.entries(files)) {
+    await fs.mkdir(path.dirname(path.join(f.source, name)), { recursive: true });
+    await fs.mkdir(path.dirname(path.join(f.donorRoot, name)), { recursive: true });
+    const bytes = JSON.stringify(value);
+    await fs.writeFile(path.join(f.source, name), bytes);
+    await fs.writeFile(path.join(f.donorRoot, name), bytes);
+  }
+  await exec("git", ["add", "."], { cwd: f.source });
+  await exec("git", ["commit", "-m", "metadata baseline"], { cwd: f.source });
+  f.manifest.sourceRevision = (
+    await exec("git", ["rev-parse", "HEAD"], { cwd: f.source })
+  ).stdout.trim();
+  f.manifest.entries = await scanRelease(f.donorRoot);
+  for (const [name, value] of Object.entries(files)) {
+    value.version = "1.0.1";
+    if (name === "packages/plugin/package.json")
+      value.scripts["typecheck:examples"] = "tsgo -p tsconfig.examples.json --noEmit";
+    for (const [key, record] of Object.entries(value.packages ?? {}))
+      if (!key.includes("node_modules")) record.version = "1.0.1";
+    await fs.writeFile(path.join(f.source, name), JSON.stringify(value));
+  }
+  return f;
+}
+
+test("metadata-only opt-in retains original donor provenance and exact external graph", async (t) => {
+  const f = await metadataFixture(t);
+  await assert.rejects(
+    prepareDependencies({ ...f.options, clone: async () => {} }),
+    /inputs changed/,
+  );
+  let cloned = false;
+  const result = await prepareDependencies({
+    ...f.options,
+    metadataEquivalentDependencies: true,
+    clone: async () => {
+      cloned = true;
+    },
+  });
+  assert.ok(cloned);
+  assert.equal(result.donor.digest, f.options.donor.digest);
+  assert.equal(result.metadataEquivalence.donorRevision, f.manifest.sourceRevision);
+  assert.ok(result.metadataEquivalence.deltas.length);
+});
+
+test("metadata equivalence rejects external graph, declarations, hooks, names and input additions", async (t) => {
+  const f = await metadataFixture(t);
+  for (const [file, mutate] of [
+    [
+      "package-lock.json",
+      (v) => {
+        v.packages["node_modules/external"].integrity = "changed";
+      },
+    ],
+    [
+      "package-lock.json",
+      (v) => {
+        v.packages["node_modules/external"].resolved = "changed";
+      },
+    ],
+    [
+      "packages/app/package.json",
+      (v) => {
+        v.dependencies.external = "^2.0.0";
+      },
+    ],
+    [
+      "packages/app/package.json",
+      (v) => {
+        v.dependencies.extra = "1.0.0";
+      },
+    ],
+    [
+      "packages/app/package.json",
+      (v) => {
+        v.name = "@getpaseo/other";
+      },
+    ],
+    [
+      "packages/app/package.json",
+      (v) => {
+        v.scripts = { typecheck: "new-command" };
+      },
+    ],
+    [
+      "packages/app/package.json",
+      (v) => {
+        v.scripts = { postinstall: "new-command" };
+      },
+    ],
+  ]) {
+    const target = path.join(f.source, file),
+      original = await fs.readFile(target, "utf8"),
+      value = JSON.parse(original);
+    mutate(value);
+    await fs.writeFile(target, JSON.stringify(value));
+    await assert.rejects(
+      prepareDependencies({
+        ...f.options,
+        metadataEquivalentDependencies: true,
+        clone: async () => assert.fail("must not clone"),
+      }),
+      /equivalence rejected|Unreviewed/,
+    );
+    await fs.writeFile(target, original);
+  }
+  await fs.writeFile(path.join(f.source, "new-package-lock.json"), "{}");
+  // A recognized newly tracked input must also fail, even with identical external graph.
+  await fs.mkdir(path.join(f.source, "extra"));
+  await fs.writeFile(path.join(f.source, "extra/package.json"), "{}");
+  await exec("git", ["add", "extra/package.json"], { cwd: f.source });
+  await assert.rejects(
+    prepareDependencies({
+      ...f.options,
+      metadataEquivalentDependencies: true,
+      clone: async () => assert.fail("must not clone"),
+    }),
+    /equivalence rejected/,
+  );
+});
+
+test("only the exact reviewed non-install plugin script removal is metadata-equivalent", async (t) => {
+  const f = await metadataFixture(t, true);
+  const options = { ...f.options, metadataEquivalentDependencies: true, clone: async () => {} };
+  const result = await prepareDependencies(options);
+  assert.ok(
+    result.metadataEquivalence.deltas.some((d) => d.field.includes("reviewed installer removal")),
+  );
+  const file = path.join(f.source, "packages/plugin/package.json");
+  const value = JSON.parse(await fs.readFile(file, "utf8"));
+  value.scripts["typecheck:examples"] += " && echo unexpected";
+  await fs.writeFile(file, JSON.stringify(value));
+  await assert.rejects(prepareDependencies(options), /equivalence rejected/);
+});
