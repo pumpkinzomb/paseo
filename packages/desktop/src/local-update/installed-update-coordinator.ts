@@ -1,3 +1,4 @@
+import { PrecommitUpdateRejected } from "./precommit-rejected.js";
 import { app, autoUpdater } from "electron";
 import { constants } from "node:fs";
 import { lstat, open, realpath, readFile } from "node:fs/promises";
@@ -19,7 +20,7 @@ import {
   resumeInstalledReplacement,
 } from "./installed-handoff-split.js";
 import { requestNativeSquirrelInstall } from "./squirrel-apply.js";
-import type { LocalUpdateDriver } from "./ipc.js";
+import type { LocalUpdateDriver, LocalUpdateFailure } from "./ipc.js";
 
 const exec = promisify(execFile);
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -302,6 +303,7 @@ export async function createInstalledUpdateCoordinator(): Promise<{
     return archive;
   }
   let phase: "idle" | "applying" | "failed" = "idle";
+  let failure: LocalUpdateFailure | undefined;
   const driver: LocalUpdateDriver = {
     readStatus: async () => {
       let archiveReady = false;
@@ -318,6 +320,7 @@ export async function createInstalledUpdateCoordinator(): Promise<{
         currentVersion: app.getVersion(),
         serverId: c.original.serverId,
         phase,
+        ...(failure ? { failure } : {}),
         ...(archiveReady && revision === c.oldRevision && !(await store.read("hold"))
           ? { candidate: { version: c.nextVersion, token: approval.candidateDigest } }
           : {}),
@@ -327,6 +330,7 @@ export async function createInstalledUpdateCoordinator(): Promise<{
       if (token !== approval.candidateDigest || revision !== c.oldRevision || phase !== "idle")
         throw Error("Unapproved update request");
       phase = "applying";
+      failure = undefined;
       try {
         const archive = await verifyArchive();
         await prepareInstalledReplacement(host);
@@ -347,6 +351,29 @@ export async function createInstalledUpdateCoordinator(): Promise<{
         });
       } catch (error) {
         phase = "failed";
+        failure = { code: "recovery_required", retryable: false };
+        if (error instanceof PrecommitUpdateRejected) {
+          try {
+            await verifyApproval();
+            await verifyArchive();
+            const live = await host.readExactInstance();
+            if (
+              live &&
+              Object.keys(c.original).every(
+                (key) =>
+                  live[key as keyof typeof live] === c.original[key as keyof typeof c.original],
+              ) &&
+              !(await store.read("hold")) &&
+              !(await store.read("stopped")) &&
+              !(await json(path.join(transactionDir, "native-commit.json")))
+            ) {
+              phase = "idle";
+              failure = { code: "blocked", retryable: true };
+            }
+          } catch {
+            /* changed approval/identity keeps recovery required */
+          }
+        }
         throw error;
       }
     },

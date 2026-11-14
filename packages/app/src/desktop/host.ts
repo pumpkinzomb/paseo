@@ -205,6 +205,7 @@ export interface DesktopMicrophoneBridge {
 }
 
 export interface DesktopLocalUpdateStatus {
+  failure?: { code: "blocked" | "failed" | "recovery_required"; retryable: boolean };
   /** Native-verified daemon targeted by this update, never the selected remote host. */
   serverId?: string;
   currentVersion: string;

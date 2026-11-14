@@ -15,6 +15,7 @@ export function eligibleLocalUpdate(status: DesktopLocalUpdateStatus | null): bo
 export function useLocalAppUpdate() {
   const [status, setStatus] = useState<DesktopLocalUpdateStatus | null>(null);
   const [pending, setPending] = useState(false);
+  const [failure, setFailure] = useState<"blocked" | "failed" | "recovery_required" | null>(null);
   const alive = useRef(false);
   const locked = useRef(false);
   const consumed = useRef<string | null>(null);
@@ -28,7 +29,10 @@ export function useLocalAppUpdate() {
       reading = true;
       try {
         const next = await bridge.status();
-        if (!disposed && !locked.current) setStatus(next);
+        if (!disposed && !locked.current) {
+          setStatus(next);
+          if (next.failure) setFailure(next.failure.code);
+        }
       } catch {
         if (!disposed && !locked.current) setStatus(null);
       } finally {
@@ -61,19 +65,32 @@ export function useLocalAppUpdate() {
     locked.current = true;
     consumed.current = token;
     setPending(true);
-    void bridge
-      .request(token)
-      .catch(() => {
-        // Never leak native errors/paths and do not offer a failed consumed token again.
-        if (alive.current) setStatus(null);
-      })
-      .finally(() => {
+    setFailure(null);
+    let failed = false;
+    void (async () => {
+      try {
+        await bridge.request(token);
+      } catch {
+        failed = true;
+        const next = await bridge.status().catch(() => null);
+        if (!alive.current) return;
+        setFailure(next?.failure?.code ?? "failed");
+        if (
+          next?.failure?.retryable === true &&
+          eligibleLocalUpdate(next) &&
+          next.candidate?.token === token
+        ) {
+          consumed.current = null;
+          setStatus(next);
+        } else setStatus(null);
+      } finally {
         locked.current = false;
         if (alive.current) {
           setPending(false);
-          setStatus(null);
+          if (!failed) setStatus(null);
         }
-      });
+      }
+    })();
   }, [bridge, status]);
   const ready =
     (eligibleLocalUpdate(status) && status?.candidate?.token !== consumed.current) || pending;
@@ -94,5 +111,6 @@ export function useLocalAppUpdate() {
     serverId: status?.serverId,
     update,
     ready,
+    failure,
   };
 }

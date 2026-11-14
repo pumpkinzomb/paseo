@@ -3,6 +3,7 @@ import { pluginSettings } from "./plugin-settings";
 
 export const ru: TranslationResources = {
   localAppUpdate: {
+    ...en.localAppUpdate,
     version: "App version {{version}}",
     developmentBuild: "Development build: {{label}}",
     updateAndRestart: "Update and restart",

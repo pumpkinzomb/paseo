@@ -11,6 +11,11 @@ import { resolveAppVersion } from "@/utils/app-version";
 
 const foregroundMutedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const ThemedGitBranch = withUnistyles(GitBranch);
+const FAILURE_KEYS = {
+  blocked: "localAppUpdate.blocked",
+  recovery_required: "localAppUpdate.recoveryRequired",
+  failed: "localAppUpdate.failed",
+} as const;
 const DEV_BUILD_LABEL = process.env.EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL?.trim() || null;
 
 /** Only a trusted local controller may supply a verified candidate and its action.
@@ -33,6 +38,7 @@ export function ConnectedAppVersionStatus() {
       version={bridge.version}
       update={bridge.update}
       productionReady={bridge.ready}
+      failure={bridge.failure}
     />
   );
 }
@@ -41,10 +47,12 @@ export function AppVersionStatus({
   version = resolveAppVersion(),
   update,
   productionReady = false,
+  failure = null,
 }: {
   version?: string | null;
   update?: LocalAppUpdate;
   productionReady?: boolean;
+  failure?: "blocked" | "failed" | "recovery_required" | null;
 }) {
   const { t } = useTranslation();
   if (!version) return null;
@@ -58,6 +66,11 @@ export function AppVersionStatus({
       >
         v{version}
       </Text>
+      {failure && (
+        <Text accessibilityRole="alert" testID="local-app-update-error" style={styles.failure}>
+          {t(FAILURE_KEYS[failure])}
+        </Text>
+      )}
       {productionReady && update?.status === "verified" && update.releaseId.trim() && (
         <Button
           size="sm"
@@ -95,9 +108,15 @@ export function DevelopmentBuildBadge({ label = DEV_BUILD_LABEL }: { label?: str
 }
 
 const styles = StyleSheet.create((theme) => ({
+  failure: {
+    flexBasis: "100%",
+    fontSize: 11,
+    color: theme.colors.foregroundMuted,
+  },
   row: {
     minHeight: 32,
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[1],

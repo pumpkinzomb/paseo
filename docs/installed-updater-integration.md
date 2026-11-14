@@ -27,3 +27,17 @@ For an installed app and daemon update, use the approved-candidate desktop
 coordinator and its persisted split handoff. The development runtime controller
 is not an installed-app fallback. If no approved candidate is available, report
 that state rather than issuing shutdown and claiming an automatic restart.
+
+## Rejected update requests and retry
+
+The renderer shows only public failure categories, never native paths, runtime
+IDs, or raw exceptions. Admission rejection before any stop invocation may return
+to idle only after releasing this attempt's exact lock and independently
+revalidating the signed approval, archive and unchanged original daemon identity.
+The IPC layer then permits replay of that exact offer token; the UI reads fresh
+status and restores the action only when the trusted host explicitly permits it.
+
+Once stop is attempted, or hold/stopped/native-commit evidence exists, failures
+remain non-retryable and consumed. Unknown status/read errors do not restore the
+button. Recovery-required failures remain visible and require operator review;
+a timestamp is never authority to remove a handoff lock.

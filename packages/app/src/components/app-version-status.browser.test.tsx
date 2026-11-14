@@ -200,3 +200,49 @@ it("offers a verified update even when version strings are equal", async () => {
   await act(async () => {});
   expect(view.querySelector('[data-testid="local-app-update-restart"]')).not.toBeNull();
 });
+
+it("shows a blocked response and restores a button only for a verified retryable offer", async () => {
+  let rejected = false;
+  const request = vi.fn(async () => {
+    rejected = true;
+    throw Error("/secret/private-path");
+  });
+  setBridge({
+    status: vi.fn(async () => ({
+      ...readyStatus,
+      ...(rejected ? { failure: { code: "blocked" as const, retryable: true } } : {}),
+    })),
+    request,
+  });
+  const view = mount(<ConnectedAppVersionStatus />);
+  await act(async () => {});
+  await act(async () => {
+    view.querySelector<HTMLElement>('[data-testid="local-app-update-restart"]')!.click();
+  });
+  expect(view.querySelector('[data-testid="local-app-update-error"]')?.textContent).toContain(
+    "blocked",
+  );
+  expect(view.querySelector('[data-testid="local-app-update-restart"]')).not.toBeNull();
+  expect(view.textContent).not.toContain("private-path");
+  await act(async () => {
+    view.querySelector<HTMLElement>('[data-testid="local-app-update-restart"]')!.click();
+  });
+  expect(request).toHaveBeenCalledTimes(2);
+});
+it("announces unknown failure without restoring the consumed button", async () => {
+  setBridge({
+    status: vi.fn(async () => readyStatus),
+    request: vi.fn(async () => {
+      throw Error("private-path");
+    }),
+  });
+  const view = mount(<ConnectedAppVersionStatus />);
+  await act(async () => {});
+  await act(async () => {
+    view.querySelector<HTMLElement>('[data-testid="local-app-update-restart"]')!.click();
+  });
+  expect(view.querySelector('[data-testid="local-app-update-error"]')?.textContent).toContain(
+    "failed",
+  );
+  expect(view.querySelector('[data-testid="local-app-update-restart"]')).toBeNull();
+});

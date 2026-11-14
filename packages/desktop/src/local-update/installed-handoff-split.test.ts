@@ -169,3 +169,23 @@ it("interrupted stop retains hold and lock and cannot silently start", async () 
   ).rejects.toMatchObject({ code: "EEXIST" });
   expect(f.starts()).toBe(0);
 });
+
+it("releases only its own pre-shutdown lock after an admission veto and permits a later attempt", async () => {
+  const f = await fixture();
+  const allow = f.host.verifyAdmission;
+  f.host.verifyAdmission = async () => {
+    throw Error("Runtime veto");
+  };
+  await expect(prepareInstalledReplacement(f.host)).rejects.toMatchObject({
+    name: "PrecommitUpdateRejected",
+  });
+  expect(f.stops()).toBe(0);
+  await expect(readFile(path.join(f.root, "daemon-update-v1", "hold.json"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+  f.host.verifyAdmission = allow;
+  await expect(prepareInstalledReplacement(f.host)).resolves.toEqual({
+    state: "stopped-for-replacement",
+  });
+  expect(f.stops()).toBe(1);
+});
