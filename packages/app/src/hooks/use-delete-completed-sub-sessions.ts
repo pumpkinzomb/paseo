@@ -20,6 +20,7 @@ export function useDeleteCompletedSubSessions(
   parentWorkspaceId: string,
   completedWorkspaceIds: readonly string[],
   onDeleted?: (workspaceIds: readonly string[]) => void,
+  options?: { restrictToTargets?: boolean; ownerKey?: string },
 ) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -30,7 +31,8 @@ export function useDeleteCompletedSubSessions(
   const activeRef = useRef(active);
   activeRef.current = active;
   const targetKey = JSON.stringify([...new Set(completedWorkspaceIds)].sort());
-  const scope = `${serverId}:${parentWorkspaceId}:${targetKey}`;
+  const restrictToTargets = options?.restrictToTargets ?? false;
+  const scope = `${serverId}:${parentWorkspaceId}:${options?.ownerKey ?? ""}:${restrictToTargets}:${targetKey}`;
   const currentScope = useRef(scope);
   currentScope.current = scope;
   const mounted = useRef(true);
@@ -61,7 +63,8 @@ export function useDeleteCompletedSubSessions(
         // Refuse old/incompatible or invalid scope instead of risking the parent.
         if (
           !preview.workspaceIds?.includes(workspaceId) ||
-          preview.workspaceIds.includes(parentWorkspaceId)
+          preview.workspaceIds.includes(parentWorkspaceId) ||
+          (restrictToTargets && preview.workspaceIds.some((id) => !targets.includes(id)))
         ) {
           throw new Error(t("workspaceSessionDeletion.moved"));
         }
@@ -146,6 +149,7 @@ export function useDeleteCompletedSubSessions(
     client,
     supported,
     targetKey,
+    restrictToTargets,
     parentWorkspaceId,
     scope,
     t,

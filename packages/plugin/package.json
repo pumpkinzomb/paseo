@@ -70,7 +70,7 @@
     "prepack": "npm run build:clean",
     "typecheck": "tsgo --noEmit && npm run typecheck:examples",
     "test": "vitest run",
-    "typecheck:examples": "npm --prefix ../../plugin-examples/markdown-panel install --ignore-scripts --no-audit --no-fund && tsgo -p tsconfig.examples.json --noEmit"
+    "typecheck:examples": "tsgo -p tsconfig.examples.json --noEmit"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.4.0",

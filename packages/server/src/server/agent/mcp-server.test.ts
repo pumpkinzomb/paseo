@@ -6949,3 +6949,41 @@ describe("local durable finish subscription MCP wiring", () => {
     }
   });
 });
+
+it("stamps workspace provisioning caller only from the bound agent tool context", async () => {
+  const { agentManager, agentStorage, spies } = createTestDeps();
+  spies.agentManager.getAgent.mockReturnValue(
+    createManagedAgent({ id: "authenticated-lead", cwd: REPO_CWD, workspaceId: "room" }),
+  );
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "task",
+    projectId: "project",
+    cwd: REPO_CWD,
+    kind: "directory",
+    displayName: "Task",
+    createdAt: "2026-11-14T00:00:00Z",
+    updatedAt: "2026-11-14T00:00:00Z",
+  });
+  const create = vi.fn(async () => workspace);
+  const server = await createAgentMcpServer({
+    agentManager,
+    agentStorage,
+    providerSnapshotManager: createOpenCodeManager().manager,
+    callerAgentId: "authenticated-lead",
+    serverId: "host",
+    createDirectoryWorkspace: create,
+    logger: createTestLogger(),
+  });
+  await invokeToolWithParsedInput(registeredTool(server, "create_workspace"), {
+    isolation: "local",
+    path: process.cwd(),
+    callerAgentId: "forged-lead",
+    creatorAgent: { serverId: "foreign", agentId: "forged-lead" },
+  });
+  expect(create).toHaveBeenCalledWith(
+    process.cwd(),
+    undefined,
+    undefined,
+    expect.objectContaining({ callerWorkspaceId: "room", callerAgentId: "authenticated-lead" }),
+  );
+});

@@ -35,6 +35,7 @@ export interface ResolveOrCreateWorkspaceIdInput {
   initialTitle: string | null;
   background?: boolean;
   callerWorkspaceId?: string;
+  callerAgentId?: string;
 }
 
 export interface ImportWorkspaceInput {
@@ -62,6 +63,7 @@ export interface CreateWorktreeWorkspaceInput {
   untrustedSource?: UntrustedWorkspaceSource;
   background?: boolean;
   callerWorkspaceId?: string;
+  callerAgentId?: string;
 }
 
 export interface WorkspaceProvisioningService {
@@ -81,6 +83,7 @@ export interface WorkspaceProvisioningService {
       metadata?: Record<string, JsonValue>;
       background?: boolean;
       callerWorkspaceId?: string;
+      callerAgentId?: string;
     },
   ): Promise<PersistedWorkspaceRecord>;
   createWorkspaceForWorktree(
@@ -275,7 +278,12 @@ export function createWorkspaceProvisioningService(deps: {
     workspaceId?: string;
     background?: boolean;
     callerWorkspaceId?: string;
-  }): Promise<{ background: boolean; parentWorkspaceId?: string }> {
+    callerAgentId?: string;
+  }): Promise<{
+    background: boolean;
+    parentWorkspaceId?: string;
+    creatorAgent?: { serverId: string; agentId: string };
+  }> {
     if (!input?.callerWorkspaceId) return { background: input?.background ?? false };
     if (input.workspaceId === input.callerWorkspaceId) {
       throw new Error("A workspace cannot be its own parent");
@@ -285,6 +293,9 @@ export function createWorkspaceProvisioningService(deps: {
     return {
       background: input.background ?? callerWorkspace.background,
       parentWorkspaceId: callerWorkspace.workspaceId,
+      ...(input.callerAgentId && deps.serverId
+        ? { creatorAgent: { serverId: deps.serverId, agentId: input.callerAgentId } }
+        : {}),
     };
   }
 
@@ -298,6 +309,7 @@ export function createWorkspaceProvisioningService(deps: {
       metadata?: Record<string, JsonValue>;
       background?: boolean;
       callerWorkspaceId?: string;
+      callerAgentId?: string;
     },
   ): Promise<PersistedWorkspaceRecord> {
     const normalizedCwd = resolve(cwd);
@@ -458,6 +470,7 @@ export function createWorkspaceProvisioningService(deps: {
         expectsInitialAgent: true,
         background: input.background,
         callerWorkspaceId: input.callerWorkspaceId,
+        callerAgentId: input.callerAgentId,
       })
     ).workspaceId;
   }

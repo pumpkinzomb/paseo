@@ -38,6 +38,7 @@ export interface CreatePaseoWorktreeInput extends CreateWorktreeCoreInput {
   metadata?: Record<string, JsonValue>;
   background?: boolean;
   callerWorkspaceId?: string;
+  callerAgentId?: string;
 }
 
 export interface CreatePaseoWorktreeResult {
@@ -119,6 +120,7 @@ async function createPaseoWorktreeWithPriority(
       expectsInitialAgent: Boolean(input.firstAgentContext),
       background: input.background,
       callerWorkspaceId: input.callerWorkspaceId,
+      callerAgentId: input.callerAgentId,
       ...(createdWorktree.intent.kind === "checkout-change-request" &&
       createdWorktree.intent.headRepository
         ? {

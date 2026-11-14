@@ -1,3 +1,4 @@
+import { workspaceAgentProvenance } from "./workspace-agent-provenance.js";
 import { DevelopmentReview } from "./development-review.js";
 import { inspectTaskArtifacts, removeTaskArtifacts } from "@getpaseo/plugin/server";
 import {
@@ -904,7 +905,10 @@ export class Session {
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
   private readonly creationService: Pick<CreationService, "create" | "subscribe">;
 
+  private readonly serverId: string | undefined;
+
   constructor(options: SessionOptions) {
+    this.serverId = options.serverId;
     const {
       clientId,
       permissions,
@@ -7121,6 +7125,13 @@ export class Session {
       metadata: workspace.metadata,
       background: workspace.background,
       parentWorkspaceId: workspace.parentWorkspaceId,
+      ...workspaceAgentProvenance(
+        this.serverId,
+        workspace.creatorAgent,
+        await this.agentStorage.listByWorkspaces([workspace.workspaceId], {
+          includeArchived: true,
+        }),
+      ),
       ...(await this.describeArchivedSubSessions(workspace.workspaceId)),
       archivingAt: null,
       status: "done",
@@ -7153,11 +7164,12 @@ export class Session {
     );
     if (children.length === 0) return {};
     const firstAgentIdByWorkspaceId = new Map<string, { id: string; createdAt: string }>();
-    for (const agent of await this.agentStorage.listByWorkspaces(
+    const records = await this.agentStorage.listByWorkspaces(
       children.map((child) => child.workspaceId),
       { includeArchived: true },
-    )) {
-      if (!agent.workspaceId || agent.internal) continue;
+    );
+    for (const agent of records) {
+      if (!agent.workspaceId || agent.internal || agent.background) continue;
       const current = firstAgentIdByWorkspaceId.get(agent.workspaceId);
       if (!current || agent.createdAt < current.createdAt) {
         firstAgentIdByWorkspaceId.set(agent.workspaceId, {
@@ -7169,12 +7181,21 @@ export class Session {
     return {
       archivedSubSessions: children
         .sort((left, right) => right.archivedAt!.localeCompare(left.archivedAt!))
-        .map((child) => ({
-          workspaceId: child.workspaceId,
-          name: resolveWorkspaceDisplayName(child),
-          archivedAt: child.archivedAt!,
-          agentId: firstAgentIdByWorkspaceId.get(child.workspaceId)?.id ?? null,
-        })),
+        .map((child) =>
+          Object.assign(
+            workspaceAgentProvenance(
+              this.serverId,
+              child.creatorAgent,
+              records.filter((agent) => agent.workspaceId === child.workspaceId),
+            ),
+            {
+              workspaceId: child.workspaceId,
+              name: resolveWorkspaceDisplayName(child),
+              archivedAt: child.archivedAt!,
+              agentId: firstAgentIdByWorkspaceId.get(child.workspaceId)?.id ?? null,
+            },
+          ),
+        ),
     };
   }
 

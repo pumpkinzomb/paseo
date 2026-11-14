@@ -1,10 +1,18 @@
+import type { AssistantConversation } from "@getpaseo/protocol/messages";
+import { useReplicaQuery } from "@/data/query";
+import { ASSISTANT_CONVERSATION_QUERY_ROOT } from "@/default-assistant/conversation";
 import { MessageCircle } from "lucide-react-native";
 import { useShallow } from "zustand/shallow";
 import { useTranslation } from "react-i18next";
 import { i18n } from "@/i18n/i18next";
 import { useProviderIcon } from "@/components/provider-icons";
 import type { PanelDescriptor } from "@/panels/panel-registry";
-import { useSessionStore, selectAgentTurnPresentation, type Agent } from "@/stores/session-store";
+import {
+  useSessionStore,
+  selectAgentTurnPresentation,
+  type Agent,
+  type SessionState,
+} from "@/stores/session-store";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 
 function isAssistantAgent(agent: Agent | null): boolean {
@@ -59,22 +67,27 @@ export function useAgentDescriptor(
   context: { serverId: string },
 ): PanelDescriptor {
   useTranslation();
+  const { data: conversation } = useReplicaQuery<AssistantConversation>({
+    queryKey: [ASSISTANT_CONVERSATION_QUERY_ROOT, context.serverId, target.agentId],
+    pushEvent: "agent_update",
+    enabled: false,
+  });
   const descriptorState = useSessionStore(
     useShallow((state) => {
       const session = state.sessions[context.serverId];
-      const agent =
-        session?.agents.get(target.agentId) ?? session?.agentDetails.get(target.agentId) ?? null;
+      const anchorId = conversation?.segments[0]?.agentId ?? target.agentId;
+      const agent = findDescriptorAgent(session, anchorId);
+      const statusId = isAssistantAgent(agent) ? conversation?.activeAgentId : target.agentId;
+      const current = findDescriptorAgent(session, statusId);
       return {
         provider: agent?.provider ?? "codex",
         isAssistant: isAssistantAgent(agent),
         title: agent?.title ?? null,
         createdAt: agent && agent.createdAt,
-        status: agent?.status ?? null,
-        backgroundWork: agent?.backgroundWork,
-        pendingPermissionCount: agent?.pendingPermissions.length ?? 0,
-        requiresAttention: agent?.requiresAttention ?? false,
-        attentionReason: agent?.attentionReason ?? null,
-        isTurnActive: selectAgentTurnPresentation(session, target.agentId).isActive,
+        ...agentStatusAttributes(
+          current ?? null,
+          selectAgentTurnPresentation(session, statusId ?? "").isActive,
+        ),
       };
     }),
   );
@@ -82,7 +95,11 @@ export function useAgentDescriptor(
   const descriptor = buildAgentDescriptor({
     ...descriptorState,
     title: descriptorState.isAssistant
-      ? resolveAssistantTitle(descriptorState.title, descriptorState.createdAt, target.agentId)
+      ? resolveAssistantTitle(
+          descriptorState.title,
+          descriptorState.createdAt,
+          conversation?.segments[0]?.agentId ?? target.agentId,
+        )
       : descriptorState.title,
     icon: descriptorState.isAssistant ? MessageCircle : icon,
   });
@@ -93,6 +110,23 @@ export function useAgentDescriptor(
         tooltip: `${descriptor.label} · ${descriptorState.createdAt?.toISOString() ?? ""} · ${target.agentId}`,
       }
     : descriptor;
+}
+
+function findDescriptorAgent(session: SessionState | undefined, agentId: string | undefined) {
+  return agentId
+    ? (session?.agents.get(agentId) ?? session?.agentDetails.get(agentId) ?? null)
+    : null;
+}
+
+function agentStatusAttributes(current: Agent | null, isTurnActive: boolean) {
+  return {
+    status: current?.status ?? null,
+    backgroundWork: current?.backgroundWork,
+    pendingPermissionCount: current?.pendingPermissions.length ?? 0,
+    requiresAttention: current?.requiresAttention ?? false,
+    attentionReason: current?.attentionReason ?? null,
+    isTurnActive,
+  };
 }
 
 export function buildAgentDescriptor(input: {

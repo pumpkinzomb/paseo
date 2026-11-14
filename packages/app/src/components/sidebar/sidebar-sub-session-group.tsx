@@ -37,6 +37,11 @@ export function SidebarSubSessionGroup({
   archivedSubSessions = EMPTY_ARCHIVED,
   workspaceEntriesByKey,
   renderRow,
+  groupKey = parentKey,
+  strictWorkspaceScope = false,
+  allowBulkDeletion = true,
+  activeAgentRows,
+  doneAgentRows,
 }: {
   serverId: string;
   parentKey: string;
@@ -45,6 +50,11 @@ export function SidebarSubSessionGroup({
   archivedSubSessions?: readonly ArchivedSubSession[];
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
   renderRow: (placement: SidebarWorkspacePlacement) => ReactNode;
+  groupKey?: string;
+  strictWorkspaceScope?: boolean;
+  allowBulkDeletion?: boolean;
+  activeAgentRows?: readonly ReactNode[];
+  doneAgentRows?: readonly ReactNode[];
 }) {
   const { t } = useTranslation();
   const [doneExpanded, setDoneExpanded] = useState(false);
@@ -57,16 +67,22 @@ export function SidebarSubSessionGroup({
     [subSessions, workspaceEntriesByKey],
   );
   const toggleDone = useCallback(() => setDoneExpanded((expanded) => !expanded), []);
-  const doneCount = done.length + archivedSubSessions.length;
+  const archivedSessions = archivedSubSessions.filter(
+    (item) => item.sessionCount !== 0 && (item.agentId !== null || (item.sessionCount ?? 0) > 0),
+  );
+  const workspaceHistory = archivedSubSessions.filter((item) => !archivedSessions.includes(item));
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const toggleHistory = useCallback(() => setHistoryExpanded((value) => !value), []);
+  const doneCount = done.length + archivedSessions.length + (doneAgentRows?.length ?? 0);
 
   const completedIds = useMemo(
     () => [
       ...new Set([
         ...done.map((item) => item.workspaceId),
-        ...archivedSubSessions.map((item) => item.workspaceId),
+        ...archivedSessions.map((item) => item.workspaceId),
       ]),
     ],
-    [done, archivedSubSessions],
+    [done, archivedSessions],
   );
   const parentWorkspaceId = parentKey.slice(serverId.length + 1);
   const pathname = usePathname();
@@ -88,6 +104,7 @@ export function SidebarSubSessionGroup({
     parentWorkspaceId,
     completedIds,
     returnFromDeletedHistory,
+    { restrictToTargets: strictWorkspaceScope, ownerKey: groupKey },
   );
 
   return (
@@ -97,8 +114,9 @@ export function SidebarSubSessionGroup({
         name: parentName,
       })}
       style={styles.group}
-      testID={`sidebar-sub-sessions-${parentKey}`}
+      testID={`sidebar-sub-sessions-${groupKey}`}
     >
+      {activeAgentRows}
       {active.map((placement) => renderRow(placement))}
       {doneCount > 0 ? (
         <View style={styles.archivedRowContainer}>
@@ -109,15 +127,15 @@ export function SidebarSubSessionGroup({
               label={t("sidebar.workspace.subSessions.done", {
                 count: doneCount,
               })}
-              testID={`sidebar-sub-sessions-done-toggle-${parentKey}`}
+              testID={`sidebar-sub-sessions-done-toggle-${groupKey}`}
             />
           </View>
-          {bulkDeletion.remove ? (
+          {allowBulkDeletion && bulkDeletion.remove && !doneAgentRows?.length ? (
             <ToolbarButton
               label={t("workspaceSessionDeletion.completedMenu")}
               onPress={bulkDeletion.remove}
               disabled={bulkDeletion.pending}
-              testID={`sidebar-sub-sessions-delete-done-${parentKey}`}
+              testID={`sidebar-sub-sessions-delete-done-${groupKey}`}
             >
               <DensityIcon icon={Trash2} size="sm" color="foregroundMuted" />
             </ToolbarButton>
@@ -125,9 +143,10 @@ export function SidebarSubSessionGroup({
         </View>
       ) : null}
       {doneExpanded ? (
-        <View testID={`sidebar-sub-sessions-done-${parentKey}`}>
+        <View testID={`sidebar-sub-sessions-done-${groupKey}`}>
+          {doneAgentRows}
           {done.map((placement) => renderRow(placement))}
-          {archivedSubSessions.map((subSession) => (
+          {archivedSessions.map((subSession) => (
             <ArchivedSubSessionRow
               key={subSession.workspaceId}
               serverId={serverId}
@@ -136,6 +155,29 @@ export function SidebarSubSessionGroup({
             />
           ))}
         </View>
+      ) : null}
+      {workspaceHistory.length ? (
+        <>
+          <SidebarGroupToggleRow
+            expanded={historyExpanded}
+            onPress={toggleHistory}
+            label={t("sidebar.workspace.subSessions.workspaceHistory", {
+              count: workspaceHistory.length,
+            })}
+            testID={`sidebar-workspace-history-toggle-${groupKey}`}
+          />
+          {historyExpanded
+            ? workspaceHistory.map((subSession) => (
+                <ArchivedSubSessionRow
+                  key={subSession.workspaceId}
+                  serverId={serverId}
+                  subSession={subSession}
+                  parentWorkspaceId={parentWorkspaceId}
+                  allowDeletion={false}
+                />
+              ))
+            : null}
+        </>
       ) : null}
     </View>
   );
@@ -149,10 +191,12 @@ function ArchivedSubSessionRow({
   serverId,
   subSession,
   parentWorkspaceId,
+  allowDeletion = true,
 }: {
   serverId: string;
   subSession: ArchivedSubSession;
   parentWorkspaceId: string;
+  allowDeletion?: boolean;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -209,7 +253,7 @@ function ArchivedSubSessionRow({
             {subSession.name}
           </Text>
         </PressHighlight>
-        {deletion.remove ? (
+        {allowDeletion && deletion.remove ? (
           <ToolbarButton
             label={t("workspaceSessionDeletion.menu")}
             onPress={deletion.remove}

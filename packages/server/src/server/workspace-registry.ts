@@ -60,6 +60,7 @@ const DevelopmentEvidenceSchema = z.object({
 
 const PersistedWorkspaceRecordSchema = z.object({
   parentWorkspaceId: z.string().optional(),
+  creatorAgent: z.object({ serverId: z.string(), agentId: z.string() }).optional(),
   developmentSourceIds: z.array(z.string()).optional(),
   developmentSourceIdentities: z.record(z.string(), z.string()).optional(),
   developmentEvidence: DevelopmentEvidenceSchema.optional(),
@@ -697,6 +698,7 @@ export function resolveProjectDisplayName(record: PersistedProjectRecord): strin
 
 export function createPersistedWorkspaceRecord(input: {
   parentWorkspaceId?: string;
+  creatorAgent?: { serverId: string; agentId: string };
   workspaceId: string;
   projectId: string;
   cwd: string;

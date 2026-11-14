@@ -569,6 +569,7 @@ class CreateAgentTestClient implements AgentClient {
 function createSessionForWorkspaceTests(
   options: {
     appVersion?: string | null;
+    serverId?: string;
     onMessage?: (message: SessionOutboundMessage) => void;
     onWorkspaceRecovered?: SessionOptions["onWorkspaceRecovered"];
     workspaceRuntimeStore?: WorkspaceRuntimeStore;
@@ -656,6 +657,7 @@ function createSessionForWorkspaceTests(
 
   const session = asTestSession(
     new Session({
+      serverId: options.serverId,
       workspaceRuntimeStore: options.workspaceRuntimeStore ?? createWorkspaceRuntimeStore(),
       messageReceipts: createMessageReceiptsStub(),
       agentMessages: createAgentMessageDeliveryStub(),
@@ -10219,4 +10221,73 @@ test("path archive of an archived exact child leaves its active parent untouched
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("workspace wire caller cannot claim a durable creator", async () => {
+  let saved: PersistedWorkspaceRecord | undefined;
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({
+    serverId: "host",
+    onMessage: (message) => emitted.push(message),
+    agentManager: {
+      getAgent: () => ({
+        id: "claimed-lead",
+        cwd: REPO_CWD,
+        workspaceId: "ws-repo-running",
+        background: false,
+      }),
+    },
+  });
+  session.workspaceRegistry.upsert = async (record) => {
+    saved = record as PersistedWorkspaceRecord;
+  };
+  await session.handleMessage({
+    type: "workspace.create.request",
+    requestId: "forged-creator",
+    callerAgentId: "claimed-lead",
+    source: { kind: "directory", path: REPO_CWD },
+  });
+  expect(findByType(emitted, "workspace.create.response")?.payload.error).toBeNull();
+  expect(saved?.parentWorkspaceId).toBe("ws-repo-running");
+  expect(saved?.creatorAgent).toBeUndefined();
+});
+
+test("archived workspace projection retains exact creator and session count after folder cleanup", async () => {
+  const archived = createPersistedWorkspaceRecord({
+    workspaceId: "archived-task",
+    parentWorkspaceId: "ws-repo-running",
+    creatorAgent: { serverId: "host", agentId: "lead-segment" },
+    projectId: "proj-repo-running",
+    cwd: "/removed/owned-task",
+    kind: "worktree",
+    displayName: "Retained task",
+    archivedAt: "2026-03-02T00:00:00Z",
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-02T00:00:00Z",
+  });
+  const stored = {
+    id: "archived-child",
+    workspaceId: archived.workspaceId,
+    createdAt: "2026-03-01T00:00:00Z",
+    archivedAt: "2026-03-02T00:00:00Z",
+    labels: { "paseo.parent-agent-id": "lead-segment", "paseo.parent-server-id": "host" },
+  };
+  const read = vi.fn(async () => [stored]);
+  const session = createSessionForWorkspaceTests({
+    serverId: "host",
+    agentStorage: { listByWorkspaces: read },
+  });
+  const parent = (await session.workspaceRegistry.listAll())[0] as PersistedWorkspaceRecord;
+  session.workspaceRegistry.listAll = async () => [parent, archived];
+  expect(await session.describeWorkspaceRecord(parent)).toMatchObject({
+    archivedSubSessions: [
+      {
+        workspaceId: "archived-task",
+        creatorAgent: archived.creatorAgent,
+        sessionCount: 1,
+        agentId: stored.id,
+      },
+    ],
+  });
+  expect(read).toHaveBeenCalledWith([archived.workspaceId], { includeArchived: true });
 });

@@ -6,6 +6,7 @@ import {
   SessionOutboundMessageSchema,
   WorkspaceCreateRequestSchema,
   WorkspaceDescriptorPayloadSchema,
+  ArchivedSubSessionPayloadSchema,
   WorkspaceScriptPayloadSchema,
 } from "./messages.js";
 
@@ -648,6 +649,22 @@ describe("workspace message schemas", () => {
       activityAt: null,
     };
     expect(WorkspaceDescriptorPayloadSchema.parse(workspace).parentWorkspaceId).toBe("parent");
+    const creatorAgent = { serverId: "host", agentId: "lead-segment" };
+    expect(
+      WorkspaceDescriptorPayloadSchema.parse({ ...workspace, creatorAgent, sessionCount: 1 }),
+    ).toMatchObject({ creatorAgent, sessionCount: 1 });
+    expect(WorkspaceDescriptorPayloadSchema.parse(workspace).sessionCount).toBeUndefined();
+    const archived = {
+      workspaceId: "child",
+      name: "Task",
+      archivedAt: "2026-11-14T00:00:00Z",
+      agentId: "worker",
+    };
+    expect(
+      ArchivedSubSessionPayloadSchema.parse({ ...archived, creatorAgent, sessionCount: 1 }),
+    ).toMatchObject({ creatorAgent, sessionCount: 1 });
+    expect(ArchivedSubSessionPayloadSchema.parse(archived).creatorAgent).toBeUndefined();
+
     expect(
       WorkspaceDescriptorPayloadSchema.parse({ ...workspace, parentWorkspaceId: undefined })
         .parentWorkspaceId,

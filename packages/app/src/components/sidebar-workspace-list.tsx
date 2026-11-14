@@ -102,7 +102,7 @@ import {
 import { useLongPressDragInteraction } from "@/components/sidebar/use-long-press-drag-interaction";
 import { SidebarSectionHeader } from "@/components/sidebar/sidebar-section-header";
 import { SidebarGroupToggleRow } from "@/components/sidebar/sidebar-group-toggle-row";
-import { SidebarSubSessionGroup } from "@/components/sidebar/sidebar-sub-session-group";
+import { SidebarRoomWorkProvider } from "@/components/sidebar/sidebar-room-work-context";
 import { useSidebarSubSessionChildren } from "@/components/sidebar/sidebar-sub-sessions-context";
 import { createWorkspaceVisibilityPolicy } from "@/components/sidebar/sidebar-group-visibility";
 import { useLimitedSidebarGroup } from "@/components/sidebar/use-limited-sidebar-group";
@@ -1779,18 +1779,15 @@ function ProjectBlock({
       const archivedSubSessions = parentEntry?.archivedSubSessions;
       if (!nestedSubSessions && !archivedSubSessions?.length) return renderRow(item, false, input);
       return (
-        <View key={item.workspaceKey}>
+        <SidebarRoomWorkProvider
+          key={item.workspaceKey}
+          parentKey={item.workspaceKey}
+          subSessions={nestedSubSessions ?? EMPTY_SUB_SESSIONS}
+          workspaceEntriesByKey={workspaceEntriesByKey}
+          renderRow={renderRow}
+        >
           {renderRow(item, false, input)}
-          <SidebarSubSessionGroup
-            serverId={item.serverId}
-            parentKey={item.workspaceKey}
-            parentName={parentEntry?.name ?? item.name}
-            subSessions={nestedSubSessions ?? EMPTY_SUB_SESSIONS}
-            archivedSubSessions={archivedSubSessions}
-            workspaceEntriesByKey={workspaceEntriesByKey}
-            renderRow={renderRow}
-          />
-        </View>
+        </SidebarRoomWorkProvider>
       );
     },
     [renderRow, subSessionChildren, workspaceEntriesByKey],

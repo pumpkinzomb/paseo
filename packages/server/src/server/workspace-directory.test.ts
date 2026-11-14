@@ -1,3 +1,4 @@
+import { workspaceAgentProvenance } from "./workspace-agent-provenance.js";
 import { buildStoredAgentPayload } from "./agent/agent-projections.js";
 import type { ManagedAgent } from "./agent/agent-manager.js";
 import { Session as InspectorSession } from "node:inspector/promises";
@@ -1073,3 +1074,70 @@ test("scoped descriptor builds allocate independently of archived history", asyn
     await rm(home, { recursive: true, force: true });
   }
 }, 30000);
+
+describe("workspace agent provenance", () => {
+  const creator = { serverId: "host", agentId: "lead-continuation" };
+  const parented = (id: string, parent = creator) => ({
+    id,
+    labels: { "paseo.parent-server-id": parent.serverId, "paseo.parent-agent-id": parent.agentId },
+  });
+  test("retains exact archived session evidence after the folder was removed", () => {
+    const archived = { ...parented("worker"), archivedAt: NOW };
+    expect(workspaceAgentProvenance("host", undefined, [archived])).toEqual({
+      creatorAgent: creator,
+      sessionCount: 1,
+    });
+    expect(workspaceAgentProvenance("host", creator, [])).toEqual({
+      creatorAgent: creator,
+      sessionCount: 0,
+    });
+  });
+  test("never promotes empty sources or missing evidence to a completed session", () => {
+    expect(workspaceAgentProvenance("host", undefined, [])).toEqual({ sessionCount: 0 });
+    expect(workspaceAgentProvenance("host", undefined, [{ id: "unparented" }])).toEqual({
+      sessionCount: 1,
+    });
+    expect(workspaceAgentProvenance("host", undefined, [{ id: "helper", internal: true }])).toEqual(
+      { sessionCount: 0 },
+    );
+  });
+  test("ignores local child chains but refuses external ambiguity and self cycles", () => {
+    expect(
+      workspaceAgentProvenance("host", undefined, [
+        parented("worker"),
+        parented("nested", { serverId: "host", agentId: "worker" }),
+      ]),
+    ).toEqual({ creatorAgent: creator, sessionCount: 2 });
+    expect(
+      workspaceAgentProvenance("host", undefined, [
+        parented("worker"),
+        parented("other", { serverId: "host", agentId: "other-lead" }),
+      ]),
+    ).toEqual({ sessionCount: 2 });
+    expect(
+      workspaceAgentProvenance("host", undefined, [
+        parented("worker", { serverId: "host", agentId: "worker" }),
+      ]),
+    ).toEqual({ sessionCount: 1 });
+  });
+  test("does not change stored creator when mutable parent evidence conflicts", () => {
+    const stored = { ...creator };
+    expect(
+      workspaceAgentProvenance("host", stored, [
+        parented("worker", { serverId: "host", agentId: "other-lead" }),
+      ]),
+    ).toEqual({ sessionCount: 1 });
+    expect(stored).toEqual(creator);
+    expect(
+      workspaceAgentProvenance("host", creator, [
+        parented("worker"),
+        parented("cycle", { serverId: "host", agentId: "cycle" }),
+      ]),
+    ).toEqual({ sessionCount: 2 });
+    expect(
+      workspaceAgentProvenance("host", undefined, [
+        parented("worker", { serverId: "foreign", agentId: creator.agentId }),
+      ]),
+    ).toEqual({ sessionCount: 1 });
+  });
+});

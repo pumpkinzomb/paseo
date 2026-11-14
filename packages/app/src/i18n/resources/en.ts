@@ -1690,6 +1690,9 @@ export const en = {
         pending: "Pending: {{count}}",
       },
       subSessions: {
+        unassigned: "Room workspaces · unassigned",
+        workspaceHistory: "Workspace history ({{count}})",
+        delegatedCount: "Delegated work: {{count}}",
         group: "Sub-sessions of {{name}}",
         done: "Done ({{count}})",
         archivedAgent: "Archived",

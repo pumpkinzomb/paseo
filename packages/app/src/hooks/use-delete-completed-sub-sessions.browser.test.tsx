@@ -61,12 +61,19 @@ beforeEach(() => {
   mocks.refresh.mockResolvedValue(undefined);
 });
 afterEach(cleanup);
-function Harness({ workspaceId = "workspace" }: { workspaceId?: string }) {
+function Harness({
+  workspaceId = "workspace",
+  strict = false,
+}: {
+  workspaceId?: string;
+  strict?: boolean;
+}) {
   const { remove, pending } = useDeleteCompletedSubSessions(
     "host",
     workspaceId,
     ["child-a", "child-b", "child-a"],
     mocks.close,
+    { restrictToTargets: strict, ownerKey: strict ? "lead-a" : undefined },
   );
   return (
     <button type="button" disabled={!remove || pending} onClick={remove}>
@@ -122,4 +129,21 @@ it("stops on uncertain deletion, does not retry or continue", async () => {
   expect(mocks.remove).toHaveBeenCalledTimes(1);
   expect(mocks.close).not.toHaveBeenCalled();
   expect(mocks.toast.error.mock.calls[0][0]).toContain("uncertain");
+});
+
+it("refuses a lead batch if any preview reaches a sibling or unassigned workspace", async () => {
+  mocks.preview.mockResolvedValue({
+    agentIds: ["a", "b"],
+    workspaceIds: ["child-a", "foreign-lead-work"],
+    error: null,
+  });
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <Harness strict />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole("button"));
+  await waitFor(() => expect(mocks.toast.error).toHaveBeenCalled());
+  expect(mocks.confirm).not.toHaveBeenCalled();
+  expect(mocks.remove).not.toHaveBeenCalled();
 });

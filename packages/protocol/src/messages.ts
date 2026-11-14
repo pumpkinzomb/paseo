@@ -4690,7 +4690,14 @@ export const WorkspaceGitHubRuntimePayloadSchema = z
   .optional()
   .nullable();
 
+const workspaceAgentProvenanceFields = {
+  creatorAgent: z.object({ serverId: z.string(), agentId: z.string() }).optional(),
+  // Complete durable visible-agent inventory, including archived records. Missing means unknown.
+  sessionCount: z.number().int().nonnegative().optional(),
+};
+
 export const ArchivedSubSessionPayloadSchema = z.object({
+  ...workspaceAgentProvenanceFields,
   workspaceId: z.string(),
   name: z.string(),
   archivedAt: z.string(),
@@ -4700,6 +4707,7 @@ export const ArchivedSubSessionPayloadSchema = z.object({
 
 export const WorkspaceDescriptorPayloadSchema = z
   .object({
+    ...workspaceAgentProvenanceFields,
     // Creation ancestry. Clients nest sub-sessions under this parent; placement and lifecycle
     // stay independent of it.
     parentWorkspaceId: z.string().optional(),

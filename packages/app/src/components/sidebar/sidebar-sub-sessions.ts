@@ -114,8 +114,49 @@ export function groupSubSessionsByActivity(input: {
   const done: SidebarWorkspacePlacement[] = [];
   for (const child of input.children) {
     const entry = input.workspaceEntriesByKey.get(child.workspaceKey);
-    if (entry?.statusBucket === "done") done.push(child);
+    if (entry?.statusBucket === "done" && (entry.sessionCount ?? 0) > 0) done.push(child);
     else active.push(child);
   }
   return { active, done };
+}
+
+/** A room has many independent leads. Only recorded same-host creator evidence can
+ * place a workspace under one; no-agent/unknown inventory never establishes completion.
+ */
+export function partitionRoomWork<
+  T extends { creatorAgent?: { serverId: string; agentId: string } },
+>(
+  serverId: string,
+  conversations: readonly { logicalId: string; segments: readonly { agentId: string }[] }[],
+  items: readonly T[],
+): { byLead: Map<string, T[]>; unassigned: T[] } {
+  const owners = new Map<string, string | null>();
+  for (const conversation of conversations) {
+    for (const segment of conversation.segments) {
+      const previous = owners.get(segment.agentId);
+      owners.set(
+        segment.agentId,
+        owners.has(segment.agentId) && previous !== conversation.logicalId
+          ? null
+          : conversation.logicalId,
+      );
+    }
+  }
+  const byLead = new Map<string, T[]>();
+  const unassigned: T[] = [];
+  for (const item of items) {
+    const creator = item.creatorAgent;
+    const owner = creator?.serverId === serverId ? owners.get(creator.agentId) : null;
+    if (!owner) unassigned.push(item);
+    else {
+      const siblings = byLead.get(owner) ?? [];
+      siblings.push(item);
+      byLead.set(owner, siblings);
+    }
+  }
+  return { byLead, unassigned };
+}
+
+export function leadCollapseKey(serverId: string, workspaceId: string, logicalId: string) {
+  return JSON.stringify(["room-lead", serverId, workspaceId, logicalId]);
 }

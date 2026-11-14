@@ -1,3 +1,4 @@
+import { leadCollapseKey } from "@/components/sidebar/sidebar-sub-sessions";
 import { describe, expect, it } from "vitest";
 import {
   type CollapsedProjectsState,
@@ -71,4 +72,19 @@ describe("sidebar collapsed projects transitions", () => {
       currentState,
     );
   });
+});
+
+it("persists lead collapse by host, room and logical conversation across segment changes", () => {
+  const key = leadCollapseKey("host", "room", "logical-a");
+  const state = toggleWorkspaceGroupCollapsed(emptyState(), key);
+  const restored = mergePersistedCollapsedProjects(serializeCollapsedProjects(state), emptyState());
+  expect(
+    restored.collapsedWorkspaceGroupKeys.has(leadCollapseKey("host", "room", "logical-a")),
+  ).toBe(true);
+  for (const other of [
+    leadCollapseKey("foreign", "room", "logical-a"),
+    leadCollapseKey("host", "other-room", "logical-a"),
+    leadCollapseKey("host", "room", "logical-b"),
+  ])
+    expect(restored.collapsedWorkspaceGroupKeys.has(other)).toBe(false);
 });

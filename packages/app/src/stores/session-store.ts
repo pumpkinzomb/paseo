@@ -115,6 +115,8 @@ export interface Agent {
 
 export interface WorkspaceDescriptor {
   parentWorkspaceId?: string;
+  creatorAgent?: WorkspaceDescriptorPayload["creatorAgent"];
+  sessionCount?: number;
   archivedSubSessions?: ArchivedSubSessionPayload[];
   createdAt: Date | null;
   lastUserMessageAt: Date | null;
@@ -174,6 +176,8 @@ export function normalizeWorkspaceDescriptor(
     workspaceKind: payload.workspaceKind,
     background: payload.background ?? false,
     parentWorkspaceId: payload.parentWorkspaceId,
+    creatorAgent: payload.creatorAgent,
+    sessionCount: payload.sessionCount,
     ...(payload.archivedSubSessions?.length
       ? { archivedSubSessions: payload.archivedSubSessions }
       : {}),

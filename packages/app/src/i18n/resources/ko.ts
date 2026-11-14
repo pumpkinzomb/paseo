@@ -1689,6 +1689,9 @@ export const ko: TranslationResources = {
         pending: "대기 중: {{count}}개",
       },
       subSessions: {
+        unassigned: "방 작업공간 · 미지정",
+        workspaceHistory: "작업공간 기록 ({{count}})",
+        delegatedCount: "위임된 작업: {{count}}",
         group: "{{name}}의 하위 세션",
         done: "완료 ({{count}})",
         archivedAgent: "보관됨",

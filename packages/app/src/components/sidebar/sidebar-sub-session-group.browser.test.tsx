@@ -1,3 +1,14 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { page } from "@vitest/browser/context";
+import { render, cleanup, waitFor } from "@testing-library/react";
+import { SidebarRoomLeads } from "./sidebar-room-leads";
+import { SidebarRoomWorkProvider } from "./sidebar-room-work-context";
+import { useSessionStore } from "@/stores/session-store";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { agent as baseAgent } from "@/plugins/client-state/fixtures";
+import type { AssistantConversation } from "@getpaseo/protocol/messages";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +25,35 @@ const actions = vi.hoisted(() => ({
   scopes: vi.fn(),
   bulk: vi.fn(),
   bulkScopes: vi.fn(),
+  getConversation: vi.fn(),
+  listeners: new Set<(event: unknown) => void>(),
+}));
+const leadClient = {
+  getDefaultAssistantConversation: actions.getConversation,
+  on: (_type: string, listener: (event: unknown) => void) => {
+    actions.listeners.add(listener);
+    return () => actions.listeners.delete(listener);
+  },
+};
+vi.mock("@/runtime/host-runtime", () => ({
+  useHostRuntimeClient: () => leadClient,
+  useHostRuntimeIsConnected: () => true,
+  getHostRuntimeStore: () => ({}),
+}));
+vi.mock("@/runtime/host-features", () => ({ useHostFeature: () => true }));
+vi.mock("@/components/provider-icons", () => ({ useProviderIcon: () => () => null }));
+vi.mock("@/plugins/workspace-panels/locations", () => ({
+  panelTargetSupportsHostForWorkspaceKey: () => true,
+}));
+vi.mock("@/utils/navigate-to-agent", () => ({
+  navigateToAgent: (input: { serverId: string; workspaceId: string; agentId: string }) => {
+    actions.navigate(input);
+    useWorkspaceLayoutStore.getState().openTab({
+      workspaceKey: `${input.serverId}:${input.workspaceId}`,
+      target: { kind: "agent", agentId: input.agentId },
+      intent: "reveal",
+    });
+  },
 }));
 vi.mock("@/hooks/use-delete-workspace-sessions", () => ({
   useDeleteWorkspaceSessions: (serverId: string, workspaceId: string) => {
@@ -23,6 +63,7 @@ vi.mock("@/hooks/use-delete-workspace-sessions", () => ({
 }));
 vi.mock("@/stores/navigation-active-workspace-store", () => ({
   navigateToWorkspace: actions.navigate,
+  useActiveWorkspaceSelection: () => ({ serverId: "host", workspaceId: "parent" }),
 }));
 vi.mock("expo-router", () => ({
   usePathname: () => "/h/host/workspace/parent",
@@ -42,6 +83,7 @@ vi.mock("@/components/sidebar/sidebar-workspace-row-content", () => ({
 // App sources compile against the classic JSX runtime, which expects React on the global.
 beforeEach(() => {
   vi.stubGlobal("React", React);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   actions.remove.mockClear();
   actions.navigate.mockClear();
   actions.scopes.mockClear();
@@ -52,6 +94,7 @@ beforeEach(() => {
 const mounted: Array<{ root: Root; container: HTMLDivElement }> = [];
 
 afterEach(async () => {
+  cleanup();
   for (const mount of mounted.splice(0)) {
     act(() => mount.root.unmount());
     mount.container.remove();
@@ -78,6 +121,7 @@ function entry(
     parentWorkspaceId: "parent",
     currentBranch: workspaceId,
     statusBucket,
+    sessionCount: 1,
     statusEnteredAt: null,
     archivingAt: null,
     diffStat: null,
@@ -182,7 +226,7 @@ describe("SidebarSubSessionGroup", () => {
     expect(container.querySelector('[data-testid="row-finished-worker"]')).toBeNull();
   });
 
-  it("keeps a parent's cleaned-up sub-sessions under Done when none are live", async () => {
+  it("keeps empty preparation history separate from completed sessions", async () => {
     const container = await mountGroup(
       "en",
       [],
@@ -196,14 +240,20 @@ describe("SidebarSubSessionGroup", () => {
       ],
     );
     const toggle = container.querySelector<HTMLElement>(
-      '[data-testid="sidebar-sub-sessions-done-toggle-host:parent"]',
+      '[data-testid="sidebar-workspace-history-toggle-host:parent"]',
     );
-    expect(toggle?.textContent).toBe("Done (1)");
+    expect(toggle?.textContent).toBe("Workspace history (1)");
+    expect(
+      container.querySelector('[data-testid="sidebar-sub-sessions-done-toggle-host:parent"]'),
+    ).toBeNull();
 
     act(() => toggle?.click());
     expect(
       container.querySelector('[data-testid="sidebar-archived-sub-session-host:agentless"]'),
     ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="sidebar-archived-sub-session-delete-host:agentless"]'),
+    ).toBeNull();
   });
 
   it("opens a cleaned-up childs history without navigating to its missing workspace", async () => {
@@ -315,5 +365,258 @@ describe("SidebarSubSessionGroup", () => {
     expect(
       container.querySelector('[data-testid="sidebar-sub-sessions-done-toggle-host:parent"]'),
     ).toBeNull();
+  });
+});
+
+function conversation(logicalId: string, ids: string[]): AssistantConversation {
+  return {
+    logicalId,
+    activeAgentId: ids.at(-1)!,
+    activeWorkspaceId: "parent",
+    segments: ids.map((agentId) => ({
+      agentId,
+      workspaceId: "parent",
+      provider: "codex",
+      model: null,
+      createdAt: "2026-11-14T00:00:00Z",
+    })),
+  };
+}
+const leadA = conversation("logical-a", ["lead-a", "a-continuation"]);
+const leadB = conversation("logical-b", ["lead-b"]);
+async function mountLeads(width = 320, runningChild = false, secondWork = false) {
+  await testI18n.changeLanguage("en");
+  useSessionStore.setState({ sessions: {}, agentLastActivity: new Map() });
+  const store = useSessionStore.getState();
+  store.initializeSession("host", null);
+  const agents = ["lead-a", "a-continuation", "lead-b"].map((id) =>
+    Object.assign({}, baseAgent, {
+      id,
+      serverId: "host",
+      workspaceId: "parent",
+      title: id === "lead-b" ? "Second lead" : "First lead",
+      labels: { "paseo.role": "assistant" },
+      status: "idle" as const,
+      requiresAttention: false,
+      attentionReason: null,
+      pendingPermissions: [],
+      turn: { phase: "idle" as const, cancellationRequestId: null },
+    }),
+  );
+  store.setAgents("host", new Map(agents.map((agent) => [agent.id, agent])));
+  if (runningChild)
+    store.setAgents(
+      "host",
+      (previous) =>
+        new Map([
+          ...previous,
+          [
+            "shared-child",
+            {
+              ...baseAgent,
+              id: "shared-child",
+              serverId: "host",
+              workspaceId: "room-source",
+              status: "running",
+              requiresAttention: false,
+              attentionReason: null,
+              pendingPermissions: [],
+              labels: { "paseo.parent-agent-id": "lead-a", "paseo.parent-server-id": "host" },
+            },
+          ],
+        ]),
+    );
+  useWorkspaceLayoutStore.setState(useWorkspaceLayoutStore.getInitialState(), true);
+  useSidebarCollapsedSectionsStore.setState({ collapsedWorkspaceGroupKeys: new Set() });
+  actions.getConversation.mockClear();
+  actions.getConversation.mockImplementation(async ({ agentId }: { agentId: string }) => ({
+    conversation: agentId === "lead-b" ? leadB : leadA,
+    error: null,
+  }));
+  const records = [
+    entry("owned-1", runningChild ? "running" : "done"),
+    entry("owned-2", "done"),
+    { ...entry("room-source", "done"), sessionCount: runningChild ? undefined : 0 },
+  ].map((record, index) =>
+    index < 2
+      ? Object.assign(record, { creatorAgent: { serverId: "host", agentId: "a-continuation" } })
+      : record,
+  );
+  if (secondWork)
+    records.push({
+      ...entry("owned-b", "done"),
+      creatorAgent: { serverId: "host", agentId: "lead-b" },
+    });
+  const container = document.createElement("div");
+  container.style.width = `${width}px`;
+  document.body.appendChild(container);
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const archive: NonNullable<SidebarWorkspaceEntry["archivedSubSessions"]> = [
+    {
+      workspaceId: "empty-preparation",
+      name: "Empty preparation",
+      archivedAt: "2026-11-14T00:00:00Z",
+      agentId: null,
+      sessionCount: 0,
+    },
+  ];
+  if (secondWork)
+    archive.push({
+      workspaceId: "unknown-history",
+      name: "Unassigned task",
+      archivedAt: "2026-11-14T00:00:00Z",
+      agentId: "unknown-agent",
+      sessionCount: 1,
+    });
+  const draw = () => (
+    <QueryClientProvider client={queryClient}>
+      <SidebarRoomWorkProvider
+        parentKey="host:parent"
+        subSessions={records.map(placement)}
+        workspaceEntriesByKey={new Map(records.map((item) => [item.workspaceKey, item]))}
+        renderRow={renderTestRow}
+      >
+        <SidebarRoomLeads
+          serverId="host"
+          workspaceId="parent"
+          parentName="Room"
+          archivedSubSessions={archive}
+        />
+      </SidebarRoomWorkProvider>
+    </QueryClientProvider>
+  );
+  render(draw(), { container });
+  await waitFor(() =>
+    expect(container.querySelector('[data-testid="sidebar-lead-host:lead-a"]')).not.toBeNull(),
+  );
+  return { container, queryClient };
+}
+function testElement(container: HTMLElement, id: string) {
+  const element = container.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+  if (!element) throw new Error(`Missing ${id}`);
+  return element;
+}
+function patchLead(id: string, fields: Partial<typeof baseAgent>) {
+  const next = new Map(useSessionStore.getState().sessions.host!.agents);
+  next.set(id, { ...next.get(id)!, ...fields });
+  act(() => useSessionStore.getState().setAgents("host", next));
+}
+function removeActiveSegment() {
+  const next = new Map(useSessionStore.getState().sessions.host!.agents);
+  next.delete("a-continuation");
+  act(() => useSessionStore.getState().setAgents("host", next));
+}
+describe("logical lead task hierarchy", () => {
+  it.each([220, 300, 320])(
+    "keeps owned Done2 under one lead at %ipx; source and empty workspace history stay room-scoped",
+    async (width) => {
+      const { container } = await mountLeads(width);
+      expect(actions.getConversation).toHaveBeenCalledTimes(2);
+      const doneId = "sidebar-sub-sessions-done-toggle-host:parent:lead:logical-a";
+      expect(testElement(container, doneId).textContent).toBe("Done (2)");
+      expect(
+        container.querySelector(
+          '[data-testid="sidebar-sub-sessions-done-toggle-host:parent:lead:logical-b"]',
+        ),
+      ).toBeNull();
+      expect(testElement(container, "row-room-source")).toBeTruthy();
+      expect(
+        testElement(container, "sidebar-workspace-history-toggle-host:parent").textContent,
+      ).toContain("1");
+      if (width === 320) await page.screenshot({ element: container });
+      act(() => testElement(container, doneId).click());
+      expect(testElement(container, "row-owned-1")).toBeTruthy();
+      expect(testElement(container, "row-owned-2")).toBeTruthy();
+      expect(actions.bulkScopes).toHaveBeenCalledWith("host", "parent", ["owned-1", "owned-2"]);
+      if (width === 320) await page.screenshot({ element: container });
+      const beforeNav = actions.navigate.mock.calls.length;
+      act(() => testElement(container, "sidebar-lead-toggle-host:lead-a").click());
+      expect(actions.navigate.mock.calls.length).toBe(beforeNav);
+      expect(container.querySelector('[data-testid="row-owned-1"]')).toBeNull();
+      expect(
+        testElement(container, "sidebar-lead-toggle-host:lead-a").getAttribute("aria-expanded"),
+      ).toBe("false");
+      act(() => testElement(container, "sidebar-lead-host:lead-a").click());
+      expect(actions.navigate).toHaveBeenCalledWith(
+        expect.objectContaining({ agentId: "lead-a", workspaceId: "parent" }),
+      );
+      expect(testElement(container, "sidebar-lead-host:lead-a").getAttribute("aria-selected")).toBe(
+        "true",
+      );
+      const persisted = await AsyncStorage.getItem("sidebar-collapsed-sections");
+      expect(persisted).not.toBeNull();
+      await act(async () => {
+        await useSidebarCollapsedSectionsStore.setState({ collapsedWorkspaceGroupKeys: new Set() });
+      });
+      await AsyncStorage.setItem("sidebar-collapsed-sections", persisted!);
+      await act(async () => {
+        await useSidebarCollapsedSectionsStore.persist.rehydrate();
+      });
+      expect(
+        testElement(container, "sidebar-lead-toggle-host:lead-a").getAttribute("aria-expanded"),
+      ).toBe("false");
+      expect(
+        testElement(container, "sidebar-lead-toggle-host:lead-b").getAttribute("aria-expanded"),
+      ).toBe("true");
+      for (const id of ["sidebar-lead-host:lead-a", "sidebar-lead-host:lead-b"]) {
+        const bounds = testElement(container, id).getBoundingClientRect();
+        expect(bounds.right).toBeLessThanOrEqual(container.getBoundingClientRect().right + 1);
+      }
+      await page.screenshot({ element: container });
+    },
+  );
+  it("keeps each lead's Done toggle and deletion target list independent", async () => {
+    const { container } = await mountLeads(320, false, true);
+    expect(
+      testElement(container, "sidebar-sub-sessions-done-toggle-host:parent:lead:logical-a")
+        .textContent,
+    ).toBe("Done (2)");
+    expect(
+      testElement(container, "sidebar-sub-sessions-done-toggle-host:parent:lead:logical-b")
+        .textContent,
+    ).toBe("Done (1)");
+    act(() =>
+      testElement(container, "sidebar-sub-sessions-done-toggle-host:parent:lead:logical-b").click(),
+    );
+    expect(testElement(container, "row-owned-b")).toBeTruthy();
+    expect(container.querySelector('[data-testid="row-owned-1"]')).toBeNull();
+    expect(actions.bulkScopes).toHaveBeenCalledWith("host", "parent", ["owned-b"]);
+    expect(testElement(container, "sidebar-sub-sessions-done-toggle-host:parent").textContent).toBe(
+      "Done (1)",
+    );
+    expect(
+      container.querySelector('[data-testid="sidebar-sub-sessions-delete-done-host:parent"]'),
+    ).toBeNull();
+  });
+  it("shows active provider state separately from delegated work, even when collapsed", async () => {
+    const { container } = await mountLeads(300, true);
+    expect(testElement(container, "sidebar-lead-status-lead-a:done")).toBeTruthy();
+    expect(testElement(container, "sidebar-lead-work-status-lead-a:running")).toBeTruthy();
+    expect(testElement(container, "sidebar-lead-work-host:shared-child").textContent).toBe(
+      baseAgent.title,
+    );
+    expect(testElement(container, "row-room-source")).not.toBeNull();
+    expect(testElement(container, "sidebar-lead-status-lead-b:done")).toBeTruthy();
+    act(() => testElement(container, "sidebar-lead-toggle-host:lead-a").click());
+    patchLead("a-continuation", {
+      status: "running",
+      turn: { phase: "open", turnId: "turn", startedAt: new Date(), cancellationRequestId: null },
+    });
+    expect(testElement(container, "sidebar-lead-status-lead-a:running")).toBeTruthy();
+    expect(testElement(container, "sidebar-lead-status-lead-b:done")).toBeTruthy();
+    await page.screenshot({ element: container });
+    patchLead("a-continuation", {
+      status: "idle",
+      turn: { phase: "idle", cancellationRequestId: null },
+      requiresAttention: true,
+      attentionReason: "finished",
+    });
+    expect(testElement(container, "sidebar-lead-status-lead-a:attention")).toBeTruthy();
+    patchLead("lead-a", { status: "running" });
+    expect(testElement(container, "sidebar-lead-status-lead-a:attention")).toBeTruthy();
+    removeActiveSegment();
+    await waitFor(() =>
+      expect(testElement(container, "sidebar-lead-status-lead-a:loading")).toBeTruthy(),
+    );
   });
 });

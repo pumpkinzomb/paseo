@@ -1394,6 +1394,9 @@ export const fr: TranslationResources = {
         pending: "En attente : {{count}}",
       },
       subSessions: {
+        unassigned: "Espaces de la salle · non attribués",
+        workspaceHistory: "Historique des espaces ({{count}})",
+        delegatedCount: "Travaux délégués : {{count}}",
         group: "Sous-sessions de {{name}}",
         done: "Terminées ({{count}})",
         archivedAgent: "Archivé",

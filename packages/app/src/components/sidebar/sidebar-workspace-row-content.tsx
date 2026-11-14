@@ -89,7 +89,12 @@ export function SidebarWorkspaceRowFrame({
           hoverHandlers,
         })}
       </WorkspaceHoverCard>
-      <SidebarRoomLeads serverId={workspace.serverId} workspaceId={workspace.workspaceId} />
+      <SidebarRoomLeads
+        serverId={workspace.serverId}
+        workspaceId={workspace.workspaceId}
+        parentName={workspace.name}
+        archivedSubSessions={workspace.archivedSubSessions}
+      />
     </>
   );
 }

@@ -48,6 +48,8 @@ export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
   labels?: string[];
   // The workspace whose agent created this one. Sub-sessions nest under it in the sidebar.
   parentWorkspaceId?: string | null;
+  creatorAgent?: WorkspaceDescriptor["creatorAgent"];
+  sessionCount?: number;
   // Cleaned-up sub-sessions this workspace's agents created, kept for review under "Done".
   archivedSubSessions?: WorkspaceDescriptor["archivedSubSessions"];
   // Checkout branch (null when not a git checkout or detached HEAD).
@@ -171,6 +173,8 @@ export function createSidebarWorkspaceEntry(input: {
     title: input.workspace.title ?? null,
     pinnedAt: input.workspace.pinnedAt,
     parentWorkspaceId: input.workspace.parentWorkspaceId ?? null,
+    creatorAgent: input.workspace.creatorAgent,
+    sessionCount: input.workspace.sessionCount,
     archivedSubSessions: input.workspace.archivedSubSessions,
     labels: input.workspace.labels ?? EMPTY_WORKSPACE_LABELS,
     currentBranch: normalizeCurrentBranch(input.workspace.gitRuntime?.currentBranch),

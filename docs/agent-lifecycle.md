@@ -496,10 +496,21 @@ draft is only client layout. Closing a lead tab leaves it available in the sideb
 including after reload. Archive and Delete are separate logical-conversation lifecycle actions;
 see [Tabs vs archive](#tabs-vs-archive).
 
-Under each lead, the sidebar links direct, same-host delegated agents whose parent-address labels
-match any of its native segments. Workspace paths and names do not establish ownership. Existing
-room-scoped workspace/history groups remain visible when creator evidence is missing or archived;
-remote-host and archived-per-lead attribution are not inferred.
+Each lead has its own collapsible delegated-work tree and Done group. The collapse preference is
+scoped to host, room and logical conversation, so changing provider or reopening a tab keeps it.
+The lead's status follows its current provider segment; the separate work count summarizes only
+its delegated tasks, including while collapsed. An idle lead with running children remains idle.
+
+Workspace creation through an authenticated agent tool retains its creator address through archive
+and folder cleanup. Legacy records can use unambiguous parent-address evidence from their exact
+stored agents, matching any provider segment of the lead. Conflicting evidence stays unassigned;
+it never changes a stored creator. Paths, names and the selected tab cannot establish ownership.
+
+Room workspaces without proven ownership remain room-scoped. Complete server inventory distinguishes
+an empty workspace or retained source from a completed session; missing inventory means unknown.
+Empty archived preparation workspaces remain workspace history and do not enter Done counts or
+session bulk deletion. A lead's completed-work action refuses previews that reach another lead or
+an unassigned workspace. Source links in Files remain independent of these presentation groups.
 
 Navigation consolidates native segment tabs in client layout only. It does not archive or delete agents. Legacy segments in other workspaces are not moved or hidden automatically. A second client can refresh the logical record after assistant events/focus; there is no cross-application native-session ownership lock.
 

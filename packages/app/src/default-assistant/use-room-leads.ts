@@ -27,8 +27,8 @@ export function useRoomLeads(serverId: string, workspaceId: string) {
   const query = useFetchQuery({
     queryKey: ["roomLeads", serverId, workspaceId, ids],
     queryFn: () =>
-      resolveRoomLeads(workspaceId, ids, (agentId) =>
-        queryClient.fetchQuery({
+      resolveRoomLeads(workspaceId, ids, async (agentId) => {
+        const conversation = await queryClient.fetchQuery({
           queryKey: [ASSISTANT_CONVERSATION_QUERY_ROOT, serverId, agentId],
           queryFn: async () => {
             if (!client) throw new Error("Assistant host unavailable");
@@ -39,8 +39,15 @@ export function useRoomLeads(serverId: string, workspaceId: string) {
             return result.conversation;
           },
           staleTime: 0,
-        }),
-      ),
+        });
+        for (const segment of conversation.segments) {
+          queryClient.setQueryData(
+            [ASSISTANT_CONVERSATION_QUERY_ROOT, serverId, segment.agentId],
+            conversation,
+          );
+        }
+        return conversation;
+      }),
     enabled,
     dataShape: "value",
     staleTimeMs: 1_000,

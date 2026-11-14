@@ -120,6 +120,7 @@ beforeEach(async () => {
   await workspaceRegistry.initialize();
   await projectRegistry.initialize();
   provisioning = createWorkspaceProvisioningService({
+    serverId: "host",
     workspaceRegistry,
     projectRegistry,
     workspaceGitService: gitService(),
@@ -212,6 +213,7 @@ test("workspace parentage survives reload and parent archive without changing pl
   const parent = await provisioning.createWorkspaceForDirectory(cwd);
   const child = await provisioning.createWorkspaceForDirectory(cwd, null, undefined, {
     callerWorkspaceId: parent.workspaceId,
+    callerAgentId: "authenticated-caller",
     background: false,
   });
   const grandchild = await provisioning.createWorkspaceForDirectory(
@@ -223,7 +225,11 @@ test("workspace parentage survives reload and parent archive without changing pl
     },
   );
   expect(parent.parentWorkspaceId).toBeUndefined();
-  expect(child).toMatchObject({ parentWorkspaceId: parent.workspaceId, cwd });
+  expect(child).toMatchObject({
+    parentWorkspaceId: parent.workspaceId,
+    cwd,
+    creatorAgent: { serverId: "host", agentId: "authenticated-caller" },
+  });
   expect(grandchild).toMatchObject({ parentWorkspaceId: child.workspaceId });
   await workspaceRegistry.archive(parent.workspaceId, ARCHIVED_AT);
   const reloaded = new FileBackedWorkspaceRegistry(
@@ -233,6 +239,7 @@ test("workspace parentage survives reload and parent archive without changing pl
   await reloaded.initialize();
   expect(await reloaded.get(child.workspaceId)).toMatchObject({
     parentWorkspaceId: parent.workspaceId,
+    creatorAgent: { serverId: "host", agentId: "authenticated-caller" },
     archivedAt: null,
   });
   expect(await reloaded.get(grandchild.workspaceId)).toMatchObject({
@@ -1163,4 +1170,18 @@ test("a directory that goes away while the git read is in flight keeps its place
     kind: "local_checkout",
     branch: "feature/vanishing",
   });
+});
+
+test("workspace parent placement alone cannot stamp an authenticated creator", async () => {
+  const parent = await provisioning.createWorkspaceForDirectory(path.join(tmpDir, "parent"));
+  const child = await provisioning.createWorkspaceForDirectory(
+    path.join(tmpDir, "child"),
+    null,
+    undefined,
+    { callerWorkspaceId: parent.workspaceId },
+  );
+  expect(child.parentWorkspaceId).toBe(parent.workspaceId);
+  expect(child.creatorAgent).toBeUndefined();
+  await workspaceRegistry.archive(child.workspaceId, ARCHIVED_AT);
+  expect((await workspaceRegistry.get(child.workspaceId))?.creatorAgent).toBeUndefined();
 });

@@ -7,6 +7,7 @@ import type {
 import {
   areSubSessionRootKeysEqual,
   groupSubSessionsByActivity,
+  partitionRoomWork,
   nestSubSessions,
   resolveSubSessionRootKeys,
 } from "./sidebar-sub-sessions";
@@ -39,6 +40,7 @@ function entry(
     parentWorkspaceId: input.parentWorkspaceId ?? null,
     currentBranch: "main",
     statusBucket: input.statusBucket ?? "running",
+    sessionCount: 1,
     statusEnteredAt: null,
     archivingAt: null,
     diffStat: null,
@@ -219,5 +221,36 @@ describe("groupSubSessionsByActivity", () => {
 
     expect(groups.active.map((c) => c.workspaceId)).toEqual(["running", "waiting"]);
     expect(groups.done.map((c) => c.workspaceId)).toEqual(["finished"]);
+  });
+});
+
+describe("room logical-lead ownership", () => {
+  const leads = [
+    { logicalId: "A", segments: [{ agentId: "anchor" }, { agentId: "continuation" }] },
+    { logicalId: "B", segments: [{ agentId: "other" }] },
+  ];
+  test("partitions by any exact provider segment without sibling/host bleed", () => {
+    const a = { id: "a", creatorAgent: { serverId: "host", agentId: "continuation" } };
+    const b = { id: "b", creatorAgent: { serverId: "host", agentId: "other" } };
+    const foreign = { id: "remote", creatorAgent: { serverId: "foreign", agentId: "anchor" } };
+    const unknown = { id: "legacy", creatorAgent: undefined };
+    const result = partitionRoomWork("host", leads, [a, b, foreign, unknown]);
+    expect(result.byLead.get("A")).toEqual([a]);
+    expect(result.byLead.get("B")).toEqual([b]);
+    expect(result.unassigned).toEqual([foreign, unknown]);
+    expect(partitionRoomWork("host", [], [a]).unassigned).toEqual([a]);
+  });
+  test("complete zero-session and unknown inventories stay workspace navigation", () => {
+    const source = { ...entry("source", { statusBucket: "done" }), sessionCount: 0 };
+    const unknown = { ...entry("unknown", { statusBucket: "done" }), sessionCount: undefined };
+    const task = entry("task", { statusBucket: "done" });
+    const groups = groupSubSessionsByActivity({
+      children: [source, unknown, task].map(placement),
+      workspaceEntriesByKey: new Map(
+        [source, unknown, task].map((item) => [item.workspaceKey, item]),
+      ),
+    });
+    expect(groups.active.map((item) => item.workspaceId)).toEqual(["source", "unknown"]);
+    expect(groups.done.map((item) => item.workspaceId)).toEqual(["task"]);
   });
 });

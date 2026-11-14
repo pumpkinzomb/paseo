@@ -4,6 +4,9 @@
 
 Tests prove behavior, not structure. Every test should answer: "what user-visible or API-visible behavior does this verify?"
 
+Prepare plugin example dependencies independently before running typecheck. Typecheck and commit
+hooks only read prepared dependencies; they must never install or repair them.
+
 ## Test-driven development
 
 Work in vertical slices: one test, one implementation, repeat. Each test responds to what you learned from the previous cycle.

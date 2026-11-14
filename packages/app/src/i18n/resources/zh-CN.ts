@@ -1355,6 +1355,9 @@ export const zhCN: TranslationResources = {
         pending: "等待中: {{count}}",
       },
       subSessions: {
+        unassigned: "房间工作区 · 未分配",
+        workspaceHistory: "工作区历史 ({{count}})",
+        delegatedCount: "委派任务：{{count}}",
         group: "{{name}} 的子会话",
         done: "已完成 ({{count}})",
         archivedAgent: "已归档",
