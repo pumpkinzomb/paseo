@@ -16,35 +16,88 @@ export function inside(root, candidate) {
     !path.isAbsolute(relative)
   );
 }
+function gitOutput(root, ...args) {
+  return execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+}
+function gitPath(root, flag) {
+  return fs.realpathSync(gitOutput(root, "rev-parse", "--path-format=absolute", flag));
+}
+function matchesManagedTask(root, admin, record) {
+  const marker = path.join(admin, "paseo", "worktree.json");
+  if (
+    fs.realpathSync(path.dirname(marker)) !== path.join(admin, "paseo") ||
+    !fs.lstatSync(marker).isFile()
+  )
+    return false;
+  const metadata = JSON.parse(fs.readFileSync(marker, "utf8"));
+  const branch = path.basename(root);
+  return (
+    metadata.version === 2 &&
+    typeof metadata.baseRefName === "string" &&
+    metadata.baseRefName.length > 0 &&
+    metadata.baseRef === `refs/heads/${metadata.baseRefName}` &&
+    metadata.changeRequestLookupTarget?.localBranchName === branch &&
+    metadata.changeRequestLookupTarget?.headRef === branch &&
+    record.split("\0").includes(`branch refs/heads/${branch}`) &&
+    gitOutput(root, "symbolic-ref", "HEAD") === `refs/heads/${branch}`
+  );
+}
+function isRegisteredSourceWorktree(root, source, managedTask) {
+  try {
+    if (!fs.lstatSync(path.join(root, ".git")).isFile()) return false;
+    const common = gitPath(source, "--git-common-dir");
+    const admin = gitPath(root, "--git-dir");
+    if (
+      gitPath(root, "--show-toplevel") !== root ||
+      gitPath(source, "--show-toplevel") !== source ||
+      gitPath(root, "--git-common-dir") !== common ||
+      !inside(path.join(common, "worktrees"), admin) ||
+      fs.realpathSync(fs.readFileSync(path.join(admin, "gitdir"), "utf8").trim()) !==
+        path.join(root, ".git")
+    )
+      return false;
+    const records = gitOutput(source, "worktree", "list", "--porcelain", "-z").split("\0\0");
+    const record = records.find((entry) => entry.split("\0").includes(`worktree ${root}`));
+    if (!record) return false;
+    if (!managedTask) return true;
+    return matchesManagedTask(root, admin, record);
+  } catch {
+    return false;
+  }
+}
+function validateManagedTaskIdentity(root, requestedRoot, manifest) {
+  const source = manifest.projectSource;
+  const taskRelative = typeof source === "string" ? path.relative(source, root) : "";
+  const managedTask =
+    /^\.dev\/tasks\/[a-z0-9]+\/task-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(
+      taskRelative,
+    );
+  if (
+    managedTask &&
+    (requestedRoot !== root ||
+      manifest.root !== root ||
+      fs.realpathSync(source) !== source ||
+      !manifest.protectedRoots.includes(source))
+  )
+    throw new Error("Lab identity mismatch");
+  return managedTask;
+}
 export function resolvePlan(root, manifest) {
+  const requestedRoot = path.resolve(root);
   root = fs.realpathSync(root);
   if (manifest.role !== "development-lab" || fs.realpathSync(manifest.root) !== root)
     throw new Error("Lab identity mismatch");
+  const source = manifest.projectSource;
+  const managedTask = validateManagedTaskIdentity(root, requestedRoot, manifest);
   for (const protectedRoot of manifest.protectedRoots) {
     const resolved = fs.realpathSync(protectedRoot);
-    // Only the explicitly configured, linked Git checkout may live under its source.
-    if (manifest.projectSource === resolved && root === path.join(resolved, ".dev", "lab")) {
-      const gitPath = (cwd, flag) =>
-        fs.realpathSync(
-          execFileSync("git", ["-C", cwd, "rev-parse", "--path-format=absolute", flag], {
-            encoding: "utf8",
-          }).trim(),
-        );
-      if (
-        fs.lstatSync(path.join(root, ".git")).isFile() &&
-        gitPath(root, "--show-toplevel") === root &&
-        gitPath(resolved, "--show-toplevel") === resolved &&
-        gitPath(root, "--git-common-dir") === gitPath(resolved, "--git-common-dir") &&
-        inside(
-          path.join(gitPath(resolved, "--git-common-dir"), "worktrees"),
-          gitPath(root, "--git-dir"),
-        ) &&
-        fs.realpathSync(
-          fs.readFileSync(path.join(gitPath(root, "--git-dir"), "gitdir"), "utf8").trim(),
-        ) === path.join(root, ".git")
-      )
-        continue;
-    }
+    // Exempt only this source ancestor; every other protected root is still checked.
+    if (
+      source === resolved &&
+      (root === path.join(resolved, ".dev", "lab") || managedTask) &&
+      isRegisteredSourceWorktree(root, resolved, managedTask)
+    )
+      continue;
     if (root === resolved || inside(resolved, root) || inside(root, resolved))
       throw new Error("Lab overlaps a protected runtime/source");
   }

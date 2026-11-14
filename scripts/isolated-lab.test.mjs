@@ -6,7 +6,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { prepareLabDependencies, resolvePlan, assertLocalPaths, labEnv } from "./isolated-lab.mjs";
 function fixture(t) {
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), "paseo-boundary-"));
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "paseo-boundary-")));
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));
   const root = path.join(base, "lab"),
     live = path.join(base, "live");
@@ -152,4 +152,122 @@ test("lab preparation retains a replacement lock owned by someone else", async (
     },
   });
   assert.equal(fs.readFileSync(lock, "utf8"), "replacement owner");
+});
+
+function managedFixture(t, legacy = false) {
+  const f = fixture(t);
+  const source = f.live;
+  const git = (...args) =>
+    execFileSync("git", ["-C", source, ...args], { encoding: "utf8" }).trim();
+  git("init", "--quiet", "--initial-branch=main");
+  git(
+    "-c",
+    "user.name=Fixture",
+    "-c",
+    "user.email=fixture@example.test",
+    "commit",
+    "--quiet",
+    "--allow-empty",
+    "-m",
+    "base",
+  );
+  const branch = "task-12345678-1234-1234-1234-123456789abc";
+  const root = path.join(source, ".dev", legacy ? "lab" : `tasks/0h19uon7/${branch}`);
+  git("worktree", "add", "--quiet", "-b", branch, root);
+  const admin = execFileSync("git", ["-C", root, "rev-parse", "--absolute-git-dir"], {
+    encoding: "utf8",
+  }).trim();
+  fs.mkdirSync(path.join(admin, "paseo"));
+  const marker = path.join(admin, "paseo/worktree.json");
+  const metadata = {
+    version: 2,
+    baseRefName: "main",
+    baseRef: "refs/heads/main",
+    changeRequestLookupTarget: { headRef: branch, localBranchName: branch },
+  };
+  fs.writeFileSync(marker, JSON.stringify(metadata));
+  return {
+    ...f,
+    root,
+    source,
+    git,
+    admin,
+    marker,
+    metadata,
+    m: { ...f.m, root, projectSource: source },
+  };
+}
+test("registered managed task and legacy lab preserve source protection and local state", (t) => {
+  for (const legacy of [false, true]) {
+    const f = managedFixture(t, legacy);
+    const p = resolvePlan(f.root, f.m);
+    assert.deepEqual(p.protectedRoots, [f.source]);
+    assert.equal(p.home, path.join(f.root, ".lab/paseo-home"));
+    assertLocalPaths(p);
+  }
+});
+test("managed task requires registered metadata and exact branch", (t) => {
+  const f = managedFixture(t);
+  for (const metadata of [
+    null,
+    {},
+    { ...f.metadata, version: 1 },
+    { ...f.metadata, baseRef: "refs/heads/other" },
+    { ...f.metadata, changeRequestLookupTarget: { headRef: "main", localBranchName: "main" } },
+  ]) {
+    fs.writeFileSync(f.marker, JSON.stringify(metadata));
+    assert.throws(() => resolvePlan(f.root, f.m), /overlaps/);
+  }
+  fs.writeFileSync(f.marker, JSON.stringify(f.metadata));
+  execFileSync("git", ["-C", f.root, "checkout", "--quiet", "--detach"]);
+  assert.throws(() => resolvePlan(f.root, f.m), /overlaps/);
+  fs.unlinkSync(f.marker);
+  assert.throws(() => resolvePlan(f.root, f.m), /overlaps/);
+});
+test("managed exception does not exempt other protected roots or removed source protection", (t) => {
+  const f = managedFixture(t);
+  for (const protectedRoot of [f.root, path.dirname(f.root), path.join(f.root, ".lab")]) {
+    fs.mkdirSync(protectedRoot, { recursive: true });
+    assert.throws(
+      () => resolvePlan(f.root, { ...f.m, protectedRoots: [f.source, protectedRoot] }),
+      /overlaps/,
+    );
+  }
+  assert.throws(() => resolvePlan(f.root, { ...f.m, protectedRoots: [] }), /identity/);
+  assert.throws(() => resolvePlan(f.root, { ...f.m, daemonPort: 6767 }), /Unsafe/);
+});
+test("managed task rejects aliases, symlink git/metadata, and changed backlink", (t) => {
+  const f = managedFixture(t);
+  const alias = path.join(f.root, "..", "alias");
+  fs.symlinkSync(f.root, alias);
+  assert.throws(() => resolvePlan(alias, { ...f.m, root: alias }), /overlaps|identity/);
+  for (const file of [path.join(f.root, ".git"), f.marker]) {
+    fs.renameSync(file, `${file}.real`);
+    fs.symlinkSync(`${file}.real`, file);
+    assert.throws(() => resolvePlan(f.root, f.m), /overlaps/);
+    fs.unlinkSync(file);
+    fs.renameSync(`${file}.real`, file);
+  }
+  fs.writeFileSync(path.join(f.admin, "gitdir"), path.join(f.source, ".git"));
+  assert.throws(() => resolvePlan(f.root, f.m), /overlaps/);
+});
+test("copied worktree pointer and metadata cannot register an arbitrary nested directory", (t) => {
+  const f = managedFixture(t);
+  const fake = path.join(path.dirname(f.root), "task-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+  fs.mkdirSync(fake);
+  fs.copyFileSync(path.join(f.root, ".git"), path.join(fake, ".git"));
+  assert.throws(() => resolvePlan(fake, { ...f.m, root: fake }), /overlaps/);
+  fs.writeFileSync(path.join(f.admin, "gitdir"), path.join(fake, ".git"));
+  assert.throws(() => resolvePlan(fake, { ...f.m, root: fake }), /overlaps/);
+});
+test("managed task rejects independent repositories and state/dependency escapes", (t) => {
+  const f = managedFixture(t);
+  for (const rel of [".lab", "node_modules"]) {
+    fs.symlinkSync(f.source, path.join(f.root, rel));
+    assert.throws(() => assertLocalPaths(resolvePlan(f.root, f.m)), /escapes/);
+    fs.unlinkSync(path.join(f.root, rel));
+  }
+  fs.unlinkSync(path.join(f.root, ".git"));
+  execFileSync("git", ["init", "--quiet", f.root]);
+  assert.throws(() => resolvePlan(f.root, f.m), /overlaps/);
 });
