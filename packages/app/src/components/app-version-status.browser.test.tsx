@@ -1,3 +1,4 @@
+import { page } from "vitest/browser";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -38,12 +39,15 @@ function mount(element: React.ReactNode) {
   act(() => root?.render(element));
   return container;
 }
+function verifiedUpdate(onUpdateAndRestart: () => void, pending = false): LocalAppUpdate {
+  return { status: "verified", releaseId: "0.15.5", onUpdateAndRestart, pending, retryable: true };
+}
 function mountUpdate(update: LocalAppUpdate) {
   return mount(<AppVersionStatus version="1" update={update} productionReady />);
 }
 function mountFailure(update: LocalAppUpdate) {
   return mount(
-    <AppVersionStatus version="0.15.4" update={update} productionReady failure="failed" />,
+    <AppVersionStatus version="0.15.4" update={update} productionReady failure="blocked" />,
   );
 }
 it("shows the current version without an update action by default", () => {
@@ -65,7 +69,7 @@ it("invokes only the supplied verified update action", () => {
   const update: LocalAppUpdate = { status: "verified", releaseId: "local-2", onUpdateAndRestart };
   const view = mountUpdate(update);
   const button = view.querySelector<HTMLElement>('[data-testid="local-app-update-restart"]')!;
-  expect(button.textContent).toBe("Update and restart");
+  expect(button.textContent).toBe("Update");
   act(() => button.click());
   expect(onUpdateAndRestart).toHaveBeenCalledTimes(1);
 });
@@ -297,6 +301,7 @@ it("grows for wrapped update and failure rows without clipping their contents", 
     status: "verified",
     releaseId: "ready",
     onUpdateAndRestart: vi.fn(),
+    retryable: true,
   };
   const view = mountFailure(update);
   for (const width of [280, 140]) {
@@ -314,6 +319,127 @@ it("grows for wrapped update and failure rows without clipping their contents", 
       expect(rect.bottom).toBeLessThanOrEqual(inner.bottom);
       expect(element.scrollHeight).toBeLessThanOrEqual(element.clientHeight + 1);
     }
-    expect(bounds(view, "local-app-update-error").element.textContent).toContain("failed");
+    expect(bounds(view, "local-app-update-error").element.textContent).toContain("blocked");
   }
+});
+
+it.each([220, 300, 320])(
+  "keeps the Korean version and compact action together at %ipx",
+  async (width) => {
+    await i18n.changeLanguage("ko");
+    const request = vi.fn();
+    const update = verifiedUpdate(request);
+    const view = mount(
+      <AppVersionStatus
+        version="0.15.4"
+        productionReady
+        failure="blocked"
+        failureReason="transport_mismatch"
+        update={update}
+      />,
+    );
+    view.style.width = `${width}px`;
+    const row = bounds(view, "sidebar-build-status");
+    const label = bounds(view, "app-version-label");
+    const action = bounds(view, "local-app-update-restart");
+    const failure = bounds(view, "local-app-update-error");
+    expect(action.element.textContent).toBe("다시 시도");
+    expect(action.element.getAttribute("aria-label")).toBe(
+      "업데이트를 다시 시도하고 앱을 재시작합니다",
+    );
+    expect(failure.element.textContent).toContain("다른 호스트나 인스턴스");
+    expect(failure.element.textContent).not.toContain("진행 중인 작업");
+    expect(
+      Math.abs((label.rect.top + label.rect.bottom - action.rect.top - action.rect.bottom) / 2),
+    ).toBeLessThanOrEqual(0.5);
+    expect(failure.rect.top).toBeGreaterThanOrEqual(action.rect.bottom);
+    for (const item of [label, action, failure]) {
+      expect(item.rect.left).toBeGreaterThanOrEqual(row.rect.left);
+      expect(item.rect.right).toBeLessThanOrEqual(row.rect.right);
+      expect(item.element.scrollWidth).toBeLessThanOrEqual(item.element.clientWidth + 1);
+    }
+    await page.screenshot({ element: view });
+    act(() => action.element.click());
+    expect(request).toHaveBeenCalledTimes(1);
+  },
+);
+it("uses a labelled download action with restart accessibility and a disabled pending state", async () => {
+  await i18n.changeLanguage("ko");
+  const request = vi.fn();
+  const view = mountUpdate({
+    status: "verified",
+    releaseId: "0.15.5",
+    onUpdateAndRestart: request,
+  });
+  view.style.width = "220px";
+  const button = bounds(view, "local-app-update-restart").element;
+  expect(button.textContent).toBe("업데이트");
+  expect(button.getAttribute("aria-label")).toBe("업데이트를 적용하고 앱을 재시작합니다");
+  await page.screenshot({ element: view });
+  await page.getByTestId("local-app-update-restart").hover();
+  await expect
+    .poll(() => document.querySelector('[role="tooltip"]')?.textContent)
+    .toBe("업데이트를 적용하고 앱을 재시작합니다");
+  await Promise.allSettled(document.getAnimations().map((animation) => animation.finished));
+  await page.getByTestId("app-version-label").hover();
+  await expect.poll(() => document.querySelector('[role="tooltip"]')).toBeNull();
+  await Promise.allSettled(document.getAnimations().map((animation) => animation.finished));
+  const pendingUpdate = verifiedUpdate(request, true);
+  act(() =>
+    root?.render(<AppVersionStatus version="0.15.4" productionReady update={pendingUpdate} />),
+  );
+  const pending = bounds(view, "local-app-update-restart").element;
+  expect(pending.textContent).toBe("업데이트 중…");
+  await page.screenshot({ element: view });
+  act(() => pending.click());
+  expect(request).not.toHaveBeenCalled();
+});
+it.each(["failed", "recovery_required"] as const)(
+  "does not repeat an unknown or recovery outcome: %s",
+  (failure) => {
+    const request = vi.fn();
+    const update = verifiedUpdate(request);
+    const view = mount(
+      <AppVersionStatus version="0.15.4" productionReady failure={failure} update={update} />,
+    );
+    expect(view.querySelector('[data-testid="local-app-update-restart"]')).toBeNull();
+    expect(view.querySelector('[role="alert"]')).not.toBeNull();
+  },
+);
+it("preserves the native transport mismatch reason through the connected hook", async () => {
+  setBridge({
+    status: vi.fn(async () => ({
+      ...readyStatus,
+      failure: { code: "blocked" as const, retryable: true, reason: "transport_mismatch" as const },
+    })),
+    request: vi.fn(),
+  });
+  const view = mount(<ConnectedAppVersionStatus />);
+  await act(async () => {});
+  expect(view.querySelector('[data-testid="local-app-update-error"]')?.textContent).toContain(
+    "another host or instance",
+  );
+  expect(bounds(view, "local-app-update-restart").element.textContent).toBe("Retry");
+});
+
+it("does not offer retry for a nonretryable blocked native status even with a stale eligible flag", async () => {
+  const request = vi.fn();
+  setBridge({
+    status: vi.fn(async () => ({
+      ...readyStatus,
+      failure: {
+        code: "blocked" as const,
+        retryable: false,
+        reason: "transport_mismatch" as const,
+      },
+    })),
+    request,
+  });
+  const view = mount(<ConnectedAppVersionStatus />);
+  await act(async () => {});
+  expect(view.querySelector('[data-testid="local-app-update-restart"]')).toBeNull();
+  expect(view.querySelector('[data-testid="local-app-update-error"]')?.textContent).toContain(
+    "another host",
+  );
+  expect(request).not.toHaveBeenCalled();
 });

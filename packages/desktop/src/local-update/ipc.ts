@@ -1,6 +1,7 @@
 export interface LocalUpdateFailure {
   code: "blocked" | "failed" | "recovery_required";
   retryable: boolean;
+  reason?: "transport_mismatch";
 }
 /** Narrow, inert-by-default bridge. Registration is intentionally not wired into main. */
 export const LOCAL_UPDATE_CHANNELS = {
@@ -80,6 +81,9 @@ export function registerLocalUpdateIpc({
       result.failure = {
         code: status.failure.code,
         retryable: canApply && status.failure.retryable === true,
+        ...(status.failure.code === "blocked" && status.failure.reason === "transport_mismatch"
+          ? { reason: "transport_mismatch" as const }
+          : {}),
       };
     if (status.serverId?.trim()) result.serverId = status.serverId;
     if (canApply && candidate)

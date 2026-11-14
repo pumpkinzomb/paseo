@@ -151,3 +151,18 @@ it("keeps uncertain outcomes consumed and supplies a non-retryable public failur
   });
   await expect(x.request(token)).rejects.toThrow("already used");
 });
+
+it("exposes only the bounded transport mismatch reason without private native details", async () => {
+  const x = setup(true);
+  x.status.failure = { code: "blocked", retryable: true, reason: "transport_mismatch" };
+  expect(await x.read()).toMatchObject({
+    failure: { code: "blocked", retryable: true, reason: "transport_mismatch" },
+  });
+  const supplied = {
+    code: "blocked" as const,
+    retryable: true,
+    reason: "/private/controller/path",
+  };
+  Object.assign(x.status, { failure: supplied });
+  expect((await x.read()).failure).toEqual({ code: "blocked", retryable: true });
+});

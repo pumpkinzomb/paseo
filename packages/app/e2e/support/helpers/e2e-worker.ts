@@ -1,6 +1,7 @@
+import { prepareIsolatedRuntimeEnv } from "./isolated-runtime-env.mjs";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, realpath, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { forkPaseoHomeMetadata, resolvePaseoHomePath } from "./paseo-home-fork";
@@ -170,7 +171,8 @@ export async function startE2EWorker(
   const requestedRoot = resolveOptionalHome(process.env.E2E_PASEO_HOME);
   const paseoHome = requestedRoot
     ? path.join(requestedRoot, `worker-${workerIndex}`)
-    : await mkdtemp(path.join(tmpdir(), `paseo-e2e-worker-${workerIndex}-`));
+    : await mkdtemp(path.join(await realpath(tmpdir()), `paseo-e2e-worker-${workerIndex}-`));
+  await prepareIsolatedRuntimeEnv(process.env, paseoHome, options.environment);
   const preserveHome = Boolean(requestedRoot) || process.env.E2E_KEEP_PASEO_HOME === "1";
   const fakeEditorBin = await createFakeEditorBin();
   const editorRecordPath = path.join(paseoHome, "editor-open-records.jsonl");

@@ -1,3 +1,4 @@
+import { prepareIsolatedRuntimeEnv } from "./isolated-runtime-env.mjs";
 import { promisify } from "node:util";
 import {
   spawn,
@@ -6,7 +7,7 @@ import {
   type ChildProcess,
   type SpawnOptions,
 } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -127,7 +128,13 @@ export async function startIsolatedHostDaemon(
   if (!metroPort) throw new Error("E2E_METRO_PORT is required to start an isolated host daemon");
 
   const paseoHome =
-    options.paseoHome ?? (await mkdtemp(path.join(tmpdir(), "paseo-e2e-secondary-host-")));
+    options.paseoHome ??
+    (await mkdtemp(path.join(await realpath(tmpdir()), "paseo-e2e-secondary-host-")));
+  const daemonEnvironment = await prepareIsolatedRuntimeEnv(
+    process.env,
+    paseoHome,
+    options.environment,
+  );
   let publishedPackageRoot: string | null = null;
   if (options.publishedVersion) {
     publishedPackageRoot = await mkdtemp(path.join(tmpdir(), "paseo-e2e-published-server-"));
@@ -152,7 +159,7 @@ export async function startIsolatedHostDaemon(
           "--no-package-lock",
           `@getpaseo/server@${options.publishedVersion}`,
         ],
-        { cwd: publishedPackageRoot, stdio: "ignore" },
+        { cwd: publishedPackageRoot, env: daemonEnvironment, stdio: "ignore" },
       );
     } catch (error) {
       if (!options.preserveHome) {
@@ -188,7 +195,7 @@ export async function startIsolatedHostDaemon(
         paseoHome,
         "--force",
       ],
-      { timeout: 30_000 },
+      { timeout: 30_000, env: daemonEnvironment },
     );
     await killProcessTree(child);
   };
@@ -196,8 +203,7 @@ export async function startIsolatedHostDaemon(
     const spawnOptions: SpawnOptions = {
       cwd: serverDir,
       env: withDisabledE2ESpeechEnv({
-        ...process.env,
-        ...options.environment,
+        ...daemonEnvironment,
         PASEO_HOME: paseoHome,
         PASEO_SERVER_ID: serverId,
         PASEO_LISTEN: `127.0.0.1:${port}`,

@@ -1,3 +1,7 @@
+import {
+  observeInstalledUpdateControl,
+  type UpdateControlPublication,
+} from "./installed-update-control.js";
 import { homedir } from "node:os";
 import { verifyInstalledUpdateApproval } from "./installed-update-approval.js";
 import { assertNoPendingHomeMigration } from "./migration-startup-barrier.js";
@@ -707,7 +711,7 @@ async function createPaseoDaemonInternal(
   const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
   const updateAdmission = new UpdateAdmissionFence();
   const browserToolsBroker = new BrowserToolsBroker({ updateAdmission });
-  let updateControl: Awaited<ReturnType<typeof startUpdateControl>> | null = null;
+  let updateControl: { close(): Promise<void> } | null = null;
   let releaseUpdateLease: (() => void) | null = null;
   const pluginRuntime: PluginService = new PluginService(logger, daemonConfigStore, daemonVersion, {
     usageAgents: {
@@ -2089,7 +2093,7 @@ async function createPaseoDaemonInternal(
           )
             throw new UpdateBlocked("Daemon instance changed");
         };
-        updateControl = await startUpdateControl({
+        const controlOptions: Parameters<typeof startUpdateControl>[0] = {
           directory: updateDirectory,
           descriptor: {
             version: 1,
@@ -2191,7 +2195,33 @@ async function createPaseoDaemonInternal(
             }
             return quiescence.commit(ticket);
           },
-        });
+        };
+        const publishControl = (publication?: UpdateControlPublication) =>
+          startUpdateControl({ ...controlOptions, publication });
+        if (installedUpdate) {
+          updateControl = observeInstalledUpdateControl({
+            userHome: homedir(),
+            expected: {
+              uid: instance.uid,
+              home: config.paseoHome,
+              serverId,
+              pid: instance.pid,
+              startedAt: instance.startedAt,
+              listen: formatListenTarget(listenTarget) ?? "",
+              version: daemonVersion,
+            },
+            ownsInstance: async () => {
+              try {
+                await assertCurrentUpdateInstance();
+                return true;
+              } catch {
+                return false;
+              }
+            },
+            publish: publishControl,
+            onError: () => logger.warn("Installed update control publication deferred"),
+          });
+        } else updateControl = await publishControl();
       }
     } catch (error) {
       localCredential = null;

@@ -2,10 +2,11 @@ import { useMemo } from "react";
 import { useLocalAppUpdate } from "@/hooks/use-local-app-update";
 import type { Theme } from "@/styles/theme";
 import { Text, View } from "react-native";
-import { GitBranch } from "lucide-react-native";
+import { Download, GitBranch } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { resolveAppVersion } from "@/utils/app-version";
 
@@ -28,6 +29,7 @@ export type LocalAppUpdate =
       status: "verified";
       releaseId: string;
       pending?: boolean;
+      retryable?: boolean;
       onUpdateAndRestart: () => void;
     };
 
@@ -39,6 +41,7 @@ export function ConnectedAppVersionStatus() {
       update={bridge.update}
       productionReady={bridge.ready}
       failure={bridge.failure}
+      failureReason={bridge.failureReason}
     />
   );
 }
@@ -48,41 +51,82 @@ export function AppVersionStatus({
   update,
   productionReady = false,
   failure = null,
+  failureReason,
 }: {
   version?: string | null;
   update?: LocalAppUpdate;
   productionReady?: boolean;
   failure?: "blocked" | "failed" | "recovery_required" | null;
+  failureReason?: "transport_mismatch" | null;
 }) {
   const { t } = useTranslation();
   if (!version) return null;
+  const canUpdate =
+    productionReady &&
+    update?.status === "verified" &&
+    update.releaseId.trim() &&
+    (!failure || (failure === "blocked" && update.retryable === true));
   return (
     <View style={styles.row} testID="sidebar-build-status">
-      <Text
-        style={styles.version}
-        numberOfLines={1}
-        accessibilityLabel={t("localAppUpdate.version", { version })}
-        testID="app-version-label"
-      >
-        v{version}
-      </Text>
-      {failure && (
-        <Text accessibilityRole="alert" testID="local-app-update-error" style={styles.failure}>
-          {t(FAILURE_KEYS[failure])}
-        </Text>
-      )}
-      {productionReady && update?.status === "verified" && update.releaseId.trim() && (
-        <Button
-          size="sm"
-          variant="ghost"
-          loading={update.pending}
-          disabled={update.pending}
-          onPress={update.onUpdateAndRestart}
-          testID="local-app-update-restart"
+      <View style={styles.mainRow} testID="app-version-action-row">
+        <Text
+          style={styles.version}
+          numberOfLines={1}
+          accessibilityLabel={t("localAppUpdate.version", { version })}
+          testID="app-version-label"
         >
-          {t(update.pending ? "localAppUpdate.updating" : "localAppUpdate.updateAndRestart")}
-        </Button>
-      )}
+          v{version}
+        </Text>
+        {canUpdate && update?.status === "verified" ? (
+          <UpdateAction update={update} retry={failure === "blocked"} />
+        ) : null}
+      </View>
+      {failure ? (
+        <Text accessibilityRole="alert" testID="local-app-update-error" style={styles.failure}>
+          {t(
+            failure === "blocked" && failureReason === "transport_mismatch"
+              ? "localAppUpdate.transportMismatch"
+              : FAILURE_KEYS[failure],
+          )}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function UpdateAction({
+  update,
+  retry,
+}: {
+  update: Extract<LocalAppUpdate, { status: "verified" }>;
+  retry: boolean;
+}) {
+  const { t } = useTranslation();
+  const hint = t(retry ? "localAppUpdate.retryHint" : "localAppUpdate.restartHint");
+  let label = t("localAppUpdate.update");
+  if (retry) label = t("common.actions.retry");
+  if (update.pending) label = t("localAppUpdate.updating");
+  return (
+    <View style={styles.action}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="sm"
+            variant="ghost"
+            leftIcon={Download}
+            loading={update.pending}
+            disabled={update.pending}
+            onPress={update.onUpdateAndRestart}
+            accessibilityLabel={update.pending ? label : hint}
+            testID="local-app-update-restart"
+          >
+            {label}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <Text style={styles.hint}>{hint}</Text>
+        </TooltipContent>
+      </Tooltip>
     </View>
   );
 }
@@ -109,23 +153,26 @@ export function DevelopmentBuildBadge({ label = DEV_BUILD_LABEL }: { label?: str
 
 const styles = StyleSheet.create((theme) => ({
   failure: {
-    flexBasis: "100%",
-    fontSize: 11,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   row: {
     minHeight: 32,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignContent: "center",
-    alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
     gap: theme.spacing[1],
     paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
+    paddingVertical: theme.spacing[0.5],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
+  mainRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[1],
+  },
+  action: { flexShrink: 0 },
+  hint: { fontSize: theme.fontSize.sm, color: theme.colors.foreground },
   version: {
     flexShrink: 1,
     color: theme.colors.foregroundMuted,

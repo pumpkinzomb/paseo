@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { prepareIsolatedRuntimeEnv } from "./isolated-runtime-env.mjs";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -23,7 +24,9 @@ export interface RestartableHostDaemon {
 }
 
 export async function startRestartableHostDaemon(version: string): Promise<RestartableHostDaemon> {
-  const paseoHomeRoot = await mkdtemp(path.join(tmpdir(), "paseo-e2e-restartable-host-"));
+  const paseoHomeRoot = await mkdtemp(
+    path.join(await realpath(tmpdir()), "paseo-e2e-restartable-host-"),
+  );
   const port = await getAvailableHostDaemonPort();
   let current: VersionedHostDaemon | null = null;
   async function dispose(): Promise<void> {
@@ -80,10 +83,11 @@ interface VersionedHostDaemonOptions {
 async function startVersionedHostDaemon(
   options: VersionedHostDaemonOptions,
 ): Promise<VersionedHostDaemon> {
+  const env = await prepareIsolatedRuntimeEnv(process.env, options.paseoHomeRoot);
   const child = spawnTsx(
     VERSIONED_DAEMON_ENTRYPOINT,
     [options.version, String(options.port), options.paseoHomeRoot],
-    { stdio: ["ignore", "pipe", "pipe", "ipc"] },
+    { env, stdio: ["ignore", "pipe", "pipe", "ipc"] },
   );
   const ready = Promise.withResolvers<{ port: number; serverId: string }>();
   let output = "";

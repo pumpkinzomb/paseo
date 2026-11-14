@@ -1,3 +1,6 @@
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { prepareIsolatedRuntimeEnv } from "./isolated-runtime-env.mjs";
 import { fork, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { killProcessTree } from "./spawn-node";
@@ -32,11 +35,13 @@ export async function startOutdatedDaemon(options?: {
     throw new Error("E2E_METRO_PORT is not set - globalSetup must run first");
   }
 
+  const runtimeRoot = await mkdtemp(path.join(await realpath(tmpdir()), "paseo-e2e-outdated-"));
+  const runtimeEnv = await prepareIsolatedRuntimeEnv(process.env, runtimeRoot);
   const child = fork(
     path.resolve(__dirname, "../../../../server/src/server/test-utils/outdated-daemon-process.ts"),
     {
       env: {
-        ...process.env,
+        ...runtimeEnv,
         E2E_METRO_PORT: metroPort,
         E2E_DESKTOP_MANAGED: options?.desktopManaged === true ? "1" : "0",
         E2E_DAEMON_STATUS_RPC_CAPABILITY: options?.daemonStatusRpcCapability === false ? "0" : "1",
@@ -55,10 +60,14 @@ export async function startOutdatedDaemon(options?: {
       endpoint: ready.endpoint,
       label: options?.desktopManaged === true ? "outdated Desktop host" : "outdated host",
       serverId: ready.serverId,
-      close: () => killProcessTree(child),
+      close: async () => {
+        await killProcessTree(child);
+        await rm(runtimeRoot, { recursive: true, force: true });
+      },
     };
   } catch (error) {
     await killProcessTree(child);
+    await rm(runtimeRoot, { recursive: true, force: true });
     throw error;
   }
 }

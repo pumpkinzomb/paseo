@@ -1,5 +1,6 @@
+import type { UpdateControlPublication } from "./installed-update-control.js";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readdir, rename } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -69,7 +70,11 @@ async function readPrivateJson(filename: string): Promise<unknown> {
     await file.close();
   }
 }
-async function writePrivateJson(filename: string, value: unknown) {
+async function writePrivateJson(
+  filename: string,
+  value: unknown,
+  publication?: UpdateControlPublication,
+) {
   const temporary = `${filename}.${randomUUID()}.tmp`;
   const file = await open(
     temporary,
@@ -82,7 +87,19 @@ async function writePrivateJson(filename: string, value: unknown) {
   } finally {
     await file.close();
   }
-  await rename(temporary, filename);
+  if (!publication) {
+    await rename(temporary, filename);
+    return;
+  }
+  try {
+    await publication.assertAuthority();
+    if (!publication.isActive()) throw new Error("Installed control publication closed");
+    // Linearize at rename issuance; disposal waits for this in-flight publication.
+    await rename(temporary, filename);
+  } catch (error) {
+    await unlink(temporary);
+    throw error;
+  }
 }
 /** Local same-user mailbox. No socket, RPC registration, credential or provider access. */
 export async function startUpdateControl(options: {
@@ -90,16 +107,22 @@ export async function startUpdateControl(options: {
   descriptor: UpdateControlDescriptor;
   handle(request: UpdateControlRequest): Promise<unknown>;
   pollMs?: number;
+  publication?: UpdateControlPublication;
 }) {
   if (!path.isAbsolute(options.directory) || !uuid.test(options.descriptor.generation)) {
     throw new Error("Invalid update control path or generation");
   }
+  await options.publication?.assertAuthority();
   await ensurePrivateDirectory(options.directory);
   const directory = path.join(options.directory, options.descriptor.generation);
   await ensurePrivateDirectory(directory);
   await ensurePrivateDirectory(path.join(directory, "requests"));
   await ensurePrivateDirectory(path.join(directory, "responses"));
-  await writePrivateJson(path.join(options.directory, "descriptor.json"), options.descriptor);
+  await writePrivateJson(
+    path.join(options.directory, "descriptor.json"),
+    options.descriptor,
+    options.publication,
+  );
   let closed = false;
   let running: Promise<void> | null = null;
   async function scan() {

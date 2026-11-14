@@ -15,14 +15,17 @@ export const en = {
     open: "Open file",
   },
   localAppUpdate: {
-    blocked:
-      "Update was blocked during preparation. Check running work and the host connection, then retry.",
-    failed: "The update request failed. No restart was confirmed.",
-    recoveryRequired: "The update outcome needs recovery checks. Do not repeat the update yet.",
+    update: "Update",
+    restartHint: "Apply the update and restart the app",
+    retryHint: "Retry the update and restart the app",
+    transportMismatch: "The update connection points to another host or instance.",
+    blocked: "Update blocked. Check the host before retrying.",
+    failed: "Update request failed.",
+    recoveryRequired: "Update status needs recovery checks.",
     version: "App version {{version}}",
     developmentBuild: "Development build: {{label}}",
     updateAndRestart: "Update and restart",
-    updating: "Requesting update",
+    updating: "Updating…",
   },
   pdfViewer: {
     printPreparing: "Preparing all PDF pages for printing…",

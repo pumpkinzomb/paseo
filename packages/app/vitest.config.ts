@@ -20,6 +20,21 @@ const resolvePackageEntry = (packageName: string) => {
 export default defineConfig({
   plugins: [
     {
+      name: "reanimated-web-compiler-bridge",
+      enforce: "pre",
+      resolveId(source, importer) {
+        const file = importer?.split("?")[0].replaceAll("\\", "/");
+        if (
+          source !== "./webUtils" ||
+          !file?.endsWith(
+            "/react-native-reanimated/lib/module/ReanimatedModule/js-reanimated/index.js",
+          )
+        )
+          return;
+        return path.resolve(__dirname, "test-stubs/reanimated-web-utils.mjs");
+      },
+    },
+    {
       name: "markdown-wasm-commonjs-export",
       transform(source, id) {
         // The ESM package contains a CommonJS WASM factory. Metro handles the
@@ -174,6 +189,8 @@ export default defineConfig({
     // Bundle the CJS dependencies of the excluded gesture-handler package for the browser.
     include: [
       "react/jsx-runtime",
+      "react-native-web/dist/exports/StyleSheet/compiler/createReactDOMStyle",
+      "react-native-web/dist/exports/StyleSheet/preprocess",
       "react/compiler-runtime",
       "expo-router/react-navigation",
       "@testing-library/react",

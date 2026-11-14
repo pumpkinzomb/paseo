@@ -1,5 +1,5 @@
 import { createLiveUpdateCoordinator } from "./live-update-coordinator.js";
-import { PrecommitUpdateRejected } from "./precommit-rejected.js";
+import { PrecommitUpdateRejected, UpdateControlMismatch } from "./precommit-rejected.js";
 import { app, autoUpdater } from "electron";
 import { constants } from "node:fs";
 import { lstat, open, realpath, readFile } from "node:fs/promises";
@@ -184,9 +184,9 @@ export async function createInstalledUpdateCoordinator(): Promise<{
       value.instance?.startedAt !== c.original.startedAt ||
       typeof value.daemonIdentity !== "string"
     )
-      throw Error("Exact daemon update transport unavailable");
+      throw new UpdateControlMismatch();
     if (descriptor && JSON.stringify(value) !== JSON.stringify(descriptor))
-      throw Error("Daemon control generation changed");
+      throw new UpdateControlMismatch();
     const generation = path.join(control, value.generation);
     for (const d of [
       generation,
@@ -369,7 +369,13 @@ export async function createInstalledUpdateCoordinator(): Promise<{
               !(await json(path.join(transactionDir, "native-commit.json")))
             ) {
               phase = "idle";
-              failure = { code: "blocked", retryable: true };
+              failure = {
+                code: "blocked",
+                retryable: true,
+                ...(error.cause instanceof UpdateControlMismatch
+                  ? { reason: "transport_mismatch" as const }
+                  : {}),
+              };
             }
           } catch {
             /* changed approval/identity keeps recovery required */

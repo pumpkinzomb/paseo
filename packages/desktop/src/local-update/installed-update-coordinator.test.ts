@@ -193,3 +193,40 @@ it("live discovery rejects a later unsigned approval instead of exposing a stale
   );
   expect(state.prepare).not.toHaveBeenCalled();
 });
+
+it("reports a foreign update-control descriptor distinctly before sending any mailbox request", async () => {
+  await approvedArchive();
+  const root = path.join(state.home, ".paseo-installed", "update-control");
+  await fs.mkdir(root, { mode: 0o700 });
+  await fs.writeFile(
+    path.join(root, "descriptor.json"),
+    JSON.stringify({
+      version: 1,
+      generation: "11111111-1111-4111-8111-111111111111",
+      daemonIdentity: "foreign",
+      workerPid: 999,
+      serverId: "srv_e2e_worker_0",
+      instance: { uid: process.getuid!(), pid: 999, startedAt: "foreign" },
+      capabilities: { daemonCommit: true },
+    }),
+    { mode: 0o600 },
+  );
+  const original = (approval.capability as ExactDaemonUpdate).original;
+  state.read.mockResolvedValue(original);
+  state.prepare.mockImplementationOnce(async (host) => {
+    try {
+      await host.verifyAdmission();
+    } catch (error) {
+      throw new PrecommitUpdateRejected(error);
+    }
+  });
+  const coordinator = (await createInstalledUpdateCoordinator())!;
+  await expect(
+    coordinator.driver.requestUpdate(approval.candidateDigest as string),
+  ).rejects.toThrow("preparation");
+  expect(await coordinator.driver.readStatus()).toMatchObject({
+    phase: "idle",
+    failure: { code: "blocked", retryable: true, reason: "transport_mismatch" },
+  });
+  expect((await fs.readdir(root)).sort()).toEqual(["descriptor.json"]);
+});

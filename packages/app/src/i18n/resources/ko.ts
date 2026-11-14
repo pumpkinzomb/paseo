@@ -18,15 +18,17 @@ export const ko: TranslationResources = {
     open: "파일 열기",
   },
   localAppUpdate: {
-    blocked:
-      "업데이트 준비가 거절됐습니다. 진행 중인 작업과 호스트 연결을 확인한 뒤 다시 시도해 주세요.",
-    failed: "업데이트 요청이 실패했습니다. 재시작은 확인되지 않았습니다.",
-    recoveryRequired:
-      "업데이트 결과 확인과 복구 점검이 필요합니다. 아직 업데이트를 반복하지 마세요.",
+    update: "업데이트",
+    restartHint: "업데이트를 적용하고 앱을 재시작합니다",
+    retryHint: "업데이트를 다시 시도하고 앱을 재시작합니다",
+    transportMismatch: "업데이트 연결이 다른 호스트나 인스턴스를 가리킵니다.",
+    blocked: "업데이트가 차단됐습니다. 호스트 상태를 확인해 주세요.",
+    failed: "업데이트 요청에 실패했습니다.",
+    recoveryRequired: "업데이트 상태 확인과 복구 점검이 필요합니다.",
     version: "앱 버전 {{version}}",
     developmentBuild: "개발 빌드: {{label}}",
     updateAndRestart: "업데이트 후 재시작",
-    updating: "업데이트 요청 중",
+    updating: "업데이트 중…",
   },
   pdfViewer: {
     printPreparing: "PDF 전체 페이지 인쇄를 준비하는 중…",

@@ -7,6 +7,7 @@ export function eligibleLocalUpdate(status: DesktopLocalUpdateStatus | null): bo
   return Boolean(
     status?.canApply === true &&
     status.phase === "idle" &&
+    (!status.failure || (status.failure.code === "blocked" && status.failure.retryable === true)) &&
     status.candidate?.version?.trim() &&
     /^[a-f0-9]{64}$/.test(status.candidate?.token ?? ""),
   );
@@ -16,6 +17,7 @@ export function useLocalAppUpdate() {
   const [status, setStatus] = useState<DesktopLocalUpdateStatus | null>(null);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<"blocked" | "failed" | "recovery_required" | null>(null);
+  const [failureReason, setFailureReason] = useState<"transport_mismatch" | null>(null);
   const alive = useRef(false);
   const locked = useRef(false);
   const consumed = useRef<string | null>(null);
@@ -31,7 +33,10 @@ export function useLocalAppUpdate() {
         const next = await bridge.status();
         if (!disposed && !locked.current) {
           setStatus(next);
-          if (next.failure) setFailure(next.failure.code);
+          if (next.failure) {
+            setFailure(next.failure.code);
+            setFailureReason(next.failure.reason ?? null);
+          }
         }
       } catch {
         if (!disposed && !locked.current) setStatus(null);
@@ -66,6 +71,7 @@ export function useLocalAppUpdate() {
     consumed.current = token;
     setPending(true);
     setFailure(null);
+    setFailureReason(null);
     let failed = false;
     void (async () => {
       try {
@@ -75,6 +81,7 @@ export function useLocalAppUpdate() {
         const next = await bridge.status().catch(() => null);
         if (!alive.current) return;
         setFailure(next?.failure?.code ?? "failed");
+        setFailureReason(next?.failure?.reason ?? null);
         if (
           next?.failure?.retryable === true &&
           eligibleLocalUpdate(next) &&
@@ -101,6 +108,7 @@ export function useLocalAppUpdate() {
             status: "verified",
             releaseId: status.candidate.version,
             pending,
+            retryable: status.failure?.retryable === true,
             onUpdateAndRestart: request,
           }
         : { status: "unavailable" },
@@ -112,5 +120,6 @@ export function useLocalAppUpdate() {
     update,
     ready,
     failure,
+    failureReason,
   };
 }

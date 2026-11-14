@@ -1,5 +1,6 @@
+import { prepareIsolatedRuntimeEnv } from "./isolated-runtime-env.mjs";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -55,13 +56,11 @@ export async function startPackagedWebDaemon(input: {
   relayEndpoint: string;
 }): Promise<PackagedWebDaemon> {
   const port = await availablePort();
-  const home = await mkdtemp(path.join(tmpdir(), "paseo-relay-deployment-e2e-"));
+  const home = await mkdtemp(path.join(await realpath(tmpdir()), "paseo-relay-deployment-e2e-"));
   const serverId = `relay-deployment-${Date.now().toString(36)}`;
   const paseo = path.resolve(__dirname, "../../../../../node_modules/.bin/paseo");
   const env: NodeJS.ProcessEnv = {
-    ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("PASEO_"))),
-    HOME: home,
-    USERPROFILE: home,
+    ...(await prepareIsolatedRuntimeEnv(process.env, home)),
     CI: "true",
     NODE_ENV: "development",
     PASEO_NODE_ENV: "development",
