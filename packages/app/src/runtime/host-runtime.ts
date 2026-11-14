@@ -2303,12 +2303,15 @@ export class HostRuntimeStore {
   }
 
   async forgetOfflineProject(serverId: string, projectId: string): Promise<void> {
+    const initialEpoch = this.getSnapshot(serverId)?.connectionEpoch ?? 0;
     const assertOffline = () => {
-      const status = this.getSnapshot(serverId)?.connectionStatus;
+      const snapshot = this.getSnapshot(serverId);
+      // An unreachable old endpoint continuously retries. "connecting" and a
+      // retained handshake are not evidence of a live connection.
       if (
-        status === "online" ||
-        status === "connecting" ||
-        this.getClient(serverId)?.getLastServerInfoMessage()
+        snapshot?.connectionStatus === "online" ||
+        this.getClient(serverId)?.isConnected === true ||
+        (snapshot?.connectionEpoch ?? 0) !== initialEpoch
       )
         throw new Error("Host connection changed. Review the project again.");
     };
