@@ -13,6 +13,7 @@ export interface WorkspaceDraftTabSetup {
 
 export interface WorkspaceWorkingDiffTabTarget {
   kind: "working_diff";
+  developmentReview?: import("@/workspace/file-open").DevelopmentReviewIdentity;
   focusPath?: string;
   focusRequestId?: number;
 }

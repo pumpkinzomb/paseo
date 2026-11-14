@@ -16,6 +16,10 @@ fixed-target labels and icons from that registration, filter by host, and never 
 panel type for another. Tab moves reject unsupported destinations, and placement resolves only to
 a compatible pane.
 
+Files and Changes share the host/conversation source selector described in
+[Development review](development-review.md). Opened review files pin that identity
+independently of the selector.
+
 Files and Changes are the Explorer defaults. Their panel manifests mark them as singletons,
 so a pane’s + menu omits each while that pane already contains it. Closing one makes its menu
 item available again. Other compatible tabs, including agents, terminals, files, and diffs,

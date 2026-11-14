@@ -1,3 +1,5 @@
+import { developmentReviewIdentityKey } from "@/workspace/file-open";
+import { DevelopmentReviewPane } from "@/development-review/pane";
 import { FileText } from "lucide-react-native";
 import { Text, View } from "react-native";
 import { useMemo } from "react";
@@ -55,6 +57,15 @@ function FilePanel() {
   const { serverId, workspaceId, target, panelRevision } = usePaneContext();
   const workspaceDirectory = useWorkspaceDirectory(serverId, workspaceId);
   invariant(target.kind === "file", "FilePanel requires file target");
+  if (target.developmentReview)
+    return (
+      <DevelopmentReviewPane
+        key={`${developmentReviewIdentityKey(target.developmentReview)}:${target.path}`}
+        selected={target.developmentReview}
+        mode="file"
+        filePath={target.path}
+      />
+    );
   if (!workspaceDirectory) {
     return (
       <View style={CENTERED_PADDED_STYLE}>

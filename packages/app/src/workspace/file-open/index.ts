@@ -2,7 +2,27 @@ import { isAbsolutePath } from "@/utils/path";
 
 export type OpenFileDisposition = "main" | "preferred" | "side" | "explorer";
 
+export interface DevelopmentReviewIdentity {
+  scopeToken?: string;
+  serverId: string;
+  parentWorkspaceId: string;
+  workspaceId: string;
+  evidenceId?: string;
+}
+export function developmentReviewIdentityKey(value?: DevelopmentReviewIdentity): string {
+  return value
+    ? JSON.stringify([
+        value.serverId,
+        value.parentWorkspaceId,
+        value.workspaceId,
+        value.scopeToken ?? null,
+        value.evidenceId ?? null,
+      ])
+    : "";
+}
+
 export interface WorkspaceFileLocation {
+  developmentReview?: DevelopmentReviewIdentity;
   path: string;
   lineStart?: number;
   lineEnd?: number;
@@ -22,7 +42,9 @@ export function normalizeWorkspaceFileLocation(
     return null;
   }
 
-  const path = location.path.trim().replace(/\\/g, "/");
+  const path = location.developmentReview
+    ? location.path
+    : location.path.trim().replace(/\\/g, "/");
   if (!path) {
     return null;
   }
@@ -31,6 +53,7 @@ export function normalizeWorkspaceFileLocation(
   const lineEnd = normalizeLineNumber(location.lineEnd);
   return {
     path,
+    ...(location.developmentReview ? { developmentReview: location.developmentReview } : {}),
     ...(lineStart ? { lineStart } : {}),
     ...(lineStart && lineEnd && lineEnd >= lineStart ? { lineEnd } : {}),
   };
@@ -41,7 +64,11 @@ export function workspaceFileLocationsEqual(
   right: WorkspaceFileLocation,
 ): boolean {
   return (
-    left.path === right.path && left.lineStart === right.lineStart && left.lineEnd === right.lineEnd
+    developmentReviewIdentityKey(left.developmentReview) ===
+      developmentReviewIdentityKey(right.developmentReview) &&
+    left.path === right.path &&
+    left.lineStart === right.lineStart &&
+    left.lineEnd === right.lineEnd
   );
 }
 

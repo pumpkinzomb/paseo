@@ -1440,7 +1440,12 @@ export const createWorktree = async ({
       });
     }
 
+    // Freeze creation evidence before the comparison branch can move.
+    const reviewBase = await runGitCommand(["rev-parse", "--verify", "HEAD^{commit}"], {
+      cwd: worktreePath,
+    });
     await writePaseoWorktreeMetadata(worktreePath, {
+      ...(reviewBase.exitCode === 0 ? { reviewBaseSha: reviewBase.stdout.trim() } : {}),
       baseRefName: sourcePlan.metadataBaseRefName,
       ...(sourcePlan.metadataBaseRef ? { baseRef: sourcePlan.metadataBaseRef } : {}),
       ...(sourcePlan.changeRequestLookupTarget

@@ -1,3 +1,4 @@
+import { developmentReviewIdentityKey } from "@/workspace/file-open";
 import { normalizeWorkspaceFileLocation, workspaceFileLocationsEqual } from "@/workspace/file-open";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/workspace-tabs/model";
 
@@ -128,6 +129,17 @@ export function workspaceTabTargetsEqual(
   return secondaryWorkspaceTabTargetsEqual(left, right);
 }
 
+function workingDiffTargetsEqual(
+  left: Extract<WorkspaceTabTarget, { kind: "working_diff" }>,
+  right: Extract<WorkspaceTabTarget, { kind: "working_diff" }>,
+): boolean {
+  return (
+    developmentReviewIdentityKey(left.developmentReview) ===
+      developmentReviewIdentityKey(right.developmentReview) &&
+    left.focusPath === right.focusPath &&
+    left.focusRequestId === right.focusRequestId
+  );
+}
 function secondaryWorkspaceTabTargetsEqual(
   left: WorkspaceTabTarget,
   right: WorkspaceTabTarget,
@@ -139,7 +151,7 @@ function secondaryWorkspaceTabTargetsEqual(
     return workspaceFileLocationsEqual(left, right);
   }
   if (left.kind === "working_diff" && right.kind === "working_diff") {
-    return left.focusPath === right.focusPath && left.focusRequestId === right.focusRequestId;
+    return workingDiffTargetsEqual(left, right);
   }
   if (left.kind === "browser_workspace" && right.kind === "browser_workspace") return true;
   if (left.kind === "files" && right.kind === "files") {
@@ -219,7 +231,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
     return `commit_diff_${target.sha}`;
   }
   if (target.kind === "working_diff") {
-    return "working_diff";
+    return target.developmentReview
+      ? `working_diff_${developmentReviewIdentityKey(target.developmentReview)}`
+      : "working_diff";
   }
   if (
     target.kind === "browser_workspace" ||
@@ -235,7 +249,7 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
       ? `plugin_workspace_${identity}`
       : `plugin_agent_${identity}_${target.agentId.length}_${target.agentId}`;
   }
-  return `file_${target.path}`;
+  return `file_${target.developmentReview ? developmentReviewIdentityKey(target.developmentReview) + "_" : ""}${target.path}`;
 }
 
 function normalizePluginTabTarget(
@@ -273,6 +287,7 @@ function normalizeWorkingDiffTabTarget(
   const focusRequestId = normalizePositiveInteger(value.focusRequestId);
   return {
     kind: "working_diff" as const,
+    ...(value.developmentReview ? { developmentReview: value.developmentReview } : {}),
     ...(focusPath ? { focusPath } : {}),
     ...(focusRequestId ? { focusRequestId } : {}),
   };

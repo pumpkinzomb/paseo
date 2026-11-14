@@ -1,3 +1,9 @@
+import { developmentReviewIdentityKey } from "@/workspace/file-open";
+import {
+  DevelopmentSourceSelector,
+  DevelopmentReviewPane,
+  useDevelopmentSelection,
+} from "@/development-review/pane";
 import { resolveChangesPresentation } from "./changes/presentation";
 import { useCallback, useMemo, type ReactNode } from "react";
 import { Text, View } from "react-native";
@@ -78,6 +84,33 @@ function PanelState({
 }
 
 function ChangesPanel() {
+  const { serverId, workspaceId, target } = usePaneContext();
+  const selected = useDevelopmentSelection(serverId, workspaceId);
+  if (target.kind === "working_diff" && target.developmentReview)
+    return (
+      <DevelopmentReviewPane
+        key={developmentReviewIdentityKey(target.developmentReview)}
+        selected={target.developmentReview}
+        mode="diff"
+      />
+    );
+  if (target.kind !== "changes_tree") return <ConversationChangesPanel />;
+  return (
+    <View style={styles.container}>
+      <DevelopmentSourceSelector />
+      {selected ? (
+        <DevelopmentReviewPane
+          key={developmentReviewIdentityKey(selected)}
+          selected={selected}
+          mode="diff"
+        />
+      ) : (
+        <ConversationChangesPanel />
+      )}
+    </View>
+  );
+}
+function ConversationChangesPanel() {
   const { t } = useTranslation();
   const { serverId, workspaceId, tabId, target, openPreferredTarget, openTargetToSide } =
     usePaneContext();

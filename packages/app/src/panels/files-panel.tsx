@@ -1,3 +1,9 @@
+import { developmentReviewIdentityKey } from "@/workspace/file-open";
+import {
+  DevelopmentSourceSelector,
+  DevelopmentReviewPane,
+  useDevelopmentSelection,
+} from "@/development-review/pane";
 import { Text, View } from "react-native";
 import { Files } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -19,6 +25,24 @@ const filesPanelPresentation = {
 } satisfies PanelPresentation;
 
 function FilesPanel() {
+  const { serverId, workspaceId } = usePaneContext();
+  const selected = useDevelopmentSelection(serverId, workspaceId);
+  return (
+    <View style={styles.container}>
+      <DevelopmentSourceSelector />
+      {selected ? (
+        <DevelopmentReviewPane
+          key={developmentReviewIdentityKey(selected)}
+          selected={selected}
+          mode="files"
+        />
+      ) : (
+        <ConversationFilesPanel />
+      )}
+    </View>
+  );
+}
+function ConversationFilesPanel() {
   const { t } = useTranslation();
   const { serverId, workspaceId, target, openPreferredTarget, openTargetToSide } = usePaneContext();
   const workspaceRoot = useWorkspaceDirectory(serverId, workspaceId);
@@ -57,6 +81,7 @@ export const filesPanelRegistration = definePanel("files", {
 });
 
 const styles = StyleSheet.create((theme) => ({
+  container: { flex: 1 },
   centerState: {
     flex: 1,
     alignItems: "center",

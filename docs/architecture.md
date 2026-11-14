@@ -6,6 +6,8 @@ Your code never leaves your machine. Paseo is local-first.
 
 Daemon-owned outbound connections and routed API scope ownership are described in
 [Connected hosts](connected-hosts.md).
+Conversation-linked read-only source scopes and retained commit evidence are described
+in [Development review](development-review.md).
 
 ## System overview
 

@@ -2069,6 +2069,7 @@ export class VoiceAssistantWebSocketServer {
         ownedSubscriptions: true,
         providerOptionControls: true,
         entityMetadata: true,
+        developmentReview: true,
         defaultAssistant: true,
         defaultAssistantModelSelection: true,
         defaultAssistantWorkspaceCreation: true,

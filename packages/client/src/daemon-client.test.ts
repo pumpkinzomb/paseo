@@ -10133,3 +10133,26 @@ describe("provider options across daemon versions", () => {
     });
   });
 });
+
+test("development review rejects an old host without sending path-based fallback requests", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "development-review-old-host",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+  const connected = client.connect();
+  mock.triggerOpen({ features: {} });
+  await connected;
+  const before = mock.sent.length;
+  await expect(
+    client.readDevelopmentReview({ workspaceId: "parent", operation: "list" }),
+  ).rejects.toThrow("Update the host");
+  await expect(client.linkDevelopmentSource("parent", "source")).rejects.toThrow("Update the host");
+  await expect(client.captureDevelopmentReview("parent", "task", "source")).rejects.toThrow(
+    "Update the host",
+  );
+  expect(mock.sent.length).toBe(before);
+});

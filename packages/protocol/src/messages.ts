@@ -3231,6 +3231,68 @@ const FileExplorerDirectorySchema = z.object({
   entries: z.array(FileExplorerEntrySchema),
 });
 
+export const DevelopmentReviewScopeSchema = z.object({
+  scopeToken: z.string().optional(),
+  workspaceId: z.string(),
+  sourceWorkspaceId: z.string(),
+  label: z.string(),
+  path: z.string(),
+  branch: z.string().nullable(),
+  status: z.enum(["live", "committed", "integrated", "unavailable"]),
+  evidenceId: z.string().optional(),
+  baseSha: z.string().optional(),
+  headSha: z.string().optional(),
+  error: z.string().optional(),
+});
+export const DevelopmentReviewReadRequestSchema = z.object({
+  type: z.literal("workspace.development.read.request"),
+  scopeToken: z.string().optional(),
+  workspaceId: z.string(),
+  scopeWorkspaceId: z.string().optional(),
+  evidenceId: z.string().optional(),
+  operation: z.enum(["list", "files", "file", "diff"]),
+  path: z.string().optional(),
+  requestId: z.string(),
+});
+export const DevelopmentReviewLinkRequestSchema = z.object({
+  type: z.literal("workspace.development.link.request"),
+  workspaceId: z.string(),
+  sourceWorkspaceId: z.string(),
+  requestId: z.string(),
+});
+export const DevelopmentReviewCaptureRequestSchema = z.object({
+  type: z.literal("workspace.development.capture.request"),
+  workspaceId: z.string(),
+  taskWorkspaceId: z.string(),
+  sourceWorkspaceId: z.string(),
+  baseSha: z.string().optional(),
+  requestId: z.string(),
+});
+export const DevelopmentReviewResponseSchema = z.object({
+  type: z.literal("workspace.development.read.response"),
+  payload: z.object({
+    requestId: z.string(),
+    scopes: z.array(DevelopmentReviewScopeSchema),
+    candidates: z
+      .array(z.object({ workspaceId: z.string(), label: z.string(), path: z.string() }))
+      .optional(),
+    files: z.array(ParsedDiffFileSchema).optional(),
+    entries: z.array(FileExplorerEntrySchema).optional(),
+    content: z.string().optional(),
+    diff: z.string().optional(),
+  }),
+});
+export const DevelopmentReviewLinkResponseSchema = z.object({
+  type: z.literal("workspace.development.link.response"),
+  payload: z.object({ requestId: z.string(), accepted: z.boolean() }),
+});
+export const DevelopmentReviewCaptureResponseSchema = z.object({
+  type: z.literal("workspace.development.capture.response"),
+  payload: z.object({ requestId: z.string(), evidenceId: z.string() }),
+});
+export type DevelopmentReviewData = z.infer<typeof DevelopmentReviewResponseSchema>["payload"];
+export type DevelopmentReviewScope = z.infer<typeof DevelopmentReviewScopeSchema>;
+export type DevelopmentReviewReadRequest = z.infer<typeof DevelopmentReviewReadRequestSchema>;
 export const FileExplorerRequestSchema = z.object({
   type: z.literal("file_explorer_request"),
   cwd: z.string(),
@@ -3695,6 +3757,9 @@ export const SubscriptionReleaseResponseSchema = z.object({
 });
 
 export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+  DevelopmentReviewReadRequestSchema,
+  DevelopmentReviewLinkRequestSchema,
+  DevelopmentReviewCaptureRequestSchema,
   HostsListRequestSchema,
   HostsAddRequestSchema,
   HostsUpdateRequestSchema,
@@ -4312,6 +4377,7 @@ export const ServerInfoStatusPayloadSchema = z
         ownedSubscriptions: z.boolean().optional(),
         providerOptionControls: z.boolean().optional(),
         entityMetadata: z.boolean().optional(),
+        developmentReview: z.boolean().optional(),
         defaultAssistant: z.boolean().optional(),
         defaultAssistantModelSelection: z.boolean().optional(),
         defaultAssistantWorkspaceCreation: z.boolean().optional(),
@@ -7664,6 +7730,9 @@ export const AgentSkillsImportLegacySelectionResponseSchema = z.object({
 });
 
 export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+  DevelopmentReviewResponseSchema,
+  DevelopmentReviewLinkResponseSchema,
+  DevelopmentReviewCaptureResponseSchema,
   HostsListResponseSchema,
   HostsChangedSchema,
   HostsAddResponseSchema,

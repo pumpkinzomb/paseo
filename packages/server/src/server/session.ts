@@ -1,3 +1,4 @@
+import { DevelopmentReview } from "./development-review.js";
 import { inspectTaskArtifacts, removeTaskArtifacts } from "@getpaseo/plugin/server";
 import {
   assistantWorkspaceDirectory,
@@ -2481,6 +2482,7 @@ export class Session {
         "assistant.conversation.get.request",
         "daemon.get_status.request",
         "fetch_workspaces_request",
+        "workspace.development.read.request",
         "project.list.request",
         "workspace.label.list.request",
         "read_project_config_request",
@@ -2571,7 +2573,35 @@ export class Session {
       if (admitted === null) return;
       releaseUpdateAdmission = admitted ?? null;
       try {
-        await this.dispatchInboundMessage(msg, source);
+        if (msg.type === "workspace.development.read.request") {
+          this.emit({
+            type: "workspace.development.read.response",
+            payload: {
+              requestId: msg.requestId,
+              ...(await new DevelopmentReview(this.workspaceRegistry).read(msg)),
+            },
+          });
+        } else if (msg.type === "workspace.development.link.request") {
+          await new DevelopmentReview(this.workspaceRegistry).link(
+            msg.workspaceId,
+            msg.sourceWorkspaceId,
+          );
+          this.emit({
+            type: "workspace.development.link.response",
+            payload: { requestId: msg.requestId, accepted: true },
+          });
+        } else if (msg.type === "workspace.development.capture.request") {
+          const evidenceId = await new DevelopmentReview(this.workspaceRegistry).capture(
+            msg.workspaceId,
+            msg.taskWorkspaceId,
+            msg.sourceWorkspaceId,
+            msg.baseSha,
+          );
+          this.emit({
+            type: "workspace.development.capture.response",
+            payload: { requestId: msg.requestId, evidenceId },
+          });
+        } else await this.dispatchInboundMessage(msg, source);
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         this.sessionLogger.error({ err }, "Error handling message");

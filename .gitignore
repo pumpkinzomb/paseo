@@ -102,3 +102,9 @@ app.json
 # Local isolated development state
 .lab/
 .lab-config.json
+
+# Session-owned disposable outputs remain browsable, outside source diffs.
+.paseo-task-artifacts/
+
+# Generated browser-test attachments are not project source changes.
+.vitest-attachments/

@@ -1,3 +1,4 @@
+import { selectedDevelopmentReview } from "@/development-review/selection";
 import { supportsDesktopPaneSplits } from "@/constants/layout";
 import { revealWorkspaceTab } from "./navigation";
 import {
@@ -50,7 +51,10 @@ export function openWorkspaceChanges(input: OpenWorkspaceChangesInput): string |
   }
   return openPreferredWorkspaceTarget({
     workspaceKey: input.workspaceKey,
-    target: { kind: "working_diff" },
+    target: {
+      kind: "working_diff",
+      developmentReview: selectedDevelopmentReview(input.workspaceKey),
+    },
     source: "diffs",
     preferences: input.preferences,
   });

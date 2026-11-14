@@ -49,8 +49,21 @@ const PersistedProjectRecordSchema = z.object({
   archivedAt: z.string().nullable(),
 });
 
+const DevelopmentEvidenceSchema = z.object({
+  id: z.string(),
+  sourceWorkspaceId: z.string(),
+  repository: z.string(),
+  baseSha: z.string(),
+  headSha: z.string(),
+  capturedAt: z.string(),
+});
+
 const PersistedWorkspaceRecordSchema = z.object({
   parentWorkspaceId: z.string().optional(),
+  developmentSourceIds: z.array(z.string()).optional(),
+  developmentSourceIdentities: z.record(z.string(), z.string()).optional(),
+  developmentEvidence: DevelopmentEvidenceSchema.optional(),
+  developmentEvidenceHistory: z.array(DevelopmentEvidenceSchema).optional(),
   workspaceId: z.string(),
   projectId: z.string(),
   cwd: z.string(),

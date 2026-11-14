@@ -1,4 +1,22 @@
 export const en = {
+  developmentReview: {
+    conversation: "Conversation files",
+    sources: "Development source",
+    readonly: "Read-only review",
+    refresh: "Refresh",
+    back: "Parent directory",
+    link: "Link registered source",
+    workspaceId: "Registered workspace ID",
+    unavailable: "Selected source is unavailable. Select a source to continue.",
+    update: "Update the host to use development review.",
+    capture: "Pin committed review",
+    legacy: "Legacy task: capture requires a reviewed base SHA through the API.",
+    live: "Live / uncommitted",
+    committed: "Committed",
+    integrated: "Integrated",
+    empty: "No changes",
+    open: "Open file",
+  },
   localAppUpdate: {
     blocked:
       "Update was blocked during preparation. Check running work and the host connection, then retry.",

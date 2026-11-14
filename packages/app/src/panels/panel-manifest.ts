@@ -1,3 +1,4 @@
+import { developmentReviewIdentityKey } from "@/workspace/file-open";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 
 /** Where a tab renders: a split pane, the Explorer dock, or the compact workspace sheet. */
@@ -128,7 +129,10 @@ const manifests = {
     showCloseButton: true,
     singleton: false,
     compactSheet: { openAsTab: false },
-    resourceKey: (target) => target.path,
+    resourceKey: (target) =>
+      target.developmentReview
+        ? `${developmentReviewIdentityKey(target.developmentReview)}:${target.path}`
+        : target.path,
   },
   working_diff: {
     kind: "working_diff",
@@ -136,7 +140,10 @@ const manifests = {
     showCloseButton: true,
     singleton: false,
     compactSheet: null,
-    resourceKey: () => "working_diff",
+    resourceKey: (target) =>
+      target.developmentReview
+        ? developmentReviewIdentityKey(target.developmentReview)
+        : "working_diff",
   },
   plugin: {
     kind: "plugin",

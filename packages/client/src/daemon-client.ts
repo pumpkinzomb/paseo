@@ -3837,6 +3837,44 @@ export class DaemonClient {
   }
 
   /** Top-level keys replace; `null` removes the key. Resolves to the workspace's metadata afterwards. */
+  async readDevelopmentReview(
+    input: Omit<
+      import("@getpaseo/protocol/messages").DevelopmentReviewReadRequest,
+      "type" | "requestId"
+    >,
+  ) {
+    if (!this.getLastServerInfoMessage()?.features?.developmentReview)
+      throw new Error("Update the host to review linked development sources");
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.development.read.response">({
+      message: { type: "workspace.development.read.request", ...input },
+    });
+  }
+  async linkDevelopmentSource(workspaceId: string, sourceWorkspaceId: string) {
+    if (!this.getLastServerInfoMessage()?.features?.developmentReview)
+      throw new Error("Update the host to link development sources");
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.development.link.response">({
+      message: { type: "workspace.development.link.request", workspaceId, sourceWorkspaceId },
+    });
+  }
+  async captureDevelopmentReview(
+    workspaceId: string,
+    taskWorkspaceId: string,
+    sourceWorkspaceId: string,
+    baseSha?: string,
+  ) {
+    if (!this.getLastServerInfoMessage()?.features?.developmentReview)
+      throw new Error("Update the host to capture development review");
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.development.capture.response">({
+      message: {
+        type: "workspace.development.capture.request",
+        workspaceId,
+        taskWorkspaceId,
+        sourceWorkspaceId,
+        ...(baseSha ? { baseSha } : {}),
+      },
+    });
+  }
+
   async setWorkspaceMetadata(
     workspaceId: string,
     patch: Record<string, JsonValue>,

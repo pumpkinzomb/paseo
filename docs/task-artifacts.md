@@ -58,5 +58,6 @@ main commits 6a30b94ad, 03d07b6f4 and 6eaa6683a. Their reviewed shared-folder co
 and November 13 local test-preview copies were removed separately; Git source,
 current conversation, provider histories and remote Google documents were kept.
 
-This feature does not yet aggregate self-development worktree diffs or completed
-commits into the parent conversation. That is a separate display/association task.
+Conversation-linked source files and pinned task commits have a separate
+[development review](development-review.md) association. Their source and Git
+evidence are not disposable task output and are never adopted by output cleanup.

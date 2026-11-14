@@ -1,3 +1,4 @@
+import { useDevelopmentReviewSelection } from "@/development-review/selection";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
@@ -34,6 +35,7 @@ function activeExplorerKind() {
 }
 
 beforeEach(() => {
+  useDevelopmentReviewSelection.setState({ values: {} });
   usePanelStore.setState({
     mobilePanel: { target: "agent", revision: 0 },
   });
@@ -333,5 +335,33 @@ describe("automatic PR placement", () => {
         "explorer",
       )!.tabIds,
     ).toEqual(["files", "pull_request"]);
+  });
+});
+
+it("pins the selected development scope when opening a diff and keeps prior tabs distinct", () => {
+  const first = {
+    serverId: "server-1",
+    parentWorkspaceId: "workspace-1",
+    workspaceId: "source-a",
+    scopeToken: "token-a",
+  };
+  const selection = useDevelopmentReviewSelection.getState();
+  selection.select("first", first);
+  const input = {
+    isCompact: false,
+    supportsPaneSplits: true,
+    workspaceKey: WORKSPACE_KEY,
+    preferences: DEFAULT_APP_SETTINGS.openInSidePane,
+  };
+  const firstId = openWorkspaceChanges(input);
+  selection.select("first", { ...first, workspaceId: "source-b", scopeToken: "token-b" });
+  const secondId = openWorkspaceChanges(input);
+  expect(firstId).not.toBe(secondId);
+  const tabs = collectAllTabs(
+    useWorkspaceLayoutStore.getState().layoutByWorkspace[WORKSPACE_KEY].root,
+  );
+  expect(tabs.find((tab) => tab.tabId === firstId)?.target).toEqual({
+    kind: "working_diff",
+    developmentReview: first,
   });
 });

@@ -20,6 +20,10 @@ const ChangeRequestLookupTargetSchema = z.object({
 const PaseoWorktreeMetadataV1Schema = z.object({
   version: z.literal(1),
   baseRefName: z.string().min(1),
+  reviewBaseSha: z
+    .string()
+    .regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/)
+    .optional(),
   baseRef: z.string().min(1).optional(),
   changeRequestLookupTarget: ChangeRequestLookupTargetSchema.optional(),
 });
@@ -27,6 +31,10 @@ const PaseoWorktreeMetadataV1Schema = z.object({
 const PaseoWorktreeMetadataV2Schema = z.object({
   version: z.literal(2),
   baseRefName: z.string().min(1),
+  reviewBaseSha: z
+    .string()
+    .regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/)
+    .optional(),
   baseRef: z.string().min(1).optional(),
   changeRequestLookupTarget: ChangeRequestLookupTargetSchema.optional(),
   firstAgentBranchAutoName: z
@@ -225,6 +233,7 @@ export async function writePaseoWorktreeMetadata(
   worktreeRoot: string,
   options: {
     baseRefName: string;
+    reviewBaseSha?: string;
     baseRef?: string;
     changeRequestLookupTarget?: PaseoWorktreeChangeRequestHint;
   },
@@ -240,6 +249,7 @@ export async function writePaseoWorktreeMetadata(
     const metadata: PaseoWorktreeMetadata = {
       version: 1,
       baseRefName,
+      ...(options.reviewBaseSha ? { reviewBaseSha: options.reviewBaseSha } : {}),
       ...(baseRef ? { baseRef } : {}),
       ...(options.changeRequestLookupTarget
         ? { changeRequestLookupTarget: options.changeRequestLookupTarget }

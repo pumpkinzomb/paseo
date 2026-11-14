@@ -2,6 +2,7 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const fr: TranslationResources = {
+  developmentReview: en.developmentReview,
   localAppUpdate: {
     ...en.localAppUpdate,
     version: "App version {{version}}",

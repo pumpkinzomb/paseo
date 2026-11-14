@@ -2,6 +2,24 @@ import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
+  developmentReview: {
+    conversation: "대화 파일",
+    sources: "개발 소스",
+    readonly: "읽기 전용 검토",
+    refresh: "새로고침",
+    back: "상위 폴더",
+    link: "등록된 소스 연결",
+    workspaceId: "등록된 워크스페이스 ID",
+    unavailable: "선택한 소스를 사용할 수 없습니다. 소스를 다시 선택하세요.",
+    update: "개발 검토를 사용하려면 호스트를 업데이트하세요.",
+    capture: "커밋 검토 고정",
+    legacy: "기존 작업은 API에서 검토된 base SHA로 캡처해야 합니다.",
+    live: "현재 / 미커밋",
+    committed: "커밋됨",
+    integrated: "통합됨",
+    empty: "변경 사항 없음",
+    open: "파일 열기",
+  },
   localAppUpdate: {
     blocked:
       "업데이트 준비가 거절됐습니다. 진행 중인 작업과 호스트 연결을 확인한 뒤 다시 시도해 주세요.",

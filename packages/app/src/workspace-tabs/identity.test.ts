@@ -1,3 +1,6 @@
+import { z } from "zod";
+import { WorkspaceLayoutPersistedStateSchema } from "@/stores/workspace-layout-storage";
+import { panelResourceKey } from "@/panels/panel-manifest";
 import { describe, expect, it, test } from "vitest";
 import {
   buildDeterministicWorkspaceTabId,
@@ -195,4 +198,97 @@ describe("plugin panel tab identity", () => {
     expect(workspace).toBe("plugin_workspace_6_review_7_details");
     expect(agent).toBe("plugin_agent_6_review_7_details_7_agent-1");
   });
+});
+
+it("pins development source and evidence in file and diff target identity", () => {
+  const developmentReview = {
+    serverId: "host",
+    parentWorkspaceId: "parent",
+    workspaceId: "source",
+    evidenceId: "review-a",
+  };
+  const file = { kind: "file" as const, path: " spaced\tname\n", developmentReview };
+  expect(normalizeWorkspaceTabTarget(file)).toEqual(file);
+  expect(panelResourceKey(file)).not.toBe(
+    panelResourceKey({
+      ...file,
+      developmentReview: { ...developmentReview, workspaceId: "other" },
+    }),
+  );
+  expect(
+    workspaceTabTargetsEqual(file, {
+      ...file,
+      developmentReview: { ...developmentReview, evidenceId: "review-b" },
+    }),
+  ).toBe(false);
+  expect(buildDeterministicWorkspaceTabId(file)).not.toBe(
+    buildDeterministicWorkspaceTabId({ kind: "file", path: file.path }),
+  );
+  const diff = { kind: "working_diff" as const, developmentReview };
+  expect(normalizeWorkspaceTabTarget(diff)).toEqual(diff);
+  expect(panelResourceKey(diff)).not.toBe(panelResourceKey({ kind: "working_diff" }));
+  expect(workspaceTabTargetsEqual(diff, { kind: "working_diff" })).toBe(false);
+  expect(buildDeterministicWorkspaceTabId(diff)).not.toBe("working_diff");
+});
+
+it("keeps pinned file identity stable across persisted property order changes", () => {
+  const target = {
+    kind: "file" as const,
+    path: "same.ts",
+    developmentReview: {
+      serverId: "host",
+      parentWorkspaceId: "parent",
+      workspaceId: "source",
+      scopeToken: "token",
+      evidenceId: "capture",
+    },
+  };
+  const persisted = WorkspaceLayoutPersistedStateSchema.parse(
+    JSON.parse(
+      JSON.stringify({
+        layoutByWorkspace: {
+          workspace: {
+            root: {
+              kind: "pane",
+              pane: {
+                id: "pane",
+                tabIds: ["file"],
+                focusedTabId: "file",
+                tabs: [{ tabId: "file", target, createdAt: 0 }],
+              },
+            },
+            focusedPaneId: "pane",
+          },
+        },
+      }),
+    ),
+  );
+  const node = persisted.layoutByWorkspace.workspace.root;
+  if (node.kind !== "pane") throw new Error("fixture pane missing");
+  const stored = z
+    .object({
+      pane: z.object({
+        tabs: z.array(
+          z.object({
+            target: z.object({
+              kind: z.literal("file"),
+              path: z.string(),
+              developmentReview: z.object({
+                scopeToken: z.string(),
+                serverId: z.string(),
+                parentWorkspaceId: z.string(),
+                workspaceId: z.string(),
+                evidenceId: z.string(),
+              }),
+            }),
+          }),
+        ),
+      }),
+    })
+    .parse(node);
+  const restored = stored.pane.tabs[0].target;
+  if (!restored) throw new Error("fixture target missing");
+  expect(workspaceTabTargetsEqual(target, restored)).toBe(true);
+  expect(buildDeterministicWorkspaceTabId(restored)).toBe(buildDeterministicWorkspaceTabId(target));
+  expect(panelResourceKey(restored)).toBe(panelResourceKey(target));
 });

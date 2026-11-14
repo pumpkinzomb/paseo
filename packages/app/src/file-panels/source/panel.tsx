@@ -20,7 +20,6 @@ import { isWeb } from "@/constants/platform";
 import { useAppSettings } from "@/hooks/use-settings";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { formatFileSize } from "@/utils/format-file-size";
-import type { Theme } from "@/styles/theme";
 import { FilePanelLoading } from "../loading";
 import type { FileConflictAlertState } from "./conflict-alert";
 import { FileEditorModel, getFileConflictCallout } from "./editor/model";
@@ -29,22 +28,7 @@ import { selectSourcePresentation } from "./readonly/presentation";
 import { FileSourceView } from "./readonly/view";
 import { TextFileToolbar, type TextFileView } from "./toolbar";
 
-// CodeMirror and native source rendering consume appearance as props. Subscribe at the
-// rendering leaf so theme updates reconfigure it without replacing the editor/model.
-const sourceAppearance = (theme: Theme) => ({
-  theme: {
-    colorScheme: theme.colorScheme,
-    background: theme.colors.surface0,
-    foreground: theme.colors.foreground,
-    cursor: theme.colors.terminal.cursor,
-    foregroundMuted: theme.colors.foregroundMuted,
-    border: theme.colors.border,
-    selection: theme.colors.terminal.selectionBackground,
-    monoFont: theme.fontFamily.mono,
-    codeFontSize: theme.fontSize.code,
-    syntax: theme.colors.syntax,
-  },
-});
+import { sourceAppearance } from "./appearance";
 const ThemedFileEditorView = withUnistyles(FileEditorView, sourceAppearance);
 const ThemedFileSourceView = withUnistyles(FileSourceView, sourceAppearance);
 

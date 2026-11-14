@@ -1,3 +1,4 @@
+import { developmentReviewIdentityKey } from "@/workspace/file-open";
 import { revealWorkspaceTab } from "./navigation";
 import type { OpenInSidePanePreferences } from "@/hooks/use-settings";
 import {
@@ -72,6 +73,15 @@ function canReplacePreview(input: {
   currentTarget: WorkspaceTabTarget;
   nextTarget: WorkspaceTabTarget;
 }): boolean {
+  if (input.nextTarget.kind === "file" || input.nextTarget.kind === "working_diff") {
+    const current = input.currentTarget;
+    if (
+      (current.kind === "file" || current.kind === "working_diff") &&
+      developmentReviewIdentityKey(current.developmentReview) !==
+        developmentReviewIdentityKey(input.nextTarget.developmentReview)
+    )
+      return false;
+  }
   if (input.nextTarget.kind === "working_diff") {
     return input.currentTarget.kind === "working_diff";
   }

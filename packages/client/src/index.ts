@@ -194,6 +194,20 @@ export interface PaseoWorkspaceHandle {
   readonly terminals: PaseoWorkspaceTerminalActions;
   current(): PaseoWorkspace | null;
   refresh(options?: { requestId?: string }): Promise<PaseoWorkspace | null>;
+  development: {
+    read(
+      input: Omit<
+        import("@getpaseo/protocol/messages").DevelopmentReviewReadRequest,
+        "workspaceId" | "type" | "requestId"
+      >,
+    ): Promise<import("@getpaseo/protocol/messages").DevelopmentReviewData>;
+    link(sourceWorkspaceId: string): Promise<void>;
+    capture(
+      taskWorkspaceId: string,
+      sourceWorkspaceId: string,
+      baseSha?: string,
+    ): Promise<{ evidenceId: string }>;
+  };
   setTitle(title: string | null, requestId?: string): Promise<{ title: string | null }>;
   /** Top-level keys replace; `null` removes the key. Needs a host with `entityMetadata`. */
   setMetadata(patch: Record<string, JsonValue>): Promise<void>;
@@ -958,6 +972,14 @@ function createWorkspaceHandleFactory(
       },
       current: () => current,
       refresh,
+      development: {
+        read: (input) => daemonClient.readDevelopmentReview({ ...input, workspaceId: id }),
+        link: async (sourceWorkspaceId) => {
+          await daemonClient.linkDevelopmentSource(id, sourceWorkspaceId);
+        },
+        capture: (taskWorkspaceId, sourceWorkspaceId, baseSha) =>
+          daemonClient.captureDevelopmentReview(id, taskWorkspaceId, sourceWorkspaceId, baseSha),
+      },
       setTitle: (title, requestId) => daemonClient.setWorkspaceTitle(id, title, requestId),
       setMetadata: async (patch) => {
         const metadata = await daemonClient.setWorkspaceMetadata(id, patch);
