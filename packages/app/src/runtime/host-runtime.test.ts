@@ -5191,15 +5191,90 @@ it("forgets only the explicitly selected orphan project from the local session r
   state.clearSession("orphan-host");
   state.clearSession("current-host");
 });
-it("refuses cache-only project removal when its host is connected or reconnecting", async () => {
+it("refuses cache-only project removal when its host is actually online", async () => {
   const store = new HostRuntimeStore({
     storage: createMemoryHostRuntimeStorage(),
     replicaRowStore: createMemoryReplicaRowStore(),
   });
-  for (const connectionStatus of ["online", "connecting"] as const) {
+  for (const connectionStatus of ["online"] as const) {
     vi.spyOn(store, "getSnapshot").mockReturnValue({ connectionStatus } as never);
     await expect(store.forgetOfflineProject("host", "project")).rejects.toThrow(
       "connection changed",
     );
   }
+});
+
+it("forgets an old port project while automatic retries are connecting and a cached handshake remains", async () => {
+  const store = new HostRuntimeStore({
+    storage: createMemoryHostRuntimeStorage(),
+    replicaRowStore: createMemoryReplicaRowStore(),
+  });
+  const session = useSessionStore.getState();
+  session.initializeSession("old-port", null);
+  const project = normalizeProjectDescriptor({
+    projectId: "old-project",
+    projectDisplayName: "Paseo",
+    projectRootPath: "/old-paseo",
+    projectKind: "git",
+  });
+  session.upsertProject("old-port", project);
+  vi.spyOn(store, "getSnapshot").mockReturnValue({
+    connectionStatus: "connecting",
+    connectionEpoch: 3,
+  } as never);
+  vi.spyOn(store, "getClient").mockReturnValue({
+    isConnected: false,
+    getLastServerInfoMessage: () => ({ serverId: "old-port" }),
+  } as never);
+  await expect(store.forgetOfflineProject("old-port", project.projectId)).resolves.toBeUndefined();
+  expect(useSessionStore.getState().sessions["old-port"]?.projects.has(project.projectId)).toBe(
+    false,
+  );
+  session.clearSession("old-port");
+});
+it("preserves the cached project if a successful connection epoch changes during removal", async () => {
+  const backing = createMemoryReplicaRowStore();
+  let epoch = 0;
+  const store = new HostRuntimeStore({
+    storage: createMemoryHostRuntimeStorage(),
+    replicaRowStore: {
+      ...backing,
+      read: async (...args) => {
+        epoch++;
+        return backing.read(...args);
+      },
+    },
+  });
+  const session = useSessionStore.getState();
+  session.initializeSession("epoch-host", null);
+  const project = normalizeProjectDescriptor({
+    projectId: "epoch-project",
+    projectDisplayName: "Paseo",
+    projectRootPath: "/old-paseo",
+    projectKind: "git",
+  });
+  session.upsertProject("epoch-host", project);
+  vi.spyOn(store, "getSnapshot").mockImplementation(
+    () =>
+      ({
+        connectionStatus: "offline",
+        connectionEpoch: epoch,
+      }) as never,
+  );
+  await expect(store.forgetOfflineProject("epoch-host", project.projectId)).rejects.toThrow(
+    "connection changed",
+  );
+  expect(useSessionStore.getState().sessions["epoch-host"]?.projects.has(project.projectId)).toBe(
+    true,
+  );
+  session.clearSession("epoch-host");
+});
+it("does not forget a project while the transport is connected even if its snapshot lags", async () => {
+  const store = new HostRuntimeStore({
+    storage: createMemoryHostRuntimeStorage(),
+    replicaRowStore: createMemoryReplicaRowStore(),
+  });
+  vi.spyOn(store, "getSnapshot").mockReturnValue({ connectionStatus: "connecting" } as never);
+  vi.spyOn(store, "getClient").mockReturnValue({ isConnected: true } as never);
+  await expect(store.forgetOfflineProject("host", "project")).rejects.toThrow("connection changed");
 });
