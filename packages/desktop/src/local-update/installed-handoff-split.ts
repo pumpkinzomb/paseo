@@ -1,3 +1,4 @@
+import { PrecommitUpdateRejected } from "./precommit-rejected.js";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, rmdir } from "node:fs/promises";
 import path from "node:path";
@@ -70,28 +71,52 @@ export async function prepareInstalledReplacement(host: ApprovedHandoffHost) {
   if (host.runningRevision !== host.capability.oldRevision)
     throw Error("Old signed revision required");
   const { store, release } = await context(host);
-  sameOriginal(host);
-  if ((await store.read("hold")) || (await store.read("stopped")) || (await store.read("receipt")))
-    throw Error("Existing handoff requires recovery");
-  const original = host.capability.original;
-  const live = await host.readExactInstance();
-  if (
-    !live ||
-    Object.keys(original).some(
-      (k) => live[k as keyof typeof live] !== original[k as keyof typeof original],
-    )
-  )
-    throw Error("Original instance changed");
-  await host.verifyAdmission();
-  await host.stopAfterDurablePrepare(original, async () => {
+  let stopAttempted = false;
+  let admissionAttempted = false;
+  try {
     sameOriginal(host);
-    await host.verifyApproval();
-    await store.write("hold", host.capability);
-  });
-  if (await host.readExactInstance()) throw Error("Stop not verified");
-  sameOriginal(host);
-  await store.write("stopped", { schemaVersion: 1, token: host.capability.token, original });
-  await release();
+    if (
+      (await store.read("hold")) ||
+      (await store.read("stopped")) ||
+      (await store.read("receipt"))
+    )
+      throw Error("Existing handoff requires recovery");
+    const original = host.capability.original;
+    const live = await host.readExactInstance();
+    if (
+      !live ||
+      Object.keys(original).some(
+        (k) => live[k as keyof typeof live] !== original[k as keyof typeof original],
+      )
+    )
+      throw Error("Original instance changed");
+    admissionAttempted = true;
+    await host.verifyAdmission();
+    stopAttempted = true;
+    await host.stopAfterDurablePrepare(original, async () => {
+      sameOriginal(host);
+      await host.verifyApproval();
+      await store.write("hold", host.capability);
+    });
+    if (await host.readExactInstance()) throw Error("Stop not verified");
+    sameOriginal(host);
+    await store.write("stopped", { schemaVersion: 1, token: host.capability.token, original });
+    await release();
+  } catch (error) {
+    // Rejection before invoking stop has no irreversible side effects. Only
+    // release the exact lock we acquired, and only with no durable stop markers.
+    if (
+      !stopAttempted &&
+      !(await store.read("hold")) &&
+      !(await store.read("stopped")) &&
+      !(await store.read("receipt"))
+    ) {
+      await release();
+      if (admissionAttempted) throw new PrecommitUpdateRejected(error);
+      throw error;
+    }
+    throw error;
+  }
   return { state: "stopped-for-replacement" as const };
 }
 /** Phase 2: new signed app (or explicitly verified old recovery build) startup.

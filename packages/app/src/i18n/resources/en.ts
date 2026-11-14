@@ -1,5 +1,9 @@
 export const en = {
   localAppUpdate: {
+    blocked:
+      "Update was blocked during preparation. Check running work and the host connection, then retry.",
+    failed: "The update request failed. No restart was confirmed.",
+    recoveryRequired: "The update outcome needs recovery checks. Do not repeat the update yet.",
     version: "App version {{version}}",
     developmentBuild: "Development build: {{label}}",
     updateAndRestart: "Update and restart",

@@ -1,3 +1,7 @@
+export interface LocalUpdateFailure {
+  code: "blocked" | "failed" | "recovery_required";
+  retryable: boolean;
+}
 /** Narrow, inert-by-default bridge. Registration is intentionally not wired into main. */
 export const LOCAL_UPDATE_CHANNELS = {
   status: "local-update:status",
@@ -5,6 +9,7 @@ export const LOCAL_UPDATE_CHANNELS = {
 } as const;
 
 export interface LocalUpdateDriverStatus {
+  failure?: LocalUpdateFailure;
   /** Native-verified daemon targeted by this update, never the selected remote host. */
   serverId?: string;
   currentVersion: string;
@@ -17,6 +22,7 @@ export interface LocalUpdateDriver {
   requestUpdate(token: string): Promise<void>;
 }
 export interface LocalUpdateIpcStatus {
+  failure?: LocalUpdateFailure;
   /** Native-verified daemon targeted by this update, never the selected remote host. */
   serverId?: string;
   currentVersion: string;
@@ -60,7 +66,7 @@ export function registerLocalUpdateIpc({
     const canApply = Boolean(
       productionReady &&
       !active &&
-      status.phase !== "applying" &&
+      (status.phase === undefined || status.phase === "idle") &&
       candidate &&
       validToken(candidate.token) &&
       !consumed.has(candidate.token),
@@ -70,6 +76,11 @@ export function registerLocalUpdateIpc({
       phase: active ? "applying" : (status.phase ?? "idle"),
       canApply,
     };
+    if (status.failure && ["blocked", "failed", "recovery_required"].includes(status.failure.code))
+      result.failure = {
+        code: status.failure.code,
+        retryable: canApply && status.failure.retryable === true,
+      };
     if (status.serverId?.trim()) result.serverId = status.serverId;
     if (canApply && candidate)
       result.candidate = { version: candidate.version, token: candidate.token };
@@ -101,6 +112,18 @@ export function registerLocalUpdateIpc({
     try {
       await promise;
     } catch {
+      // Only a fresh trusted driver status may authorize replay of this token.
+      try {
+        const status = await driver.readStatus();
+        if (
+          status.phase === "idle" &&
+          status.failure?.retryable === true &&
+          status.candidate?.token === token
+        )
+          consumed.delete(token);
+      } catch {
+        /* unknown outcome remains consumed */
+      }
       throw new Error("Local update request failed");
     } finally {
       active = undefined;

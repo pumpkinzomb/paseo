@@ -122,3 +122,32 @@ it("preserves the native host identity and permits verified same-version offers"
     candidate: { version: x.status.currentVersion, token },
   });
 });
+
+it("restores a failed offer only after a trusted idle retryable status for the same token", async () => {
+  const x = setup(true);
+  x.driver.requestUpdate.mockImplementationOnce(async () => {
+    x.status.phase = "idle";
+    x.status.failure = { code: "blocked", retryable: true };
+    throw Error("/private/runtime/path");
+  });
+  await expect(x.request(token)).rejects.toThrow("Local update request failed");
+  expect(await x.read()).toMatchObject({
+    canApply: true,
+    failure: { code: "blocked", retryable: true },
+  });
+  await expect(x.request(token)).resolves.toBeUndefined();
+});
+it("keeps uncertain outcomes consumed and supplies a non-retryable public failure", async () => {
+  const x = setup(true);
+  x.driver.requestUpdate.mockImplementationOnce(async () => {
+    x.status.phase = "failed";
+    x.status.failure = { code: "recovery_required", retryable: false };
+    throw Error("/private/runtime/path");
+  });
+  await expect(x.request(token)).rejects.toThrow("Local update request failed");
+  expect(await x.read()).toMatchObject({
+    canApply: false,
+    failure: { code: "recovery_required", retryable: false },
+  });
+  await expect(x.request(token)).rejects.toThrow("already used");
+});

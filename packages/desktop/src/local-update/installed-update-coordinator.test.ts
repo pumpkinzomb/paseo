@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { PrecommitUpdateRejected } from "./precommit-rejected.js";
+import type { ExactDaemonUpdate } from "./installed-daemon-handoff.js";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -130,4 +133,38 @@ it("incomplete hold blocks startup and removes offer", async () => {
   expect((await coordinator!.driver.readStatus()).candidate).toBeUndefined();
   await expect(coordinator!.resumeIfPending()).rejects.toThrow("Incomplete");
   expect(state.resume).not.toHaveBeenCalled();
+});
+
+async function approvedArchive() {
+  const c = approval.capability as ExactDaemonUpdate;
+  const dir = path.join(state.home, ".paseo-installed", "candidates", c.token);
+  await fs.mkdir(path.dirname(dir), { mode: 0o700 });
+  await fs.mkdir(dir, { mode: 0o700 });
+  const bytes = Buffer.from("fixture-archive");
+  await fs.writeFile(path.join(dir, "candidate.zip"), bytes, { mode: 0o600 });
+  approval.candidateDigest = createHash("sha256").update(bytes).digest("hex");
+  approval.zipSha512 = createHash("sha512").update(bytes).digest("hex");
+  await approve();
+  state.read.mockResolvedValue(c.original);
+}
+it("offers retry after a proven precommit rejection but not after uncertain handoff failure", async () => {
+  await approvedArchive();
+  const coordinator = (await createInstalledUpdateCoordinator())!;
+  state.prepare.mockRejectedValueOnce(new PrecommitUpdateRejected(Error("runtime veto")));
+  await expect(
+    coordinator.driver.requestUpdate(approval.candidateDigest as string),
+  ).rejects.toThrow("preparation");
+  expect(await coordinator.driver.readStatus()).toMatchObject({
+    phase: "idle",
+    failure: { code: "blocked", retryable: true },
+    candidate: { token: approval.candidateDigest },
+  });
+  state.prepare.mockRejectedValueOnce(Error("shutdown outcome unknown"));
+  await expect(
+    coordinator.driver.requestUpdate(approval.candidateDigest as string),
+  ).rejects.toThrow("unknown");
+  expect(await coordinator.driver.readStatus()).toMatchObject({
+    phase: "failed",
+    failure: { code: "recovery_required", retryable: false },
+  });
 });
