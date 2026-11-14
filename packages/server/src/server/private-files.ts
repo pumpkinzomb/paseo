@@ -187,7 +187,14 @@ export async function loadTaskCompletionCancellations(root: string) {
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         const temporary = path.join(root, `.${id}.${randomUUID()}`);
         try {
-          writeFileSync(temporary, contents, { mode: PRIVATE_FILE_MODE, flag: "wx", flush: true });
+          const descriptor = openSync(temporary, "wx", PRIVATE_FILE_MODE);
+          try {
+            writeFileSync(descriptor, contents);
+            // Node 22's UTF8 writeFileSync fast path does not honor its flush option.
+            fsyncSync(descriptor);
+          } finally {
+            closeSync(descriptor);
+          }
           // Rename replaces a concurrently inserted symlink; its target is never followed.
           renameSync(temporary, target);
         } catch (writeError) {

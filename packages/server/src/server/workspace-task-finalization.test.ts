@@ -718,8 +718,10 @@ it("failed directory fsync rejects new admission and retries the existing marker
   );
   const intent = await f.service.declareComplete("task", f.head);
   f.gate.onInvalidated = () => markers.cancel(intent.task.id);
-  const flush = vi.spyOn(syncFs, "fsyncSync").mockImplementationOnce(() => {
-    throw new Error("injected fsync failure");
+  const originalFlush = syncFs.fsyncSync;
+  const flush = vi.spyOn(syncFs, "fsyncSync").mockImplementation((descriptor) => {
+    if (syncFs.fstatSync(descriptor).isDirectory()) throw new Error("injected fsync failure");
+    originalFlush(descriptor);
   });
   syncBuiltinESMExports();
   try {
@@ -845,4 +847,28 @@ it("unsupported startup cancels recovered intent while leaving unrelated workspa
   expect(gate.completionId("task")).toBeUndefined();
   expect(() => gate.workspaceActivity("unrelated-room")).not.toThrow();
   expect((await f.registry.get("source"))?.archivedAt).toBeNull();
+});
+
+it("file fsync failure blocks admission before marker publication", async () => {
+  const f = await fixture();
+  const intent = await f.service.declareComplete("task", f.head);
+  const markers = await prepareTaskCompletionCancellations(
+    path.join(f.root, "task-completion-cancellations"),
+  );
+  f.gate.onInvalidated = () => markers.cancel(intent.task.id);
+  const originalFlush = syncFs.fsyncSync;
+  const flush = vi.spyOn(syncFs, "fsyncSync").mockImplementation((descriptor) => {
+    if (syncFs.fstatSync(descriptor).isFile()) throw new Error("injected file fsync failure");
+    originalFlush(descriptor);
+  });
+  syncBuiltinESMExports();
+  try {
+    expect(() => f.gate.agentActivity("worker")).toThrow(/file fsync failure/);
+    expect(await markers.has(intent.task.id)).toBe(false);
+  } finally {
+    flush.mockRestore();
+    syncBuiltinESMExports();
+  }
+  await f.service.reconcileCompletions();
+  expect(f.state.archives).toBe(0);
 });
