@@ -3850,6 +3850,35 @@ export class DaemonClient {
       message: { type: "workspace.development.read.request", ...input },
     });
   }
+  private requireTaskFinalization() {
+    if (!this.lastServerInfoMessage?.features?.workspaceTaskFinalization)
+      throw new Error("Update this host to finalize reviewed development tasks");
+  }
+  async inspectWorkspaceTaskFinalization(workspaceId: string) {
+    this.requireTaskFinalization();
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.taskFinalization.inspect.response">(
+      { message: { type: "workspace.taskFinalization.inspect.request", workspaceId } },
+    );
+  }
+  async applyWorkspaceTaskFinalization(previewToken: string) {
+    this.requireTaskFinalization();
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.taskFinalization.apply.response">(
+      {
+        message: {
+          type: "workspace.taskFinalization.apply.request",
+          previewToken,
+          declareComplete: true,
+        },
+      },
+    );
+  }
+  async getWorkspaceTaskFinalization(workspaceId: string) {
+    this.requireTaskFinalization();
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.taskFinalization.status.response">(
+      { message: { type: "workspace.taskFinalization.status.request", workspaceId } },
+    );
+  }
+
   private requireWorkspaceLeadAssociation(required = true): void {
     if (required && !this.lastServerInfoMessage?.features?.workspaceLeadAssociation)
       throw new Error("Update this host to manage lead-linked work.");

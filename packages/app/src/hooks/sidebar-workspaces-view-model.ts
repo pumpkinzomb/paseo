@@ -51,6 +51,7 @@ export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
   creatorAgent?: WorkspaceDescriptor["creatorAgent"];
   leadAssociation?: WorkspaceDescriptor["leadAssociation"];
   workspacePurpose?: WorkspaceDescriptor["workspacePurpose"];
+  taskFinalization?: WorkspaceDescriptor["taskFinalization"];
   sessionCount?: number;
   // Cleaned-up sub-sessions this workspace's agents created, kept for review under "Done".
   archivedSubSessions?: WorkspaceDescriptor["archivedSubSessions"];
@@ -178,6 +179,7 @@ export function createSidebarWorkspaceEntry(input: {
     creatorAgent: input.workspace.creatorAgent,
     leadAssociation: input.workspace.leadAssociation,
     workspacePurpose: input.workspace.workspacePurpose,
+    taskFinalization: input.workspace.taskFinalization,
     sessionCount: input.workspace.sessionCount,
     archivedSubSessions: input.workspace.archivedSubSessions,
     labels: input.workspace.labels ?? EMPTY_WORKSPACE_LABELS,

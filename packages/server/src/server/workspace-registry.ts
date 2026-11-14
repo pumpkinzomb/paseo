@@ -1,6 +1,7 @@
 import {
   WorkspaceLeadAssociationSchema,
   WorkspacePurposeSchema,
+  WorkspaceTaskFinalizationSchema,
   type WorkspaceLeadAssociation,
   type WorkspacePurpose,
 } from "@getpaseo/protocol/messages";
@@ -65,6 +66,7 @@ const DevelopmentEvidenceSchema = z.object({
 });
 
 const PersistedWorkspaceRecordSchema = z.object({
+  taskFinalization: WorkspaceTaskFinalizationSchema.optional(),
   leadAssociation: WorkspaceLeadAssociationSchema.optional(),
   workspacePurpose: WorkspacePurposeSchema.optional(),
   parentWorkspaceId: z.string().optional(),

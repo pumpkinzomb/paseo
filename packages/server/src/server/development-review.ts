@@ -45,7 +45,7 @@ function boundedText(value: string): string {
     throw new Error("Development review text is binary or exceeds the 4 MiB limit");
   return value;
 }
-async function repository(workspace: PersistedWorkspaceRecord): Promise<string> {
+export async function repository(workspace: PersistedWorkspaceRecord): Promise<string> {
   const canonical = await realpath(workspace.cwd);
   if (canonical !== workspace.cwd) throw new Error("Development source path changed");
   const top = await realpath(await gitControl(canonical, ["rev-parse", "--show-toplevel"]));
@@ -361,7 +361,12 @@ export class DevelopmentReview {
     const ids = new Set(parent.developmentSourceIds ?? []);
     const related: PersistedWorkspaceRecord[] = [];
     for (const record of records) {
-      if (record.untrustedSource || !(await this.descendant(parentId, record))) continue;
+      if (
+        record.taskFinalization?.phase === "retired" ||
+        record.untrustedSource ||
+        !(await this.descendant(parentId, record))
+      )
+        continue;
       try {
         await repository(record);
         related.push(record);
@@ -392,7 +397,12 @@ export class DevelopmentReview {
       result.push(await this.scope(parentId, workspace, sourceId, false));
     }
     for (const task of records) {
-      if (!task.isPaseoOwnedWorktree || !(await this.descendant(parentId, task))) continue;
+      if (
+        task.taskFinalization?.phase === "retired" ||
+        !task.isPaseoOwnedWorktree ||
+        !(await this.descendant(parentId, task))
+      )
+        continue;
       for (const evidence of [
         ...(task.developmentEvidenceHistory ?? []),
         task.developmentEvidence,
@@ -413,6 +423,10 @@ export class DevelopmentReview {
     const parent = await this.get(request.workspaceId);
     if (!request.scopeWorkspaceId) throw new Error("Selected development scope unavailable");
     const workspace = await this.get(request.scopeWorkspaceId);
+    if (workspace.taskFinalization?.phase === "retired" && !request.evidenceId)
+      throw new Error(
+        "Selected task was retired. Choose conversation files or an existing pinned review.",
+      );
     const evidence = request.evidenceId
       ? [...(workspace.developmentEvidenceHistory ?? []), workspace.developmentEvidence].find(
           (entry) => entry?.id === request.evidenceId,

@@ -120,6 +120,7 @@ export class WorkspaceProvisioningError extends Error {
 }
 
 export function createWorkspaceProvisioningService(deps: {
+  noteWorkspaceActivity?: (workspaceId: string) => void;
   serverId?: string;
   resolveCallerLead?: (
     agentId: string,
@@ -312,6 +313,7 @@ export function createWorkspaceProvisioningService(deps: {
     if (input.workspaceId === input.callerWorkspaceId) {
       throw new Error("A workspace cannot be its own parent");
     }
+    deps.noteWorkspaceActivity?.(input.callerWorkspaceId);
     const callerWorkspace = await workspaceRegistry.get(input.callerWorkspaceId);
     if (!callerWorkspace) throw new Error(`Caller workspace ${input.callerWorkspaceId} not found`);
     const declared = input.leadIntent;

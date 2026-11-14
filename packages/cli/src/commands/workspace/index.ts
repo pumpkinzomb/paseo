@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { withOutput } from "../../output/index.js";
 import { addJsonAndDaemonHostOptions } from "../../utils/command-options.js";
+import { runFinalizeCommand } from "./finalize.js";
 import { runArchiveCommand } from "./archive.js";
 import { runCreateCommand } from "./create.js";
 import { runLsCommand } from "./ls.js";
@@ -9,6 +10,17 @@ import { runSetupCommand } from "./setup.js";
 
 export function createWorkspaceCommand(): Command {
   const workspace = new Command("workspace").description("Manage workspaces");
+
+  addJsonAndDaemonHostOptions(
+    workspace
+      .command("finalize")
+      .description(
+        "Review and retire one completed self-development task; preserves conversation history",
+      )
+      .argument("<workspace-id>", "Exact task workspace id")
+      .option("--inspect", "Read-only completion preview")
+      .option("--status", "Read durable completion status"),
+  ).action(withOutput(runFinalizeCommand));
 
   addJsonAndDaemonHostOptions(
     workspace

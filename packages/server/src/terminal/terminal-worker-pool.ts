@@ -77,6 +77,7 @@ export function createTerminalWorkerPool(
   let detached = false;
   // One start at a time, so concurrent creates never launch two workers.
   let starting: Promise<TerminalWorkerPoolMember> | null = null;
+  let admitWorkspace: ((workspaceId: string) => () => void) | undefined;
   // Registrations belong to the service and are replayed whenever a current worker starts.
   const cwdEnv = new Map<string, Record<string, string>>();
 
@@ -176,6 +177,9 @@ export function createTerminalWorkerPool(
   }
 
   return {
+    setWorkspaceAdmission(admit) {
+      admitWorkspace = admit;
+    },
     getUnavailableError(): Error | null {
       return options.incompatible;
     },
@@ -192,8 +196,13 @@ export function createTerminalWorkerPool(
       createOptions: WorkerCreateTerminalOptions & { workspaceId: string },
     ): Promise<TerminalSession> {
       assertAvailable();
-      const manager = await currentManager();
-      return manager.createTerminal(createOptions);
+      const release = admitWorkspace?.(createOptions.workspaceId);
+      try {
+        const manager = await currentManager();
+        return await manager.createTerminal(createOptions);
+      } finally {
+        release?.();
+      }
     },
 
     registerCwdEnv(registration) {

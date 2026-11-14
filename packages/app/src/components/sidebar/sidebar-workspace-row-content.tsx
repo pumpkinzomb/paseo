@@ -37,6 +37,7 @@ import {
 import { useWorkspaceLabelDefinitions } from "@/workspace-labels";
 
 import { SidebarRoomLeads } from "./sidebar-room-leads";
+import { TaskFinalizationStatus } from "./task-finalization-status";
 
 const needsInputColorMapping = (theme: Theme) => ({
   color: theme.colors.surface0,
@@ -187,6 +188,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
             serviceSummary={serviceSummary}
             labels={labels}
           />
+          <TaskFinalizationStatus task={workspace.taskFinalization} />
         </View>
       </View>
       {showShortcutBadge && shortcutNumber !== null ? (

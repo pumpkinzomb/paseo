@@ -46,6 +46,12 @@ remove or rewrite Git refs, branches, source, authentication or session history.
 Keep unintegrated commits reachable separately; this feature does not prevent Git
 object pruning or preserve a deleted workspace record.
 
+Normal Files inventories exclude verified retired tasks, including their captured
+commit groups. An integrated task that continues working stays visible. Existing
+pinned evidence still resolves through its retained source after checkout and
+branch removal; a removed live scope is unavailable and never redirects to a
+sibling. See [task finalization](agent-lifecycle.md#development-subtask-isolation).
+
 ## Client scope and limits
 
 Associations and evidence are durable. Active tree work lasts for the app session

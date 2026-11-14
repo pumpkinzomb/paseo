@@ -3054,6 +3054,68 @@ export const WorkspaceLeadAssociationSchema = z.object({
 export const WorkspacePurposeSchema = z.enum(["planned", "source", "task", "preparation"]);
 export type WorkspaceLeadAssociation = z.infer<typeof WorkspaceLeadAssociationSchema>;
 export type WorkspacePurpose = z.infer<typeof WorkspacePurposeSchema>;
+export const WorkspaceTaskFinalizationSchema = z.object({
+  id: z.string(),
+  phase: z.enum(["pending", "archiving", "branch-pending", "retired", "blocked", "invalidated"]),
+  workspaceId: z.string(),
+  serverId: z.string(),
+  root: z.string(),
+  rootDevice: z.number(),
+  rootInode: z.number(),
+  branch: z.string(),
+  headSha: z.string(),
+  sourceWorkspaceId: z.string(),
+  repository: z.string(),
+  evidenceId: z.string(),
+  appliedRevision: z.string(),
+  ownershipProof: z.enum(["creator-and-parent-evidence", "reviewed-legacy-intent"]),
+  ownershipRevision: z.string(),
+  disposableRoots: z.array(z.string()),
+  lead: WorkspaceLeadAssociationSchema,
+  approvedAt: z.string(),
+  updatedAt: z.string(),
+  reason: z.string().optional(),
+});
+export type WorkspaceTaskFinalization = z.infer<typeof WorkspaceTaskFinalizationSchema>;
+export const WorkspaceTaskFinalizationPreviewSchema = z.object({
+  workspaceId: z.string(),
+  name: z.string(),
+  previewToken: z.string().optional(),
+  expiresAt: z.string().optional(),
+  task: WorkspaceTaskFinalizationSchema.optional(),
+  blockers: z.array(z.string()),
+});
+export type WorkspaceTaskFinalizationPreview = z.infer<
+  typeof WorkspaceTaskFinalizationPreviewSchema
+>;
+export const WorkspaceTaskFinalizationInspectRequestSchema = z.object({
+  type: z.literal("workspace.taskFinalization.inspect.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+});
+export const WorkspaceTaskFinalizationApplyRequestSchema = z.object({
+  type: z.literal("workspace.taskFinalization.apply.request"),
+  requestId: z.string(),
+  previewToken: z.string(),
+  declareComplete: z.literal(true),
+});
+export const WorkspaceTaskFinalizationStatusRequestSchema = z.object({
+  type: z.literal("workspace.taskFinalization.status.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+});
+export const WorkspaceTaskFinalizationInspectResponseSchema = z.object({
+  type: z.literal("workspace.taskFinalization.inspect.response"),
+  payload: WorkspaceTaskFinalizationPreviewSchema.extend({ requestId: z.string() }),
+});
+export const WorkspaceTaskFinalizationApplyResponseSchema = z.object({
+  type: z.literal("workspace.taskFinalization.apply.response"),
+  payload: z.object({ requestId: z.string(), task: WorkspaceTaskFinalizationSchema }),
+});
+export const WorkspaceTaskFinalizationStatusResponseSchema = z.object({
+  type: z.literal("workspace.taskFinalization.status.response"),
+  payload: z.object({ requestId: z.string(), task: WorkspaceTaskFinalizationSchema.nullable() }),
+});
 const WorkspaceLeadIntentSchema = z.object({
   lead: WorkspaceLeadAssociationSchema,
   purpose: WorkspacePurposeSchema,
@@ -3827,6 +3889,9 @@ export const SubscriptionReleaseResponseSchema = z.object({
 });
 
 export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+  WorkspaceTaskFinalizationInspectRequestSchema,
+  WorkspaceTaskFinalizationApplyRequestSchema,
+  WorkspaceTaskFinalizationStatusRequestSchema,
   WorkspaceLeadAssociationInspectRequestSchema,
   WorkspaceLeadAssociationApplyRequestSchema,
   DevelopmentReviewReadRequestSchema,
@@ -4458,6 +4523,7 @@ export const ServerInfoStatusPayloadSchema = z
         defaultAssistantConversations: z.boolean().optional(),
         assistantConversationLifecycle: z.boolean().optional(),
         workspaceLeadAssociation: z.boolean().optional(),
+        workspaceTaskFinalization: z.boolean().optional(),
         agentRecordDeletion: z.boolean().optional(),
         workspaceSessionDeletion: z.boolean().optional(),
         nativeSessionDeletion: z.boolean().optional(),
@@ -4764,6 +4830,7 @@ export const WorkspaceGitHubRuntimePayloadSchema = z
   .nullable();
 
 const workspaceAgentProvenanceFields = {
+  taskFinalization: WorkspaceTaskFinalizationSchema.optional(),
   leadAssociation: WorkspaceLeadAssociationSchema.optional(),
   workspacePurpose: WorkspacePurposeSchema.optional(),
   creatorAgent: z.object({ serverId: z.string(), agentId: z.string() }).optional(),
@@ -7813,6 +7880,9 @@ export const AgentSkillsImportLegacySelectionResponseSchema = z.object({
 });
 
 export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+  WorkspaceTaskFinalizationInspectResponseSchema,
+  WorkspaceTaskFinalizationApplyResponseSchema,
+  WorkspaceTaskFinalizationStatusResponseSchema,
   WorkspaceLeadAssociationInspectResponseSchema,
   WorkspaceLeadAssociationApplyResponseSchema,
   DevelopmentReviewResponseSchema,

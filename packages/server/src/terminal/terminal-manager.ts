@@ -56,6 +56,8 @@ export type TerminalWorkspaceContributionChangedListener = (
 ) => void;
 
 export interface TerminalManager {
+  /** Daemon-owned scoped admission, applied before any worker/PTY can be created. */
+  setWorkspaceAdmission?(admit: (workspaceId: string) => () => void): void;
   /**
    * Set when this host's terminals cannot be served at all (a worker from a newer Paseo holds
    * them). Callers that answer terminal requests report it instead of an empty list.

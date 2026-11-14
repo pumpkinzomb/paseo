@@ -675,3 +675,25 @@ test("optional intended lead and purpose remain independent from creator and inv
     }).success,
   ).toBe(false);
 });
+
+test("task finalization is optional and requires an explicit completion declaration", () => {
+  expect(
+    SessionOutboundMessageSchema.safeParse(fetchWorkspacesResponse(workspaceDescriptor())).success,
+  ).toBe(true);
+  expect(
+    SessionInboundMessageSchema.safeParse({
+      type: "workspace.taskFinalization.inspect.request",
+      requestId: "r",
+      workspaceId: "task",
+    }).success,
+  ).toBe(true);
+  const apply = {
+    type: "workspace.taskFinalization.apply.request",
+    requestId: "r",
+    previewToken: "reviewed",
+  };
+  expect(SessionInboundMessageSchema.safeParse(apply).success).toBe(false);
+  expect(SessionInboundMessageSchema.safeParse({ ...apply, declareComplete: true }).success).toBe(
+    true,
+  );
+});

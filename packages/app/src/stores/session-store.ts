@@ -116,6 +116,7 @@ export interface Agent {
 export interface WorkspaceDescriptor {
   leadAssociation?: WorkspaceDescriptorPayload["leadAssociation"];
   workspacePurpose?: WorkspaceDescriptorPayload["workspacePurpose"];
+  taskFinalization?: WorkspaceDescriptorPayload["taskFinalization"];
   parentWorkspaceId?: string;
   creatorAgent?: WorkspaceDescriptorPayload["creatorAgent"];
   sessionCount?: number;
@@ -181,6 +182,7 @@ export function normalizeWorkspaceDescriptor(
     creatorAgent: payload.creatorAgent,
     leadAssociation: payload.leadAssociation,
     workspacePurpose: payload.workspacePurpose,
+    taskFinalization: payload.taskFinalization,
     sessionCount: payload.sessionCount,
     ...(payload.archivedSubSessions?.length
       ? { archivedSubSessions: payload.archivedSubSessions }

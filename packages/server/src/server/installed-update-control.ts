@@ -1,6 +1,8 @@
+import { isDeepStrictEqual } from "node:util";
 import { constants, type Stats } from "node:fs";
 import { lstat, mkdir, open, realpath, rmdir } from "node:fs/promises";
 import path from "node:path";
+import { z } from "zod";
 
 export interface InstalledControlIdentity {
   uid: number;
@@ -89,6 +91,133 @@ async function registration(
 }
 function same(left: RegistrationSnapshot | null, right: RegistrationSnapshot) {
   return left?.bytes === right.bytes && left.dev === right.dev && left.ino === right.ino;
+}
+
+async function assertCommittedHandoff(
+  read: (name: string) => Promise<unknown>,
+  directory: string,
+  hold: { token: string; nextRevision: string; original: unknown },
+) {
+  const commit = z
+    .object({ schemaVersion: z.literal(1), token: z.string(), revision: z.string() })
+    .strict()
+    .parse(await read("native-commit.json"));
+  const stopped = z
+    .object({ schemaVersion: z.literal(1), token: z.string(), original: z.unknown() })
+    .strict()
+    .parse(await read("stopped.json"));
+  if (
+    commit.token !== hold.token ||
+    commit.revision !== hold.nextRevision ||
+    stopped.token !== hold.token ||
+    !isDeepStrictEqual(stopped.original, hold.original)
+  )
+    throw new Error("Official committed handoff evidence does not match");
+  try {
+    await lstat(path.join(directory, "handoff.lock"));
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+    throw error;
+  }
+  throw new Error("Installed handoff is active or requires recovery");
+}
+
+/** Applied handoff evidence, never a staged offer or a caller-supplied revision. */
+export async function readInstalledAppliedRevision(
+  userHome: string,
+  expected: InstalledControlIdentity,
+) {
+  const before = await registration(userHome, expected);
+  if (!before) throw new Error("No exact approved installed daemon registration");
+  const directory = path.join(userHome, ".paseo-installed", "daemon-update-v1");
+  await privateDirectory(directory, expected.uid);
+  async function read(name: string, from = directory) {
+    const fd = await open(path.join(from, name), constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const info = await fd.stat();
+      if (
+        !info.isFile() ||
+        info.uid !== expected.uid ||
+        (info.mode & 0o777) !== 0o600 ||
+        info.nlink !== 1 ||
+        info.size > 8192
+      )
+        throw new Error("Untrusted installed handoff evidence");
+      return JSON.parse(await fd.readFile("utf8"));
+    } finally {
+      await fd.close();
+    }
+  }
+  const identity = z
+    .object({
+      uid: z.number().int(),
+      home: z.string(),
+      serverId: z.string(),
+      pid: z.number().int(),
+      startedAt: z.string(),
+      listen: z.string(),
+      version: z.string(),
+    })
+    .strict();
+  const receipt = z
+    .object({
+      schemaVersion: z.literal(1),
+      token: z.string(),
+      revision: z.string().regex(/^[a-f0-9]{40}$/),
+      instance: identity,
+    })
+    .strict()
+    .parse(await read("receipt.json"));
+  const hold = z
+    .object({
+      schemaVersion: z.literal(1),
+      token: z.string(),
+      oldRevision: z.string(),
+      nextRevision: z.string(),
+      nextVersion: z.string(),
+      original: identity,
+    })
+    .strict()
+    .parse(await read("hold.json"));
+  await assertCommittedHandoff(read, directory, hold);
+  const control = path.join(userHome, ".paseo-installed", "update-control");
+  await privateDirectory(control, expected.uid);
+  const descriptor = z
+    .object({
+      version: z.literal(1),
+      workerPid: z.number().int().positive(),
+      serverId: z.string(),
+      instance: z.object({ pid: z.number(), startedAt: z.string(), uid: z.number() }).passthrough(),
+      capabilities: z.object({ daemonCommit: z.literal(true) }).passthrough(),
+    })
+    .passthrough()
+    .parse(await read("descriptor.json", control));
+  if (
+    descriptor.workerPid !== process.pid ||
+    descriptor.serverId !== expected.serverId ||
+    descriptor.instance.pid !== expected.pid ||
+    descriptor.instance.startedAt !== expected.startedAt ||
+    descriptor.instance.uid !== expected.uid
+  )
+    throw new Error("Applied release controller does not own this daemon worker");
+  const sameIdentity = (
+    ["uid", "home", "serverId", "pid", "startedAt", "listen", "version"] as const
+  ).every((key) => receipt.instance[key] === expected[key]);
+  const sameHost = (["uid", "home", "serverId", "listen"] as const).every(
+    (key) => hold.original[key] === expected[key],
+  );
+  if (
+    receipt.token !== hold.token ||
+    receipt.revision !== hold.nextRevision ||
+    hold.oldRevision === hold.nextRevision ||
+    hold.nextVersion !== expected.version ||
+    !sameIdentity ||
+    !sameHost
+  )
+    throw new Error("Applied release receipt does not match this daemon instance");
+  if (!same(await registration(userHome, expected), before))
+    throw new Error("Installed daemon authority changed");
+  return receipt.revision;
 }
 
 async function releasePublicationLock(lock: string, owned: Pick<Stats, "dev" | "ino" | "uid">) {

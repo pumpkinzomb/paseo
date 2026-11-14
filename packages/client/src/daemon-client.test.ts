@@ -10229,3 +10229,73 @@ test("sends exact intended lead and purpose through the supported creation trans
     leadIntent,
   });
 });
+
+test("task finalization gates all operations before sending to an old host", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "finalization-old",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+  const connected = client.connect();
+  mock.triggerOpen({ features: {} });
+  await connected;
+  await expect(client.inspectWorkspaceTaskFinalization("task")).rejects.toThrow(/Update/);
+  await expect(client.applyWorkspaceTaskFinalization("token")).rejects.toThrow(/Update/);
+  await expect(client.getWorkspaceTaskFinalization("task")).rejects.toThrow(/Update/);
+  expect(mock.sent).toHaveLength(0);
+});
+test("task finalization keeps preview and status on the same correlated transport", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "finalization",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+  const connected = client.connect();
+  mock.triggerOpen({ features: { workspaceTaskFinalization: true } });
+  await connected;
+  const pending = client.inspectWorkspaceTaskFinalization("task");
+  const inspect = parseSentFrame(mock.sent[0]);
+  expect(inspect).toMatchObject({
+    type: "workspace.taskFinalization.inspect.request",
+    workspaceId: "task",
+  });
+  mock.triggerMessage(
+    JSON.stringify({
+      type: "session",
+      message: {
+        type: "workspace.taskFinalization.inspect.response",
+        payload: {
+          requestId: inspect.requestId,
+          workspaceId: "task",
+          name: "Task",
+          blockers: ["release unavailable"],
+        },
+      },
+    }),
+  );
+  await expect(pending).resolves.toMatchObject({ blockers: ["release unavailable"] });
+  const status = client.getWorkspaceTaskFinalization("task");
+  const request = parseSentFrame(mock.sent[1]);
+  mock.triggerMessage(
+    JSON.stringify({
+      type: "session",
+      message: {
+        type: "workspace.taskFinalization.status.response",
+        payload: { requestId: request.requestId, task: null },
+      },
+    }),
+  );
+  await expect(status).resolves.toMatchObject({ task: null });
+  void client.applyWorkspaceTaskFinalization("review-token").catch(() => undefined);
+  expect(parseSentFrame(mock.sent[2])).toMatchObject({
+    type: "workspace.taskFinalization.apply.request",
+    previewToken: "review-token",
+    declareComplete: true,
+  });
+});

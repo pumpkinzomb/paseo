@@ -194,6 +194,15 @@ export interface PaseoWorkspaceHandle {
   readonly terminals: PaseoWorkspaceTerminalActions;
   current(): PaseoWorkspace | null;
   refresh(options?: { requestId?: string }): Promise<PaseoWorkspace | null>;
+  finalization: {
+    inspect(): Promise<import("@getpaseo/protocol/messages").WorkspaceTaskFinalizationPreview>;
+    apply(
+      previewToken: string,
+    ): Promise<{ task: import("@getpaseo/protocol/messages").WorkspaceTaskFinalization }>;
+    status(): Promise<{
+      task: import("@getpaseo/protocol/messages").WorkspaceTaskFinalization | null;
+    }>;
+  };
   development: {
     read(
       input: Omit<
@@ -972,6 +981,11 @@ function createWorkspaceHandleFactory(
       },
       current: () => current,
       refresh,
+      finalization: {
+        inspect: () => daemonClient.inspectWorkspaceTaskFinalization(id),
+        apply: (token) => daemonClient.applyWorkspaceTaskFinalization(token),
+        status: () => daemonClient.getWorkspaceTaskFinalization(id),
+      },
       development: {
         read: (input) => daemonClient.readDevelopmentReview({ ...input, workspaceId: id }),
         link: async (sourceWorkspaceId) => {

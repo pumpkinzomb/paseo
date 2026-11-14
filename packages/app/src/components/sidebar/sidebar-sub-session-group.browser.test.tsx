@@ -8,7 +8,7 @@ import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { agent as baseAgent } from "@/plugins/client-state/fixtures";
-import type { AssistantConversation } from "@getpaseo/protocol/messages";
+import type { WorkspaceTaskFinalization, AssistantConversation } from "@getpaseo/protocol/messages";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -612,6 +612,80 @@ function removeActiveSegment() {
   act(() => useSessionStore.getState().setAgents("host", next));
 }
 describe("logical lead task hierarchy", () => {
+  it("hides only verified retired tasks and keeps blocked finalization and active integrated work visible", async () => {
+    const { container, records, archive, redraw } = await mountLeads();
+    const journal: WorkspaceTaskFinalization = {
+      id: "review",
+      phase: "retired",
+      workspaceId: "owned-1",
+      serverId: "host",
+      root: "/synthetic/task",
+      rootDevice: 1,
+      rootInode: 2,
+      branch: "task",
+      headSha: "a".repeat(40),
+      sourceWorkspaceId: "source",
+      repository: "repository",
+      evidenceId: "capture",
+      appliedRevision: "a".repeat(40),
+      ownershipProof: "reviewed-legacy-intent",
+      ownershipRevision: "reviewed",
+      disposableRoots: [],
+      lead: {
+        serverId: "host",
+        roomWorkspaceId: "parent",
+        logicalId: "logical-a",
+        anchorAgentId: "lead-a",
+      },
+      approvedAt: "now",
+      updatedAt: "now",
+    };
+    records[0]!.taskFinalization = journal;
+    archive.push({
+      workspaceId: "retired-history",
+      name: "Retired history",
+      archivedAt: "now",
+      agentId: "old-worker",
+      sessionCount: 1,
+      leadAssociation: journal.lead,
+      taskFinalization: { ...journal, workspaceId: "retired-history" },
+    });
+    archive.push({
+      workspaceId: "blocked-history",
+      name: "Blocked history",
+      archivedAt: "now",
+      agentId: "blocked-worker",
+      sessionCount: 1,
+      leadAssociation: journal.lead,
+      taskFinalization: {
+        ...journal,
+        workspaceId: "blocked-history",
+        phase: "blocked",
+        reason: "Task branch advanced; branch was preserved",
+      },
+    });
+    redraw();
+    const done = testElement(
+      container,
+      "sidebar-sub-sessions-done-toggle-host:parent:lead:logical-a",
+    );
+    expect(done.textContent).toBe("Done (2)");
+    act(() => done.click());
+    expect(container.querySelector('[data-testid="row-owned-1"]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="sidebar-archived-sub-session-host:retired-history"]'),
+    ).toBeNull();
+    expect(testElement(container, "row-owned-2")).toBeTruthy();
+    expect(testElement(container, "task-finalization-blocked-history").textContent).toContain(
+      "branch was preserved",
+    );
+    expect(actions.bulkScopes).toHaveBeenLastCalledWith("host", "parent", [
+      "owned-2",
+      "blocked-history",
+    ]);
+    expect(testElement(container, "sidebar-room-workspace-avatar-source")).toBeTruthy();
+  });
+
   it.each([220, 300, 320])(
     "shows actual Done2 under A and planned B without internal source/history rows at %ipx",
     async (width) => {

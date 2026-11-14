@@ -660,6 +660,49 @@ export async function createPaseoDaemon(
   return createPaseoDaemonInternal(config, rootLogger, dependencies);
 }
 
+async function configureTaskFinalization(
+  agentManager: AgentManager,
+  workspaceRegistry: FileBackedWorkspaceRegistry,
+  agentStorage: AgentStorage,
+  terminalManager: TerminalManager,
+  workspaceSetupRuntime: WorkspaceSetupRuntime,
+  logger: Logger,
+) {
+  terminalManager.setWorkspaceAdmission?.((id) => agentManager.taskFinalizationGate.admit(id));
+  workspaceSetupRuntime.beforeStart = (id) =>
+    agentManager.taskFinalizationGate.workspaceActivity(id);
+  agentManager.taskFinalizationGate.onInvalidated = (workspaceId) => {
+    void workspaceRegistry
+      .update(workspaceId, (record) => {
+        const task = record.taskFinalization;
+        if (!task || task.phase === "retired" || task.phase === "invalidated") return record;
+        return {
+          ...record,
+          taskFinalization: {
+            ...task,
+            phase: "invalidated",
+            reason: "New task activity invalidated completion approval",
+            updatedAt: new Date().toISOString(),
+          },
+        };
+      })
+      .catch((error) =>
+        logger.error({ err: error, workspaceId }, "Task finalization invalidation failed"),
+      );
+  };
+  for (const record of await workspaceRegistry.listAll()) {
+    if (record.taskFinalization) {
+      const agents = await agentStorage.listByWorkspaces([record.workspaceId], {
+        includeArchived: true,
+      });
+      agentManager.taskFinalizationGate.watch(
+        record.workspaceId,
+        agents.map((agent) => agent.id),
+      );
+    }
+  }
+}
+
 async function createPaseoDaemonInternal(
   config: PaseoDaemonConfig,
   rootLogger: Logger,
@@ -1024,6 +1067,7 @@ async function createPaseoDaemonInternal(
     }
   });
   const workspaceProvisioning = createWorkspaceProvisioningService({
+    noteWorkspaceActivity: (id) => agentManager.taskFinalizationGate.workspaceActivity(id),
     resolveCallerLead: (agentId, workspaceId) =>
       workspaceLeadAssociations.forCaller(agentId, workspaceId),
     validateLeadIntent: (lead, purpose) => workspaceLeadAssociations.validateIntent(lead, purpose),
@@ -1589,6 +1633,15 @@ async function createPaseoDaemonInternal(
     }),
   });
 
+  await configureTaskFinalization(
+    agentManager,
+    workspaceRegistry,
+    agentStorage,
+    terminalManager,
+    workspaceSetupRuntime,
+    logger,
+  );
+
   const idleRuntimeCleanup = createIdleRuntimeCleanup({
     enabled: daemonConfigStore.get().idleRuntimeCleanup !== false,
     runtimes: () => agentManager.getRuntimeCleanupCandidates(),
@@ -1976,6 +2029,7 @@ async function createPaseoDaemonInternal(
               orchestrationSkills,
               workspaceLabelService,
             );
+            wsServer.hasPendingTaskDelivery = (id) => finishSubscriptions.hasPendingForAgent(id);
             pluginRuntime.bindPaseoSessionHost(wsServer);
             await pluginRuntime.start();
             providerSnapshotManager.settlePluginProviders();

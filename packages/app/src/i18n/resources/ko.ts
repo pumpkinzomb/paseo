@@ -1695,6 +1695,9 @@ export const ko: TranslationResources = {
       subSessions: {
         needsReview: "확인 필요",
         notStarted: "시작 전",
+        finalizationPending: "작업 정리 대기 중",
+        finalizationBlocked: "작업 정리 보류",
+        finalizationInvalidated: "작업 완료 승인 취소",
         ownershipUnavailable:
           "일부 항목의 상위 에이전트나 용도를 확인해야 합니다. 호스트를 새로 고치거나 연결 정보를 확인해 주세요.",
         purpose: {

@@ -37,6 +37,7 @@ interface DispatchRequest {
   onDispatch(disposition: PromptDispatchDisposition): void;
 }
 interface Dependencies {
+  beforeEnqueue?(recipientId: string): void;
   updateAdmission?: UpdateAdmissionFence;
   dispatch(request: DispatchRequest): Promise<PromptDispatchDisposition>;
   onError(error: unknown, request: DispatchRequest): void;
@@ -164,6 +165,7 @@ export function createAgentMessageDelivery(dependencies: Dependencies): AgentMes
     hasPending: (recipientId) => pending.has(recipientId) || dispatching.has(recipientId),
     enqueue(message) {
       if (closed) throw new Error("Agent message delivery is closed");
+      dependencies.beforeEnqueue?.(message.recipientId);
       // Preserve incoming intent, but revoke any prepared checkpoint immediately.
       dependencies.updateAdmission?.invalidate();
       let resolve!: Admitted["resolve"];

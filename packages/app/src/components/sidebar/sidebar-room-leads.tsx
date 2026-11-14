@@ -104,6 +104,7 @@ export function SidebarRoomLeads({
   const workspaceWork = placements
     .filter((item) => {
       const entry = entries.get(item.workspaceKey);
+      if (assistantTree && entry?.taskFinalization?.phase === "retired") return false;
       if (assistantTree && entry?.workspacePurpose === "source" && entry.sessionCount === 0)
         return false;
       return (
@@ -137,7 +138,10 @@ export function SidebarRoomLeads({
   );
   const recoveryItems = [...partition.unassigned, ...unclassified];
   const sessionArchives = archivedSubSessions.filter(
-    (item) => !assistantTree || item.agentId !== null || item.sessionCount !== 0,
+    (item) =>
+      !assistantTree ||
+      (item.taskFinalization?.phase !== "retired" &&
+        (item.agentId !== null || item.sessionCount !== 0)),
   );
   const uncertainArchives = assistantTree
     ? sessionArchives.filter((item) => item.agentId === null)

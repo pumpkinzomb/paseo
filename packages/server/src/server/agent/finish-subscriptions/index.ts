@@ -54,6 +54,7 @@ export interface FinishSubscriptions {
   start(): Promise<void>;
   /** Pending notification intent, including registration, recovery and unacknowledged delivery. */
   hasPendingForCaller(agentId: string): boolean;
+  hasPendingForAgent(agentId: string): boolean;
   register(
     input: Omit<FinishSubscription, "id">,
     pendingDispatch?: boolean,
@@ -329,6 +330,19 @@ export function createFinishSubscriptions(deps: Dependencies): FinishSubscriptio
       if (recovering || registering.has(agentId)) return true;
       for (const group of watches.values()) {
         for (const watch of group) if (watch.records[0]!.callerAgentId === agentId) return true;
+      }
+      return false;
+    },
+    hasPendingForAgent(agentId) {
+      if (recovering || registering.size || pendingMutations) return true;
+      for (const group of watches.values()) {
+        for (const watch of group)
+          if (
+            watch.records.some(
+              (record) => record.callerAgentId === agentId || record.childAgentId === agentId,
+            )
+          )
+            return true;
       }
       return false;
     },

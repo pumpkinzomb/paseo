@@ -14,6 +14,7 @@ import {
 } from "../../utils/managed-dependencies-ready.js";
 import { applyLeadInstructionProfile } from "./lead-instruction-profile.js";
 import { UpdateAdmissionFence, UpdateBlocked } from "../update-quiescence.js";
+import { WorkspaceTaskFinalizationGate } from "../workspace-task-finalization-gate.js";
 import {
   readSelfDevelopmentPolicy,
   assertSelfDevelopmentCwd,
@@ -924,6 +925,7 @@ export class AgentManager {
   private readonly workspaceIsActive?: AgentManagerOptions["workspaceIsActive"];
 
   readonly updateAdmission: UpdateAdmissionFence;
+  readonly taskFinalizationGate = new WorkspaceTaskFinalizationGate();
 
   constructor(options: AgentManagerOptions) {
     this.workspaceIsActive = options.workspaceIsActive;
@@ -3444,6 +3446,7 @@ export class AgentManager {
     prompt: AgentPromptInput,
     options?: AgentRunOptions,
   ): AsyncGenerator<AgentStreamEvent> {
+    this.taskFinalizationGate.agentActivity(agentId);
     this.updateAdmission.assertOpen();
     if (this.conversationMutations.has(agentId))
       throw new Error("Conversation is being archived, restored, or deleted. Please retry.");
@@ -3806,6 +3809,7 @@ export class AgentManager {
   }
 
   private async runForegroundMutation<T>(agentId: string, operation: () => Promise<T>): Promise<T> {
+    this.taskFinalizationGate.agentActivity(agentId);
     const releaseUpdateAdmission = this.updateAdmission.enter();
     if (!releaseUpdateAdmission) throw new UpdateBlocked("update_in_progress");
     const previous = this.foregroundMutationTails.get(agentId) ?? Promise.resolve();
@@ -4226,6 +4230,7 @@ export class AgentManager {
   private async assertWorkspaceAvailableForRegistration(
     workspaceId: string | undefined,
   ): Promise<void> {
+    if (workspaceId) this.taskFinalizationGate.workspaceActivity(workspaceId);
     this.assertWorkspaceNotDeleting(workspaceId);
     if (workspaceId && this.workspaceIsActive && !(await this.workspaceIsActive(workspaceId)))
       throw new Error("This session group was removed or archived. Choose an active workspace.");

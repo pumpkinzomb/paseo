@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   observeInstalledUpdateControl,
+  readInstalledAppliedRevision,
   type InstalledControlIdentity,
   type UpdateControlPublication,
 } from "./installed-update-control.js";
@@ -11,6 +12,94 @@ import { startUpdateControl } from "./update-control.js";
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const close of cleanups.splice(0).toReversed()) await close();
+});
+
+it("task retirement requires exact applied receipt, not staged approval, semantic version or foreign registration", async () => {
+  const f = await fixture();
+  await f.register();
+  const dir = path.join(f.root, "daemon-update-v1");
+  await mkdir(dir, { mode: 0o700 });
+  const hold = {
+    schemaVersion: 1,
+    token: "a".repeat(32),
+    oldRevision: "b".repeat(40),
+    nextRevision: "c".repeat(40),
+    nextVersion: f.expected.version,
+    original: { ...f.expected, version: "old" },
+  };
+  await writeFile(path.join(dir, "hold.json"), JSON.stringify(hold), { mode: 0o600 });
+  await expect(readInstalledAppliedRevision(f.userHome, f.expected)).rejects.toThrow();
+  const receipt = {
+    schemaVersion: 1,
+    token: hold.token,
+    revision: hold.nextRevision,
+    instance: f.expected,
+  };
+  await writeFile(path.join(dir, "receipt.json"), JSON.stringify(receipt), { mode: 0o600 });
+  await mkdir(f.directory, { mode: 0o700 });
+  await writeFile(
+    path.join(f.directory, "descriptor.json"),
+    JSON.stringify({
+      version: 1,
+      workerPid: process.pid,
+      serverId: f.expected.serverId,
+      instance: { pid: f.expected.pid, startedAt: f.expected.startedAt, uid: f.expected.uid },
+      capabilities: { daemonCommit: true },
+    }),
+    { mode: 0o600 },
+  );
+  await expect(readInstalledAppliedRevision(f.userHome, f.expected)).rejects.toThrow();
+  await writeFile(
+    path.join(dir, "native-commit.json"),
+    JSON.stringify({ schemaVersion: 1, token: hold.token, revision: hold.nextRevision }),
+    { mode: 0o600 },
+  );
+  await writeFile(
+    path.join(dir, "stopped.json"),
+    JSON.stringify({ schemaVersion: 1, token: hold.token, original: hold.original }),
+    { mode: 0o600 },
+  );
+  // Persisted JSON property order is not authority.
+  await writeFile(
+    path.join(dir, "stopped.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      token: hold.token,
+      original: Object.fromEntries(Object.entries(hold.original).toReversed()),
+    }),
+    { mode: 0o600 },
+  );
+  expect(await readInstalledAppliedRevision(f.userHome, f.expected)).toBe(hold.nextRevision);
+  await mkdir(path.join(dir, "handoff.lock"), { mode: 0o700 });
+  await expect(readInstalledAppliedRevision(f.userHome, f.expected)).rejects.toThrow(
+    "active or requires recovery",
+  );
+  await rm(path.join(dir, "handoff.lock"), { recursive: true });
+  await writeFile(
+    path.join(dir, "native-commit.json"),
+    JSON.stringify({ schemaVersion: 1, token: "foreign", revision: hold.nextRevision }),
+    { mode: 0o600 },
+  );
+  await expect(readInstalledAppliedRevision(f.userHome, f.expected)).rejects.toThrow(
+    "does not match",
+  );
+  await writeFile(
+    path.join(dir, "native-commit.json"),
+    JSON.stringify({ schemaVersion: 1, token: hold.token, revision: hold.nextRevision }),
+    { mode: 0o600 },
+  );
+
+  await writeFile(path.join(dir, "receipt.json"), JSON.stringify({ ...receipt, token: "other" }), {
+    mode: 0o600,
+  });
+  await expect(readInstalledAppliedRevision(f.userHome, f.expected)).rejects.toThrow(
+    "does not match",
+  );
+  await writeFile(path.join(dir, "receipt.json"), JSON.stringify(receipt), { mode: 0o600 });
+  await f.register({ pid: 999 });
+  await expect(readInstalledAppliedRevision(f.userHome, f.expected)).rejects.toThrow(
+    "registration",
+  );
 });
 async function fixture() {
   const userHome = await realpath(await mkdtemp(path.join(tmpdir(), "installed-control-")));

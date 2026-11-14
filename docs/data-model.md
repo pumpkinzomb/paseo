@@ -47,6 +47,13 @@ changed evidence requires another preview. Apply adds missing associations and p
 reassigning an existing different owner or changing creator provenance. The registry queue commits
 the batch atomically. Existing source links and review evidence remain independent.
 
+Optional `taskFinalization` is a durable completion journal, separate from agent
+turn state and archive state. Review preimages exclude that journal's own writes,
+so a partial archive can be inspected again without manufacturing new ownership
+or release evidence. Only a verified `retired` phase removes a task from normal
+inventories; immutable review resolution retains the record. The workflow is
+owned by [agent lifecycle](agent-lifecycle.md#development-subtask-isolation).
+
 Paseo uses **file-based JSON persistence** instead of a traditional database. All data is validated at runtime with Zod schemas. Most stores write atomically (write to temp file, then rename); a few still use plain `writeFile` — see each section. There is no schema-versioning/migration framework — schemas rely on optional fields with defaults for forward compatibility, with a small amount of inline normalization in `persisted-config.ts` for legacy provider/speech entries.
 
 All server-side stores live under `$PASEO_HOME` (defaults to `~/.paseo`).

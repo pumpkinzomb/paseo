@@ -1387,6 +1387,9 @@ export const ru: TranslationResources = {
       subSessions: {
         needsReview: "Review needed",
         notStarted: "Not started",
+        finalizationPending: "Task cleanup pending",
+        finalizationBlocked: "Task cleanup blocked",
+        finalizationInvalidated: "Task completion canceled",
         ownershipUnavailable:
           "Some items need their lead or purpose confirmed. Refresh the host or review their assignment.",
         purpose: {

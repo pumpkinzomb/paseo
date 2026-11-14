@@ -573,9 +573,34 @@ explicit development was requested, which requires a Git project. Top-level and
 resumed sessions are not moved. A cwd-locked caller cannot create an out-of-scope
 worktree through this path.
 
-Children report committed changes and test evidence. The lead reviews the diff
-and integrates approved changes with the existing Git merge workflow. Completion
-of a turn does not authorize merging or deleting work. After integration and
-usage checks, managed maintenance directly reclaims eligible reproducible
-artifacts; no Trash round-trip is needed for that managed cleanup. Source,
-conversation data, unmerged work and live artifacts are preserved.
+Children report committed changes and test evidence. The lead reviews and locally
+integrates approved changes, captures the exact task tip, and verifies that an
+applied signed self-development release contains it. Before declaring the whole
+task complete, the lead must inspect, review and apply task finalization, then
+verify a `retired` result. A turn finishing or an earlier merge does not complete
+a continuing task. The child cannot retire its own active checkout.
+
+Use `paseo workspace finalize <workspace-id> --inspect` for a read-only preview,
+`--status` for the persisted result, or the interactive command without either
+flag to review and confirm the full tip. Interactive inspection and application
+share one SDK connection; preview tokens cannot be carried to a new invocation.
+The SDK workspace handle exposes `finalization.inspect()`, `apply(token)` and
+`status()`. Pending, invalidated or blocked results require review and retry;
+never substitute shell deletion for a blocked result.
+
+Finalization supports verified self-development tasks with an exact applied
+installed-release receipt. Standalone projects without that authority remain
+unsupported. Missing creator provenance additionally requires an explicitly
+reviewed host-managed lead association and task purpose. Mutable parent labels
+only corroborate that declaration. Sources, planned work and preparation records
+are ineligible. Supported new activity invalidates pending approval; admission is
+fenced during archive. Unknown external consumers block removal, but filesystem
+and process snapshots cannot lock out uncooperative external writers.
+
+The reviewed operation closes eligible idle task runtimes, archives the exact
+owned checkout and verifies its removal before nonforced deletion of the
+unchanged merged local branch. Its preview includes the generated output roots
+that leave with that checkout. Conversation/native history and immutable review
+evidence remain; permanent session deletion is separate. Retired tasks leave the
+normal session and Files inventories. General dependency-registry repair and
+retained build/updater-candidate policies remain separate maintenance work.

@@ -574,6 +574,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly pluginSocketCleanup = new WeakMap<WebSocketLike, () => void>();
   private readonly serverId: string;
   private readonly daemonVersion: string;
+  hasPendingTaskDelivery: (agentId: string) => boolean = () => true;
   private readonly daemonRuntimeConfig: DaemonRuntimeConfig | undefined;
   private readonly agentManager: AgentManager;
   private readonly agentStorage: AgentStorage;
@@ -731,6 +732,7 @@ export class VoiceAssistantWebSocketServer {
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
     this.agentMessages = createAgentMessageDelivery({
+      beforeEnqueue: (id) => agentManager.taskFinalizationGate.agentActivity(id),
       updateAdmission: agentManager.updateAdmission,
       dispatch: async (batch) => {
         const { disposition } = await sendPreparedPromptToAgent({
@@ -1734,6 +1736,7 @@ export class VoiceAssistantWebSocketServer {
       workspaceSetupObservation: this.workspaceSetupObservation,
       workspaceSetupRuntime: this.workspaceSetupRuntime,
       workspaceArchiveOperations: this.workspaceArchiveOperations,
+      hasPendingTaskDelivery: (id) => this.hasPendingTaskDelivery(id),
       onBranchChanged: this.onBranchChanged ?? undefined,
       getDaemonTcpPort: this.getDaemonTcpPort ?? undefined,
       getDaemonTcpHost: this.getDaemonTcpHost ?? undefined,
@@ -2078,6 +2081,7 @@ export class VoiceAssistantWebSocketServer {
         defaultAssistantConversations: true,
         assistantConversationLifecycle: true,
         workspaceLeadAssociation: true,
+        workspaceTaskFinalization: true,
         agentRecordDeletion: true,
         workspaceSessionDeletion: true,
         nativeSessionDeletion: true,

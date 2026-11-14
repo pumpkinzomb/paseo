@@ -1,11 +1,17 @@
 import {
   WorkspaceLeadAssociations,
+  workspaceRoomAncestry,
   workspaceEvidenceRevision,
   validateWorkspaceItemScope,
 } from "./workspace-lead-association.js";
 import type { WorkspaceLeadAssociation, WorkspacePurpose } from "@getpaseo/protocol/messages";
 import { workspaceAgentProvenance } from "./workspace-agent-provenance.js";
 import { DevelopmentReview } from "./development-review.js";
+import { WorkspaceTaskFinalizer } from "./workspace-task-finalization.js";
+import { resolveTaskOwnership } from "./workspace-task-owner.js";
+import { assertNoTaskConsumers } from "./task-process-consumers.js";
+import { readInstalledAppliedRevision } from "./installed-update-control.js";
+import { readDaemonInstance } from "./daemon-instance.js";
 import { inspectTaskArtifacts, removeTaskArtifacts } from "@getpaseo/plugin/server";
 import {
   assistantWorkspaceDirectory,
@@ -498,7 +504,15 @@ const nodeSessionFileSystem: SessionFileSystem = {
 // Stub types for features under development (modules not yet available)
 type AgentMcpTransportFactory = () => Promise<unknown>;
 
+function taskFinalizationOptions(options: SessionOptions) {
+  return {
+    version: options.daemonVersion ?? "",
+    pending: options.hasPendingTaskDelivery ?? (() => true),
+  };
+}
+
 export interface SessionOptions {
+  hasPendingTaskDelivery?: (agentId: string) => boolean;
   connectedHosts?: ConnectedHosts;
   sourceId?: string;
   routed?: boolean;
@@ -912,6 +926,99 @@ export class Session {
   private readonly creationService: Pick<CreationService, "create" | "subscribe">;
 
   private readonly serverId: string | undefined;
+  private readonly taskDaemonVersion: string;
+  private readonly hasPendingTaskDelivery: (agentId: string) => boolean;
+  private taskFinalizer?: WorkspaceTaskFinalizer;
+  private finalizer() {
+    if (!this.serverId) throw new Error("Host identity unavailable");
+    return (this.taskFinalizer ??= new WorkspaceTaskFinalizer({
+      serverId: this.serverId,
+      registry: this.workspaceRegistry,
+      gate: this.agentManager.taskFinalizationGate,
+      appliedRevision: async () => {
+        const instance = await readDaemonInstance(this.paseoHome);
+        if (!instance?.listen || !this.taskDaemonVersion || !this.serverId)
+          throw new Error("Applied installed release authority unavailable");
+        return readInstalledAppliedRevision(homedir(), {
+          uid: instance.uid,
+          home: this.paseoHome,
+          serverId: this.serverId,
+          pid: instance.pid,
+          startedAt: instance.startedAt,
+          listen: instance.listen,
+          version: this.taskDaemonVersion,
+        });
+      },
+      owner: async (record) => {
+        if (!this.serverId) throw new Error("Host identity unavailable");
+        const ownership = await resolveTaskOwnership(
+          record,
+          await this.agentStorage.listByWorkspaces([record.workspaceId], { includeArchived: true }),
+          {
+            serverId: this.serverId,
+            getAgent: (id) => this.agentStorage.get(id),
+            leadForAgent: (agent) =>
+              agent.workspaceId
+                ? this.leadAssociations().forCaller(agent.id, agent.workspaceId)
+                : Promise.resolve(undefined),
+            canonical: async (lead) => (await this.leadAssociations().canonical(lead)).conversation,
+          },
+        );
+        workspaceRoomAncestry(
+          new Map((await this.workspaceRegistry.listAll()).map((r) => [r.workspaceId, r])),
+          record.workspaceId,
+          ownership.lead.roomWorkspaceId,
+        );
+        return ownership;
+      },
+      agents: async (id) => {
+        const records = (
+          await this.agentStorage.listByWorkspaces([id], { includeArchived: true })
+        ).sort((a, b) => a.id.localeCompare(b.id));
+        return { ids: records.map((r) => r.id), revision: JSON.stringify(records) };
+      },
+      assertIdle: async (record, ids) => {
+        if (this.workspaceSetupRuntime.isRunning(record.workspaceId))
+          throw new Error("Task setup is still running");
+        if (!this.terminalManager || this.terminalManager.getUnavailableError?.())
+          throw new Error("Task terminal inventory is unavailable");
+        for (const cwd of this.terminalManager.listDirectories())
+          if (
+            (await this.terminalManager.getTerminals(cwd)).some(
+              (t) => t.workspaceId === record.workspaceId,
+            )
+          )
+            throw new Error("Task still owns a terminal");
+        if (ids.some((id) => this.hasPendingTaskDelivery(id) || this.agentMessages.hasPending(id)))
+          throw new Error("Task messages or completion deliveries are pending");
+        await this.agentManager.validateAssistantConversationMutation([...ids], "archive", null);
+      },
+      closeIdle: async (ids, current) => {
+        for (const runtime of this.agentManager
+          .getRuntimeCleanupCandidates()
+          .filter((r) => ids.includes(r.agentId))) {
+          if (
+            !current() ||
+            !runtime.isEligible() ||
+            (runtime.canStopRuntime && !(await runtime.canStopRuntime())) ||
+            !(await runtime.closeIfEligible(current))
+          )
+            throw new Error("Task runtime cannot be safely closed");
+        }
+      },
+      assertNoConsumers: assertNoTaskConsumers,
+      exclusive: (id, operation) => this.agentManager.withWorkspaceSessionDeletion(id, operation),
+      archive: async (id) => {
+        const outcome = await this.archiveWorkspaceForFinalization(id);
+        if (
+          outcome.kind !== "archived" ||
+          !outcome.result.archivedWorkspaceIds.includes(id) ||
+          !outcome.result.removedDirectory
+        )
+          throw new Error("Task archive did not verify checkout removal");
+      },
+    }));
+  }
   private workspaceLeadAssociations?: WorkspaceLeadAssociations;
   private leadAssociations() {
     if (!this.serverId) throw new Error("Host identity unavailable");
@@ -932,6 +1039,9 @@ export class Session {
 
   constructor(options: SessionOptions) {
     this.serverId = options.serverId;
+    const taskOptions = taskFinalizationOptions(options);
+    this.taskDaemonVersion = taskOptions.version;
+    this.hasPendingTaskDelivery = taskOptions.pending;
     const {
       clientId,
       permissions,
@@ -1062,6 +1172,7 @@ export class Session {
     });
     this.workspaceAutoName = workspaceAutoName;
     this.workspaceProvisioning = createWorkspaceProvisioningService({
+      noteWorkspaceActivity: (id) => this.agentManager.taskFinalizationGate.workspaceActivity(id),
       resolveCallerLead: (agentId, workspaceId) =>
         this.leadAssociations().forCaller(agentId, workspaceId),
       validateLeadIntent: (lead, purpose) => this.leadAssociations().validateIntent(lead, purpose),
@@ -1336,6 +1447,8 @@ export class Session {
       },
     );
     this.workspaceSetupRuntime = resolveWorkspaceSetupRuntime(workspaceSetupRuntime);
+    this.workspaceSetupRuntime.beforeStart = (id) =>
+      this.agentManager.taskFinalizationGate.workspaceActivity(id);
     this.workspaceArchiveOperations = resolveWorkspaceArchiveOperations(workspaceArchiveOperations);
     this.getDaemonTcpPort = getDaemonTcpPort ?? null;
     this.getDaemonTcpHost = getDaemonTcpHost ?? null;
@@ -3398,6 +3511,10 @@ export class Session {
         return this.handleCreationSubscription(msg, source);
       case "workspace.create.request":
         return this.handleWorkspaceCreation(msg, source);
+      case "workspace.taskFinalization.inspect.request":
+      case "workspace.taskFinalization.apply.request":
+      case "workspace.taskFinalization.status.request":
+        return this.handleTaskFinalization(msg, source);
       case "workspace.leadAssociation.inspect.request":
       case "workspace.leadAssociation.apply.request":
         return this.handleWorkspaceLeadAssociation(msg, source);
@@ -5170,6 +5287,58 @@ export class Session {
   private async findAssistantConversationAgent(agentId: string) {
     const agent = await this.getAgentPayloadById(agentId);
     return agent?.labels["paseo.role"] === "assistant" ? { agent } : null;
+  }
+
+  private async handleTaskFinalization(
+    request: Extract<
+      SessionInboundMessage,
+      {
+        type:
+          | "workspace.taskFinalization.inspect.request"
+          | "workspace.taskFinalization.apply.request"
+          | "workspace.taskFinalization.status.request";
+      }
+    >,
+    source?: object,
+  ) {
+    const principal = source ?? this;
+    if (request.type === "workspace.taskFinalization.inspect.request") {
+      this.emitForSource(
+        {
+          type: "workspace.taskFinalization.inspect.response",
+          payload: {
+            requestId: request.requestId,
+            ...(await this.finalizer().inspect(principal, request.workspaceId)),
+          },
+        },
+        source,
+      );
+    } else if (request.type === "workspace.taskFinalization.status.request") {
+      this.emitForSource(
+        {
+          type: "workspace.taskFinalization.status.response",
+          payload: {
+            requestId: request.requestId,
+            task: await this.finalizer().status(request.workspaceId),
+          },
+        },
+        source,
+      );
+    } else {
+      const task = await this.finalizer().apply(
+        principal,
+        request.previewToken,
+        () => !this.isCleanedUp && this.authorization.allowsPermission("workspace.manage"),
+      );
+      this.emitForSource(
+        {
+          type: "workspace.taskFinalization.apply.response",
+          payload: { requestId: request.requestId, task },
+        },
+        source,
+      );
+      await this.emitWorkspaceUpdatesForWorkspaceIds([task.workspaceId, task.lead.roomWorkspaceId]);
+    }
   }
 
   private async handleWorkspaceLeadAssociation(
@@ -7251,6 +7420,7 @@ export class Session {
       background: workspace.background,
       leadAssociation: workspace.leadAssociation,
       workspacePurpose: workspace.workspacePurpose,
+      taskFinalization: workspace.taskFinalization,
       parentWorkspaceId: workspace.parentWorkspaceId,
       ...workspaceAgentProvenance(
         this.serverId,
@@ -7286,6 +7456,7 @@ export class Session {
       (candidate) =>
         candidate.parentWorkspaceId === workspaceId &&
         candidate.archivedAt !== null &&
+        candidate.taskFinalization?.phase !== "retired" &&
         !candidate.background &&
         typeof candidate.metadata.sessionRecordsDeletedAt !== "string",
     );
@@ -7318,6 +7489,7 @@ export class Session {
             {
               leadAssociation: child.leadAssociation,
               workspacePurpose: child.workspacePurpose,
+              taskFinalization: child.taskFinalization,
               workspaceId: child.workspaceId,
               name: resolveWorkspaceDisplayName(child),
               archivedAt: child.archivedAt!,
@@ -9254,52 +9426,58 @@ export class Session {
     );
   }
 
+  private archiveWorkspaceForFinalization(
+    targetWorkspaceId: string,
+    requestId = "task-finalization",
+  ) {
+    return this.workspaceArchiveOperations.archive(targetWorkspaceId, async (signal) => {
+      const existing = await this.workspaceRegistry.get(targetWorkspaceId);
+      if (!existing) {
+        throw new Error(`Workspace not found: ${targetWorkspaceId}`);
+      }
+      return archiveByScope(
+        {
+          paseoHome: this.paseoHome,
+          paseoWorktreesBaseRoot: this.worktreesRoot,
+          github: this.github,
+          workspaceGitService: this.workspaceGitService,
+          agentManager: this.agentManager,
+          agentStorage: this.agentStorage,
+          findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),
+          getWorkspace: (workspaceId) => this.workspaceRegistry.get(workspaceId),
+          listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
+          archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
+          emitWorkspaceUpdatesForWorkspaceIds: (workspaceIds) =>
+            this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds),
+          markWorkspaceArchiving: (workspaceIds, archivingAt) =>
+            this.markWorkspaceArchiving(workspaceIds, archivingAt),
+          clearWorkspaceArchiving: (workspaceIds) => this.clearWorkspaceArchiving(workspaceIds),
+          assertWorkspaceAutomationAllowed: (workspaceId) =>
+            assertWorkspaceAutomationAllowedForWorkspace(this.workspaceRegistry, workspaceId),
+          killTerminalsForWorkspace: (workspaceId) =>
+            this.terminalController.killTerminalsForWorkspace(workspaceId),
+          stopWorkspaceSetup: (workspaceId) => this.workspaceSetupRuntime.stop(workspaceId),
+          sessionLogger: this.sessionLogger,
+        },
+        {
+          scope: { kind: "workspace", workspaceId: existing.workspaceId },
+          requestId: requestId,
+          signal,
+        },
+      );
+    });
+  }
+
   private async handleArchiveWorkspaceRequest(
     request: Extract<SessionInboundMessage, { type: "archive_workspace_request" }>,
   ): Promise<void> {
     try {
       // Claim the archive queue before any await, so an undo sent right behind this request
       // queues after it and cancels it instead of running first.
-      const outcome = await this.workspaceArchiveOperations.archive(
+      const outcome = await this.archiveWorkspaceForFinalization(
         request.workspaceId,
-        async (signal) => {
-          const existing = await this.workspaceRegistry.get(request.workspaceId);
-          if (!existing) {
-            throw new Error(`Workspace not found: ${request.workspaceId}`);
-          }
-          return archiveByScope(
-            {
-              paseoHome: this.paseoHome,
-              paseoWorktreesBaseRoot: this.worktreesRoot,
-              github: this.github,
-              workspaceGitService: this.workspaceGitService,
-              agentManager: this.agentManager,
-              agentStorage: this.agentStorage,
-              findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),
-              getWorkspace: (workspaceId) => this.workspaceRegistry.get(workspaceId),
-              listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
-              archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
-              emitWorkspaceUpdatesForWorkspaceIds: (workspaceIds) =>
-                this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds),
-              markWorkspaceArchiving: (workspaceIds, archivingAt) =>
-                this.markWorkspaceArchiving(workspaceIds, archivingAt),
-              clearWorkspaceArchiving: (workspaceIds) => this.clearWorkspaceArchiving(workspaceIds),
-              assertWorkspaceAutomationAllowed: (workspaceId) =>
-                assertWorkspaceAutomationAllowedForWorkspace(this.workspaceRegistry, workspaceId),
-              killTerminalsForWorkspace: (workspaceId) =>
-                this.terminalController.killTerminalsForWorkspace(workspaceId),
-              stopWorkspaceSetup: (workspaceId) => this.workspaceSetupRuntime.stop(workspaceId),
-              sessionLogger: this.sessionLogger,
-            },
-            {
-              scope: { kind: "workspace", workspaceId: existing.workspaceId },
-              requestId: request.requestId,
-              signal,
-            },
-          );
-        },
+        request.requestId,
       );
-
       if (outcome.kind === "canceled") {
         this.emit({
           type: "archive_workspace_response",

@@ -19,6 +19,7 @@ import { useDeleteWorkspaceSessions } from "@/hooks/use-delete-workspace-session
 import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import { SidebarGroupToggleRow } from "./sidebar-group-toggle-row";
 import { groupSubSessionsByActivity } from "./sidebar-sub-sessions";
+import { TaskFinalizationStatus } from "./task-finalization-status";
 
 type ArchivedSubSession = NonNullable<WorkspaceDescriptor["archivedSubSessions"]>[number];
 
@@ -311,6 +312,7 @@ export function ArchivedSubSessionRow({
           </ToolbarButton>
         ) : null}
       </View>
+      <TaskFinalizationStatus task={subSession.taskFinalization} />
     </View>
   );
 }
